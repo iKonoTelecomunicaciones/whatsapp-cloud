@@ -6,9 +6,10 @@ from markdown import markdown
 from mautrix.bridge.commands import HelpSection, command_handler
 from mautrix.types import EventID, Format, MessageType, TextMessageEventContent
 
+from meta.data import MetaMessageSender
+
 from .. import portal as po
 from .. import puppet as pu
-from meta.data import MetaMessageSender
 from ..util import normalize_number
 from .typehint import CommandEvent
 

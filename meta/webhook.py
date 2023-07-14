@@ -1,16 +1,16 @@
 from asyncio import AbstractEventLoop, get_event_loop
-from logging import getLogger, Logger
+from logging import Logger, getLogger
 from typing import Any, Dict, Optional, Tuple
 
 from aiohttp import web
+from mautrix.types import SerializableAttrs
 
+from meta_matrix.config import Config
+from meta_matrix.db import MetaApplication as DBMetaApplication
 from meta_matrix.portal import Portal
 from meta_matrix.user import User
-from meta_matrix.db import MetaApplication as DBMetaApplication
-from meta_matrix.config import Config
-from .data import MetaMessageEvent, MetaMessageSender
 
-from mautrix.types import SerializableAttrs
+from .data import MetaMessageEvent, MetaMessageSender
 
 
 class MetaHandler:

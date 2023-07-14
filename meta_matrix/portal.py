@@ -23,7 +23,7 @@ from mautrix.types import (
 
 from meta.api import MetaClient
 from meta.data import MetaMessageEvent, MetaMessageSender
-from meta.types import MetaMessageID, MetaPsID, MetaPageID
+from meta.types import MetaMessageID, MetaPageID, MetaPsID
 from meta_matrix.formatter.from_matrix import matrix_to_whatsapp
 
 from .db import Message as DBMessage

@@ -1,14 +1,14 @@
 import asyncio
 import json
 import logging
-from typing import Optional, Dict
+from typing import Dict, Optional
 
 from aiohttp import ClientConnectorError, ClientSession
-from mautrix.types import MessageType, MessageEventContent
+from mautrix.types import MessageEventContent, MessageType
 
 from meta_matrix.config import Config
-from .data import MetaUserData
 
+from .data import MetaUserData
 from .types import MetaPsID
 
 

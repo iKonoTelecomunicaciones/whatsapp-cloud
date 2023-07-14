@@ -3,7 +3,8 @@ from typing import List
 import attr
 from attr import dataclass, ib
 from mautrix.types import SerializableAttrs
-from .types import MetaPsID, MetaPageID, MetaMessageID
+
+from .types import MetaMessageID, MetaPageID, MetaPsID
 
 
 @dataclass

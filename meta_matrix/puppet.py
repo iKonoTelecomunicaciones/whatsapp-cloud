@@ -9,7 +9,7 @@ from mautrix.util.simple_template import SimpleTemplate
 from yarl import URL
 
 from meta.data import MetaMessageSender, MetaUserData
-from meta.types import MetaPsID, MetaPageID
+from meta.types import MetaPageID, MetaPsID
 
 from .config import Config
 from .db import Puppet as DBPuppet
