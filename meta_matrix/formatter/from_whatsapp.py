@@ -1,5 +1,5 @@
 import re
-from typing import Match, Optional, Tuple
+from typing import TYPE_CHECKING, Match, Optional, Tuple
 
 from mautrix.appservice import IntentAPI
 from mautrix.errors import MatrixRequestError
@@ -12,7 +12,9 @@ from mautrix.types import (
     TextMessageEventContent,
 )
 
-from ..db import Message
+if TYPE_CHECKING:
+    from ..db import Message
+
 from ..puppet import Puppet as pu
 
 italic = re.compile(r"([\s>~*]|^)_(.+?)_([^a-zA-Z\d]|$)")
@@ -40,7 +42,7 @@ def whatsapp_to_matrix(text: str) -> Tuple[Optional[str], str]:
 
 async def whatsapp_reply_to_matrix(
     body: Optional[str],
-    evt: Message,
+    evt: "Message",
     main_intent: Optional[IntentAPI] = None,
     log: Optional[str] = None,
 ) -> TextMessageEventContent:
@@ -86,7 +88,7 @@ async def whatsapp_reply_to_matrix(
 
 
 async def _add_reply_header(
-    content: TextMessageEventContent, msg: Message, main_intent: IntentAPI, log
+    content: TextMessageEventContent, msg: "Message", main_intent: IntentAPI, log
 ):
     """The reply parameters are added to the content and the reply is made to the message
 

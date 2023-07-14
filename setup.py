@@ -23,7 +23,7 @@ try:
 except IOError:
     long_desc = "Failed to read README.md"
 
-with open("gupshup_matrix/version.py", "w") as version_file:
+with open("meta_matrix/version.py", "w") as version_file:
     version_file.write(
         f"""# Generated in setup.py
 
@@ -35,15 +35,15 @@ linkified_version = {linkified_version!r}
     )
 
 setuptools.setup(
-    name="gupshup-matrix",
+    name="meta-matrix",
     version=version,
-    url="https://github.com/bramenn/gupshup",
+    url="https://github.com/iKonoTelecomunicaciones/meta-matrix",
     project_urls={
         "Changelog": "https://github.com/bramenn/gupshup/blob/master/CHANGELOG.md",
     },
-    author="Alejandro Herrera",
-    author_email="bramendev@gmail.com",
-    description="A WhatsApp Matrix-Gupshup bridge.",
+    author="Esteban Galvis Triana",
+    author_email="egalvis@ikono.com.co",
+    description="A Meta Matrix bridge.",
     long_description=long_desc,
     long_description_content_type="text/markdown",
     packages=setuptools.find_packages(),
@@ -61,11 +61,11 @@ setuptools.setup(
         "Programming Language :: Python :: 3.9",
     ],
     package_data={
-        "gupshup_matrix": [
+        "meta_matrix": [
             "example-config.yaml",
         ],
     },
     data_files=[
-        (".", ["gupshup_matrix/example-config.yaml"]),
+        (".", ["meta_matrix/example-config.yaml"]),
     ],
 )

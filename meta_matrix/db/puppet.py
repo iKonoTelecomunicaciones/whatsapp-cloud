@@ -15,11 +15,10 @@ fake_db = Database.create("") if TYPE_CHECKING else None
 class Puppet:
     db: ClassVar[Database] = fake_db
 
-    phone: str
-    name: str | None
-
+    ps_id: str
+    app_page_id: str
+    display_name: str | None
     is_registered: bool
-
     custom_mxid: UserID | None
     access_token: str | None
     next_batch: SyncToken | None
@@ -28,8 +27,9 @@ class Puppet:
     @property
     def _values(self):
         return (
-            self.phone,
-            self.name,
+            self.ps_id,
+            self.app_page_id,
+            self.display_name,
             self.is_registered,
             self.custom_mxid,
             self.access_token,
@@ -42,48 +42,51 @@ class Puppet:
         return cls(**row)
 
     async def insert(self) -> None:
-        q = (
-            "INSERT INTO puppet (phone, name, is_registered, custom_mxid, access_token, "
-            "next_batch, base_url) "
-            "VALUES ($1, $2, $3, $4, $5, $6, $7)"
-        )
+        q = """
+            INSERT INTO puppet (ps_id, app_page_id, display_name, is_registered,
+            custom_mxid, access_token, next_batch, base_url) 
+            VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
+        """
         await self.db.execute(q, *self._values)
 
     async def update(self) -> None:
-        q = (
-            "UPDATE puppet SET phone=$1, name=$2, is_registered=$3, custom_mxid=$4, "
-            "access_token=$5, next_batch=$6, base_url=$7  WHERE phone=$1"
-        )
+        q = """
+            UPDATE puppet SET ps_id=$1, app_page_id=$2, display_name=$3, is_registered=$4,
+            custom_mxid=$5, access_token=$6, next_batch=$7, base_url=$8  WHERE ps_id=$1
+        """
         await self.db.execute(q, *self._values)
 
-    @classmethod
-    async def get_by_pk(cls, phone: str) -> Puppet | None:
-        q = (
-            "SELECT  phone, name, is_registered, custom_mxid, access_token, next_batch, base_url "
-            "FROM puppet WHERE phone=$1"
-        )
-        row = await cls.db.fetchrow(q, phone)
-        if not row:
-            return None
-        return cls._from_row(row)
+    # @classmethod
+    # async def get_by_pk(cls, ps_id: str) -> Puppet | None:
+    #    q = (
+    #        "SELECT  ps_id, display_name, is_registered,"
+    #        "custom_mxid, access_token, next_batch, base_url "
+    #        "FROM puppet WHERE ps_id=$1"
+    #    )
+    #    row = await cls.db.fetchrow(q, ps_id)
+    #    if not row:
+    #        return None
+    #    return cls._from_row(row)
 
     @classmethod
-    async def get_by_phone(cls, phone: str) -> Puppet | None:
-        q = (
-            "SELECT  phone, name, is_registered, custom_mxid, access_token, next_batch, base_url "
-            "FROM puppet WHERE phone=$1"
-        )
-        row = await cls.db.fetchrow(q, phone)
+    async def get_by_ps_id(cls, ps_id: str) -> Puppet | None:
+        q = """
+            SELECT ps_id, app_page_id, display_name, is_registered, custom_mxid,
+            access_token, next_batch, base_url 
+            FROM puppet WHERE ps_id=$1
+        """
+        row = await cls.db.fetchrow(q, ps_id)
         if not row:
             return None
         return cls._from_row(row)
 
     @classmethod
     async def get_by_custom_mxid(cls, mxid: UserID) -> Puppet | None:
-        q = (
-            "SELECT  phone, name, is_registered, custom_mxid, access_token, next_batch, base_url "
-            "FROM puppet WHERE custom_mxid=$1"
-        )
+        q = """
+            SELECT ps_id, app_page_id, display_name, is_registered, custom_mxid,
+            access_token, next_batch, base_url 
+            FROM puppet WHERE custom_mxid=$1
+        """
         row = await cls.db.fetchrow(q, mxid)
         if not row:
             return None
@@ -91,9 +94,10 @@ class Puppet:
 
     @classmethod
     async def all_with_custom_mxid(cls) -> list[Puppet]:
-        q = (
-            "SELECT  phone, name, is_registered, custom_mxid, access_token, next_batch, base_url "
-            "FROM puppet WHERE custom_mxid IS NOT NULL"
-        )
+        q = """
+            SELECT  ps_id, app_page_id, display_name, is_registered, custom_mxid,
+            access_token, next_batch, base_url 
+            FROM puppet WHERE custom_mxid IS NOT NULL
+        """
         rows = await cls.db.fetch(q)
         return [cls._from_row(row) for row in rows]

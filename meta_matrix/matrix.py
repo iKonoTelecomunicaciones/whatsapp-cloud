@@ -5,8 +5,8 @@ from typing import TYPE_CHECKING
 from mautrix.bridge import BaseMatrixHandler, RejectMatrixInvite
 from mautrix.types import Event, EventID, EventType, ReactionEvent, RedactionEvent, RoomID, UserID
 
-from . import portal as po
-from . import user as u
+from .portal import Portal
+from .user import User
 
 if TYPE_CHECKING:
     from .__main__ import GupshupBridge
@@ -22,11 +22,11 @@ class MatrixHandler(BaseMatrixHandler):
         super().__init__(bridge=bridge)
 
     async def handle_leave(self, room_id: RoomID, user_id: UserID, event_id: EventID) -> None:
-        portal = await po.Portal.get_by_mxid(room_id)
+        portal = await Portal.get_by_mxid(room_id)
         if not portal:
             return
 
-        user = await u.User.get_by_mxid(user_id, create=False)
+        user = await User.get_by_mxid(user_id, create=False)
         if not user:
             return
 
@@ -43,12 +43,12 @@ class MatrixHandler(BaseMatrixHandler):
             )
 
     async def handle_invite(
-        self, room_id: RoomID, user_id: UserID, inviter: u.User, event_id: EventID
+        self, room_id: RoomID, user_id: UserID, inviter: User, event_id: EventID
     ) -> None:
-        user = await u.User.get_by_mxid(user_id, create=False)
+        user = await User.get_by_mxid(user_id, create=False)
         if not user or not await user.is_logged_in():
             return
-        portal = await po.Portal.get_by_mxid(room_id)
+        portal = await Portal.get_by_mxid(room_id)
         if portal and not portal.is_direct:
             try:
                 await portal.handle_matrix_invite(inviter, user)
@@ -57,7 +57,7 @@ class MatrixHandler(BaseMatrixHandler):
                     portal.mxid, f"Failed to invite {user.mxid} on Gupshup: {e}"
                 )
 
-    async def send_welcome_message(self, room_id: RoomID, inviter: u.User) -> None:
+    async def send_welcome_message(self, room_id: RoomID, inviter: User) -> None:
         await super().send_welcome_message(room_id, inviter)
         if not inviter.notice_room:
             inviter.notice_room = room_id
@@ -67,11 +67,11 @@ class MatrixHandler(BaseMatrixHandler):
             )
 
     async def handle_join(self, room_id: RoomID, user_id: UserID, event_id: EventID) -> None:
-        portal: po.Portal = await po.Portal.get_by_mxid(room_id)
+        portal: Portal = await Portal.get_by_mxid(room_id)
         if not portal:
             return
 
-        user = await u.User.get_by_mxid(user_id, create=False)
+        user = await User.get_by_mxid(user_id, create=False)
         if not user:
             return
 
@@ -81,18 +81,18 @@ class MatrixHandler(BaseMatrixHandler):
     async def handle_redaction(
         room_id: RoomID, user_id: UserID, event_id: EventID, redaction_event_id: EventID
     ) -> None:
-        user = await u.User.get_by_mxid(user_id)
+        user = await User.get_by_mxid(user_id)
         if not user:
             return
 
-        portal = await po.Portal.get_by_mxid(room_id)
+        portal = await Portal.get_by_mxid(room_id)
         if not portal:
             return
 
         await portal.handle_matrix_redaction(user, event_id, redaction_event_id)
 
-    async def allow_message(self, user: u.User) -> bool:
+    async def allow_message(self, user: User) -> bool:
         return user.relay_whitelisted
 
-    async def allow_bridging_message(self, user: u.User, portal: po.Portal) -> bool:
+    async def allow_bridging_message(self, user: User, portal: Portal) -> bool:
         return portal.has_relay or await user.is_logged_in()

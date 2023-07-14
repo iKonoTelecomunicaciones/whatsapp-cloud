@@ -14,17 +14,17 @@ fake_db = Database.create("") if TYPE_CHECKING else None
 class Portal:
     db: ClassVar[Database] = fake_db
 
-    chat_id: str
-    phone: str | None
-    mxid: RoomID | None
+    ps_id: str
+    app_page_id: str
+    room_id: RoomID | None
     relay_user_id: UserID | None
 
     @property
     def _values(self):
         return (
-            self.chat_id,
-            self.phone,
-            self.mxid,
+            self.ps_id,
+            self.app_page_id,
+            self.room_id,
             self.relay_user_id,
         )
 
@@ -33,31 +33,40 @@ class Portal:
         return cls(**row)
 
     async def insert(self) -> None:
-        q = "INSERT INTO portal (chat_id, phone, mxid, relay_user_id) VALUES ($1, $2, $3, $4)"
+        q = """
+            INSERT INTO portal (ps_id, app_page_id, room_id, relay_user_id)
+            VALUES ($1, $2, $3, $4)
+        """
         await self.db.execute(q, *self._values)
 
     async def update(self) -> None:
-        q = " UPDATE portal SET chat_id=$1, phone=$2, mxid=$3, relay_user_id=$4 WHERE chat_id=$1"
+        q = """
+            UPDATE portal
+            SET ps_id=$1, app_page_id= $2, room_id=$3, relay_user_id=$4 WHERE ps_id=$1
+        """
         await self.db.execute(q, *self._values)
 
     @classmethod
-    async def get_by_chat_id(cls, chat_id: str) -> Optional["Portal"]:
-        q = "SELECT chat_id, phone, mxid, relay_user_id FROM portal WHERE chat_id=$1"
-        row = await cls.db.fetchrow(q, chat_id)
+    async def get_by_ps_id(cls, ps_id: str) -> Optional["Portal"]:
+        q = "SELECT ps_id, app_page_id, room_id, relay_user_id FROM portal WHERE ps_id=$1"
+        row = await cls.db.fetchrow(q, ps_id)
         if not row:
             return None
         return cls._from_row(row)
 
     @classmethod
-    async def get_by_mxid(cls, mxid: RoomID) -> Optional["Portal"]:
-        q = "SELECT chat_id, phone, mxid, relay_user_id FROM portal WHERE mxid=$1"
-        row = await cls.db.fetchrow(q, mxid)
+    async def get_by_mxid(cls, room_id: RoomID) -> Optional["Portal"]:
+        q = "SELECT ps_id, app_page_id, room_id, relay_user_id FROM portal WHERE room_id=$1"
+        row = await cls.db.fetchrow(q, room_id)
         if not row:
             return None
         return cls._from_row(row)
 
     @classmethod
     async def all_with_room(cls) -> list[Portal]:
-        q = "SELECT chat_id, phone, mxid, relay_user_id FROM portal WHERE mxid IS NOT NULL"
+        q = """
+            SELECT ps_id, room_id, app_page_id, relay_user_id
+            FROM portal WHERE room_id IS NOT NULL
+        """
         rows = await cls.db.fetch(q)
         return [cls._from_row(row) for row in rows]

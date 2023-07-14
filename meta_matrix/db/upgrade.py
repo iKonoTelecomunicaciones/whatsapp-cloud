@@ -8,57 +8,74 @@ upgrade_table = UpgradeTable()
 async def upgrade_v1(conn: Connection) -> None:
     await conn.execute(
         """CREATE TABLE portal (
-        chat_id         TEXT PRIMARY KEY,
-        phone           TEXT,
-        mxid            TEXT,
-        relay_user_id   TEXT
-    )"""
+            ps_id           TEXT PRIMARY KEY,
+            room_id         VARCHAR(255),
+            app_page_id     TEXT,
+            relay_user_id   VARCHAR(255),
+            encrypted       BOOLEAN DEFAULT false
+        )"""
     )
     await conn.execute(
         """CREATE TABLE puppet (
-        phone         TEXT PRIMARY KEY,
-        name          TEXT,
-        is_registered BOOLEAN NOT NULL DEFAULT false,
-        custom_mxid   TEXT,
-        access_token  TEXT,
-        next_batch    TEXT,
-        base_url      TEXT
-    )"""
+            ps_id         TEXT PRIMARY KEY,
+            app_page_id   TEXT,
+            display_name  TEXT,
+            is_registered BOOLEAN NOT NULL DEFAULT false,
+            custom_mxid   VARCHAR(255),
+            access_token  TEXT,
+            next_batch    TEXT,
+            base_url      TEXT
+        )"""
     )
     await conn.execute(
-        """CREATE TABLE "user" (
-            mxid        TEXT PRIMARY KEY,
-            phone       TEXT,
-            gs_app      TEXT,
-            notice_room TEXT
+        """CREATE TABLE matrix_user (
+            mxid            VARCHAR(255) PRIMARY KEY,
+            app_page_id     TEXT,
+            notice_room     TEXT
         )"""
     )
     await conn.execute(
         """CREATE TABLE message (
-        mxid        TEXT NOT NULL,
-        mx_room     TEXT NOT NULL,
-        sender      TEXT NOT NULL,
-        gsid        TEXT NOT NULL,
-        gs_app      TEXT NOT NULL,
-        PRIMARY KEY (mxid),
-        UNIQUE (mxid, mx_room)
-    )"""
+            event_mxid          VARCHAR(255) PRIMARY KEY,
+            room_id             VARCHAR(255) NOT NULL,
+            ps_id               TEXT NOT NULL,
+            sender              VARCHAR(255) NOT NULL,
+            meta_message_id     TEXT NOT NULL,
+            app_page_id         TEXT NOT NULL,
+            UNIQUE (event_mxid, room_id)
+        )"""
     )
     await conn.execute(
-        """CREATE TABLE gupshup_application (
-        name            TEXT PRIMARY KEY,
-        admin_user      TEXT,
-        app_id          TEXT,
-        api_key         TEXT,
-        phone_number    TEXT
-    )"""
+        """CREATE TABLE meta_application (
+            page_id             TEXT PRIMARY KEY,
+            name                VARCHAR(255),
+            admin_user          VARCHAR(255),
+            page_access_token   TEXT
+        )"""
     )
-    # The names of gupshup applications are unique to your platform.
+
+    # The page_id of meta applications are unique to your platform.
     await conn.execute(
-        "ALTER TABLE message ADD CONSTRAINT FK_gs_app FOREIGN KEY (gs_app) references gupshup_application (name)"
+        """ALTER TABLE message ADD CONSTRAINT FK_message_meta_application_app_page_id
+        FOREIGN KEY (app_page_id) references meta_application (page_id)"""
     )
 
+    await conn.execute(
+        """ALTER TABLE portal ADD CONSTRAINT FK_portal_meta_application_app_page_id
+        FOREIGN KEY (app_page_id) references meta_application (page_id)"""
+    )
 
-@upgrade_table.register(description="Add field encrypted to portal table")
-async def upgrade_v2(conn: Connection) -> None:
-    await conn.execute("ALTER TABLE portal ADD COLUMN encrypted BOOLEAN DEFAULT false")
+    await conn.execute(
+        """ALTER TABLE matrix_user ADD CONSTRAINT FK_matrix_user_meta_application_app_page_id
+        FOREIGN KEY (app_page_id) references meta_application (page_id)"""
+    )
+
+    await conn.execute(
+        """ALTER TABLE puppet ADD CONSTRAINT FK_puppet_meta_application_app_page_id
+        FOREIGN KEY (app_page_id) references meta_application (page_id)"""
+    )
+
+    await conn.execute(
+        """ALTER TABLE message ADD CONSTRAINT FK_message_portal_ps_id
+        FOREIGN KEY (ps_id) references portal (ps_id)"""
+    )

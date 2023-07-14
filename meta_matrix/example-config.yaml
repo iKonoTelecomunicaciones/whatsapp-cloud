@@ -60,14 +60,10 @@ bridge:
     displayname_template: "{displayname} (Meta)"
     # How the rooms will be named?
     # {displayname} - displayname set by the Facebook or Instagram user
-    # {username} - nickname set by the Facebook or Instagram user
-    room_name_template: "{displayname}"
+    # {userid} - ps_id number of the Facebook or Instagram user
+    room_name_template: "{userid}"
     # The prefix for commands. Only required in non-management rooms.
     command_prefix: "!mt"
-
-    # Google maps URL.
-    # {latitude} and {longitude} is replaced with valid values.
-    google_maps_url: https://www.google.com/maps?q={latitude},{longitude}
 
     # Whether or not Matrix m.notice-type messages should be bridged.
     bridge_notices: false
@@ -85,6 +81,12 @@ bridge:
         # The shared secret to authorize users of the API.
         # Set to "generate" to generate and save a new token.
         shared_secret: generate
+    
+    # Whether to explicitly set the avatar and room name for private chat portal rooms.
+    # If set to `default`, this will be enabled in encrypted rooms and disabled in unencrypted rooms.
+    # If set to `always`, all DM rooms will have explicit names and avatars set.
+    # If set to `never`, DM rooms will never have names and avatars set.
+    private_chat_portal_meta: default
 
     # Permissions for using the bridge.
     # Permitted values:
@@ -121,9 +123,10 @@ bridge:
             m.location: '$sender_displayname sent a location'
 
 # Meta webhook settings.
-metal:
+meta:
     # Meta base URL
-    base_url: https://api.gupshup.io/sm/api/v1/msg
+    base_url: https://graph.facebook.com
+    version: v17.0
     # Path prefix for webhook endpoints. Subpaths are /status and /receive.
     # Note that the webhook must be put behind a reverse proxy with https.
     webhook_path: /meta
@@ -188,7 +191,7 @@ logging:
     loggers:
         mau:
             level: DEBUG
-        meta_matrix:
+        meta:
             level: DEBUG
         aiohttp:
             level: INFO

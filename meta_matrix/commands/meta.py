@@ -8,7 +8,7 @@ from mautrix.types import EventID, Format, MessageType, TextMessageEventContent
 
 from .. import portal as po
 from .. import puppet as pu
-from ..gupshup.data import ChatInfo, GupshupMessageSender
+from meta.data import MetaMessageSender
 from ..util import normalize_number
 from .typehint import CommandEvent
 
@@ -47,17 +47,17 @@ async def pm(evt: CommandEvent) -> EventID:
     )
 
     chat_customer = {"phone": puppet.phone, "name": puppet.name or puppet.custom_mxid}
-    customer = GupshupMessageSender.deserialize(chat_customer)
+    customer = MetaMessageSender.deserialize(chat_customer)
 
     chat_info = {
         "app": evt.sender.gs_app,
     }
-    info = ChatInfo.deserialize(chat_info)
-    info.sender = customer
+    info = MetaMessageSender.deserialize(chat_info)
+    info.id = customer
 
     if portal.mxid:
         await evt.reply(
-            f"You already have a private chat with {puppet.name}: "
+            f"You already have a private chat with {puppet.display_name}: "
             f"[{portal.mxid}](https://matrix.to/#/{portal.mxid})",
         )
         await portal.main_intent.invite_user(portal.mxid, evt.sender.mxid)
@@ -75,7 +75,6 @@ async def pm(evt: CommandEvent) -> EventID:
     help_text="Send a Gupshup template",
 )
 async def template(evt: CommandEvent) -> EventID:
-
     if evt.is_portal:
         return await evt.reply("You must use this command in management room.")
 

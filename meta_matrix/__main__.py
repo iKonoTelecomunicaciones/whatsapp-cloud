@@ -1,11 +1,12 @@
 from mautrix.bridge import Bridge
 from mautrix.types import RoomID, UserID
 
+from meta import MetaClient, MetaHandler
+
 from . import commands
 from .config import Config
 from .db import init as init_db
 from .db import upgrade_table
-from .gupshup import GupshupClient, GupshupHandler
 from .matrix import MatrixHandler
 from .portal import Portal
 from .puppet import Puppet
@@ -15,11 +16,11 @@ from .web import ProvisioningAPI
 
 
 class GupshupBridge(Bridge):
-    name = "gupshup-matrix"
-    module = "gupshup_matrix"
-    command = "python -m gupshup-matrix"
-    description = "A Matrix-Gupshup relaybot bridge."
-    repo_url = "https://github.com/bramenn/gupshup"
+    name = "meta-matrix"
+    module = "meta_matrix"
+    command = "python -m meta-matrix"
+    description = "A Matrix-Meta relaybot bridge."
+    repo_url = "https://github.com/iKonoTelecomunicaciones/meta-matrix"
     version = version
     markdown_version = linkified_version
     config_class = Config
@@ -27,8 +28,8 @@ class GupshupBridge(Bridge):
     upgrade_table = upgrade_table
 
     config: Config
-    gupshup: GupshupHandler
-    gupshup_client: GupshupClient
+    meta: MetaHandler
+    meta_client: MetaClient
 
     provisioning_api: ProvisioningAPI
 
@@ -40,10 +41,10 @@ class GupshupBridge(Bridge):
         init_db(self.db)
 
     def prepare_bridge(self) -> None:
-        self.gupshup = GupshupHandler(loop=self.loop)
+        self.meta = MetaHandler(loop=self.loop, config=self.config)
         super().prepare_bridge()
-        self.gupshup_client = GupshupClient(config=self.config, loop=self.loop)
-        self.az.app.add_subapp(self.config["gupshup.webhook_path"], self.gupshup.app)
+        self.meta_client = MetaClient(config=self.config, loop=self.loop)
+        self.az.app.add_subapp(self.config["meta.webhook_path"], self.meta.app)
         cfg = self.config["bridge.provisioning"]
         self.provisioning_api = ProvisioningAPI(
             shared_secret=cfg["shared_secret"],
@@ -77,7 +78,7 @@ class GupshupBridge(Bridge):
         return bool(Puppet.get_id_from_mxid(user_id))
 
     async def count_logged_in_users(self) -> int:
-        return len([user for user in User.by_phone.values() if user.phone])
+        return len([user for user in User.by_page_id.values() if user.page_id])
 
 
 GupshupBridge().run()

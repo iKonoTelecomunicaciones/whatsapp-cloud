@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-import asyncio
+from asyncio import Lock, create_task
 from string import Template
 from typing import TYPE_CHECKING, Any, Dict, List, Optional, Union, cast
 
@@ -21,16 +21,17 @@ from mautrix.types import (
     UserID,
 )
 
+from meta.api import MetaClient
+from meta.data import MetaMessageEvent, MetaMessageSender
+from meta.types import MetaMessageID, MetaPsID, MetaPageID
 from meta_matrix.formatter.from_matrix import matrix_to_whatsapp
-from meta_matrix.gupshup.data import ChatInfo, GupshupPayload
 
-from . import puppet as p
-from . import user as u
-from .db import GupshupApplication as DBGupshupApplication
 from .db import Message as DBMessage
+from .db import MetaApplication as DBMetaApplication
 from .db import Portal as DBPortal
 from .formatter import whatsapp_reply_to_matrix, whatsapp_to_matrix
-from .gupshup import GupshupClient, GupshupMessageEvent, GupshupMessageID, GupshupMessageStatus
+from .puppet import Puppet
+from .user import User
 
 if TYPE_CHECKING:
     from .__main__ import GupshupBridge
@@ -43,10 +44,8 @@ InviteList = Union[UserID, List[UserID]]
 
 class Portal(DBPortal, BasePortal):
     by_mxid: Dict[RoomID, "Portal"] = {}
-    by_chat_id: Dict[RoomID, "Portal"] = {}
-    by_chat_id: Dict[str, "Portal"] = {}
+    by_ps_id: Dict[MetaPsID, "Portal"] = {}
 
-    google_maps_url: str
     message_template: Template
     federate_rooms: bool
     invite_users: List[UserID]
@@ -55,30 +54,27 @@ class Portal(DBPortal, BasePortal):
 
     az: AppService
     private_chat_portal_meta: bool
-    gsc: GupshupClient
+    meta_client: MetaClient
 
     _main_intent: Optional[IntentAPI] | None
-    _create_room_lock: asyncio.Lock
-    _send_lock: asyncio.Lock
-
-    gs_source: str
-    gs_app: str
+    _create_room_lock: Lock
+    _send_lock: Lock
 
     def __init__(
         self,
-        chat_id: str,
-        phone: Optional[str] = None,
-        mxid: Optional[RoomID] = None,
+        ps_id: str,
+        app_page_id: str,
+        room_id: Optional[RoomID] = None,
         relay_user_id: UserID | None = None,
     ) -> None:
-        super().__init__(chat_id, phone, mxid, relay_user_id)
+        super().__init__(ps_id, app_page_id, room_id, relay_user_id)
         BasePortal.__init__(self)
-        self._create_room_lock = asyncio.Lock()
-        self._send_lock = asyncio.Lock()
-        self.log = self.log.getChild(self.chat_id or self.phone)
+        self._create_room_lock = Lock()
+        self._send_lock = Lock()
+        self.log = self.log.getChild(self.ps_id or self.room_id)
         self._main_intent = None
         self._relay_user = None
-        self.error_codes = self.config["gupshup.error_codes"]
+        self.error_codes = self.config["meta.error_codes"]
         self.homeserver_address = self.config["homeserver.public_address"]
 
     @property
@@ -88,31 +84,19 @@ class Portal(DBPortal, BasePortal):
         return self._main_intent
 
     @property
-    async def main_data_gs(self) -> Dict:
-        gs_app_name, _ = self.chat_id.split("-")
+    async def init_meta_client(self) -> Dict:
         try:
-            gs_app = await DBGupshupApplication.get_by_name(name=gs_app_name)
+            meta_app = await DBMetaApplication.get_by_page_id(page_id=self.app_page_id)
         except Exception as e:
             self.log.exception(e)
             return
 
-        self.gs_source = gs_app.phone_number
-        self.gs_app = gs_app.name
-
-        return {
-            "channel": "whatsapp",
-            "source": gs_app.phone_number,
-            "destination": self.phone,
-            "src.name": gs_app_name,
-            "headers": {
-                "Content-Type": "application/x-www-form-urlencoded",
-                "apikey": gs_app.api_key,
-            },
-        }
+        self.meta_client.page_access_token = meta_app.page_access_token
+        self.meta_client.page_id = meta_app.page_id
 
     @property
     def is_direct(self) -> bool:
-        return self.phone is not None
+        return self.ps_id is not None
 
     @classmethod
     def init_cls(cls, bridge: "GupshupBridge") -> None:
@@ -122,27 +106,27 @@ class Portal(DBPortal, BasePortal):
         cls.loop = bridge.loop
         BasePortal.bridge = bridge
         cls.private_chat_portal_meta = cls.config["bridge.private_chat_portal_meta"]
-        cls.gsc = bridge.gupshup_client
+        cls.meta_client = bridge.meta_client
 
-    def send_text_message(self, message: GupshupMessageEvent) -> Optional["Portal"]:
-        html, text = whatsapp_to_matrix(message)
-        content = TextMessageEventContent(msgtype=MessageType.TEXT, body=text)
-        if html is not None:
-            content.format = Format.HTML
-            content.formatted_body = html
-        return self.main_intent.send_message(self.mxid, content)
+    def send_text_message(self, message: str) -> Optional["Portal"]:
+        # html, text = whatsapp_to_matrix(message)
+        content = TextMessageEventContent(msgtype=MessageType.TEXT, body=message)
+        # if html is not None:
+        #    content.format = Format.HTML
+        #    content.formatted_body = html
+        return self.main_intent.send_message(self.room_id, content)
 
-    async def create_matrix_room(self, source: u.User, info: ChatInfo) -> RoomID:
-        if self.mxid:
-            return self.mxid
+    async def create_matrix_room(self, source: User, sender: MetaMessageSender) -> RoomID:
+        if self.room_id:
+            return self.room_id
         async with self._create_room_lock:
             try:
-                self.phone = info.sender.phone
-                return await self._create_matrix_room(source=source, info=info)
+                self.ps_id = sender.id
+                return await self._create_matrix_room(source=source, sender=sender)
             except Exception:
                 self.log.exception("Failed to create portal")
 
-    async def _create_matrix_room(self, source: u.User, info: ChatInfo) -> RoomID:
+    async def _create_matrix_room(self, source: User, sender: MetaMessageSender) -> RoomID:
         self.log.debug("Creating Matrix room")
         if not self.config["bridge.federate_rooms"]:
             creation_content["m.federate"] = False
@@ -169,10 +153,8 @@ class Portal(DBPortal, BasePortal):
         creation_content = {}
         if not self.config["bridge.federate_rooms"]:
             creation_content["m.federate"] = False
-        self.mxid = await self.main_intent.create_room(
-            name=self.config["bridge.room_name_template"].format(
-                username=info.sender.name, phone=self.phone
-            ),
+        self.room_id = await self.main_intent.create_room(
+            name=self.config["bridge.room_name_template"].format(userid=sender.id),
             is_direct=self.is_direct,
             initial_state=initial_state,
             invitees=invites,
@@ -184,29 +166,30 @@ class Portal(DBPortal, BasePortal):
             #      use the power level event in initial_state
             power_level_override={"users": {self.main_intent.mxid: 9001}},
         )
-        if not self.mxid:
+        if not self.room_id:
             raise Exception("Failed to create room: no mxid returned")
 
-        self.log.debug(self.phone)
-        puppet: p.Puppet = await p.Puppet.get_by_phone(self.phone)
-        puppet.name = info.sender.name
+        self.log.debug(self.ps_id)
+        puppet: Puppet = await Puppet.get_by_ps_id(self.ps_id, app_page_id=self.app_page_id)
+        puppet.display_name = f"User {self.ps_id}"
         await self.main_intent.invite_user(
-            self.mxid, puppet.mxid, extra_content=self._get_invite_content(puppet)
+            self.room_id, puppet.mxid, extra_content=self._get_invite_content(puppet)
         )
         if puppet:
             try:
-                await puppet.intent.join_room_by_id(self.mxid)
+                await puppet.intent.join_room_by_id(self.room_id)
             except MatrixError:
                 self.log.debug(
                     "Failed to join custom puppet into newly created portal", exc_info=True
                 )
         await self.update()
-        await puppet.update_info(info)
-        self.log.debug(f"Matrix room created: {self.mxid}")
-        self.by_mxid[self.mxid] = self
-        return self.mxid
+        meta_user_info = await self.meta_client.get_user_data(self.ps_id)
+        await puppet.update_info(meta_user_info)
+        self.log.debug(f"Matrix room created: {self.room_id}")
+        self.by_mxid[self.room_id] = self
+        return self.room_id
 
-    async def handle_matrix_leave(self, user: u.User) -> None:
+    async def handle_matrix_leave(self, user: User) -> None:
         if self.is_direct:
             self.log.info(f"{user.mxid} left private chat portal with {self.chat_id}")
             if f"{user.gs_app}-{user.phone}" == self.chat_id:
@@ -217,7 +200,7 @@ class Portal(DBPortal, BasePortal):
         else:
             self.log.debug(f"{user.mxid} left portal to {self.chat_id}")
 
-    def _get_invite_content(self, double_puppet: p.Puppet | None) -> dict[str, Any]:
+    def _get_invite_content(self, double_puppet: Puppet | None) -> dict[str, Any]:
         invite_content = {}
         if double_puppet:
             invite_content["fi.mau.will_auto_accept"] = True
@@ -250,7 +233,7 @@ class Portal(DBPortal, BasePortal):
 
     @property
     def bridge_info_state_key(self) -> str:
-        return f"com.github.gupshup://gupshup/{self.phone}"
+        return f"com.github.meta://meta/{self.ps_id}"
 
     @property
     def bridge_info(self) -> Dict[str, Any]:
@@ -259,154 +242,47 @@ class Portal(DBPortal, BasePortal):
             "creator": self.main_intent.mxid,
             "protocol": {
                 "id": "facebook",
-                "displayname": "Gupshup Bridge",
+                "displayname": "Meta Bridge",
                 "avatar_url": self.config["appservice.bot_avatar"],
             },
             "channel": {
-                "id": str(self.phone),
+                "id": str(self.ps_id),
                 "displayname": None,
                 "avatar_url": None,
             },
         }
 
     async def delete(self) -> None:
-        await DBMessage.delete_all(self.mxid)
-        self.by_mxid.pop(self.mxid, None)
-        self.mxid = None
+        await DBMessage.delete_all(self.room_id)
+        self.by_mxid.pop(self.room_id, None)
+        self.room_id = None
         await self.update()
 
-    async def get_dm_puppet(self) -> p.Puppet | None:
+    async def get_dm_puppet(self) -> Puppet | None:
         if not self.is_direct:
             return None
-        return await p.Puppet.get_by_phone(self.phone)
+        return await Puppet.get_by_ps_id(self.ps_id, app_page_id=self.app_page_id)
 
     async def save(self) -> None:
         await self.update()
 
-    async def handle_gupshup_message(
-        self, source: u.User, info: ChatInfo, message: GupshupMessageEvent
+    async def handle_meta_message(
+        self, source: User, message: MetaMessageEvent, sender: MetaMessageSender
     ) -> None:
-        if not await self.create_matrix_room(source=source, info=info):
+        if not await self.create_matrix_room(source=source, sender=sender):
             return
 
-        mxid = None
-        msgtype = MessageType.TEXT
+        has_been_sent = None
+        if message.entry[0].messaging[0].message:
+            message_text = message.entry[0].messaging[0].message.text
+            has_been_sent = await self.send_text_message(message_text)
 
-        if message.payload.body.url:
-            resp = await self.az.http_session.get(message.payload.body.url)
-            data = await resp.read()
-            try:
-                mxc = await self.main_intent.upload_media(data=data)
-            except MUnknown as e:
-                self.log.exception(f"{message} :: error {e}")
-                return
-            except Exception as e:
-                self.log.exception(f"Message not receive :: error {e}")
-                return
-
-            if message.payload.type in ("image", "video"):
-                msgtype = (
-                    MessageType.IMAGE if message.payload.type == "image" else MessageType.VIDEO
-                )
-                msgbody = message.payload.body.caption if message.payload.body.caption else ""
-
-                content_image = MediaMessageEventContent(
-                    body="", msgtype=msgtype, url=mxc, info=FileInfo(size=len(data))
-                )
-                mxid = await self.main_intent.send_message(self.mxid, content_image)
-                await self.send_text_message(msgbody)
-
-            elif message.payload.type in ("audio", "file"):
-                msgtype = (
-                    MessageType.AUDIO if message.payload.type == "audio" else MessageType.FILE
-                )
-                msgbody = message.payload.body.caption if message.payload.body.caption else ""
-
-                content = MediaMessageEventContent(
-                    body=msgbody,
-                    msgtype=msgtype,
-                    url=mxc,
-                    info=FileInfo(size=len(data)),
-                )
-                mxid = await self.main_intent.send_message(self.mxid, content)
-
-            elif message.payload.type == "sticker":
-                msgtype = MessageType.STICKER
-                info = FileInfo(size=len(data))
-                mxid = await self.main_intent.send_sticker(room_id=self.mxid, url=mxc, info=info)
-
-        elif message.payload.type == "contact":
-
-            for contact in message.payload.body.contacts:
-                if contact:
-                    message_data = ""
-                    message_data += "<div><br />  *Contacto:* "
-                    name = contact["name"]
-                    phones = contact["phones"]
-                    message_data += name["formatted_name"]
-                    message_data += "<br />  *Número:*"
-                    for phone in phones:
-                        message_data += " " + phone["phone"]
-                    message_data += "</div>"
-                    mxid = await self.send_text_message(message_data)
-
-        elif message.payload.type == "text" and not message.payload.context:
-            mxid = await self.send_text_message(message.payload.body.text)
-
-        elif message.payload.type in ["button_reply", "list_reply"]:
-            if message.payload.type == "button_reply":
-                # Separamos el contenido que llega de gupshup y obtenemos el último elemento
-                # que contiene el número de la opción seleccionada
-                body_parts = message.payload.body.reply_message.split()
-                body = body_parts[-1]
-            elif message.payload.type == "list_reply":
-                body = message.payload.body.postback_text
-
-            mxid = await self.send_text_message(body)
-
-        # A esta opción se ingresa cuando es un mensaje que responde a un mensaje previo
-        elif message.payload.context and message.payload.body.text:
-            if message.payload.context.msg_gsId:
-                mgs_id = message.payload.context.msg_gsId
-            else:
-                mgs_id = message.payload.context.msg_id
-
-            body = message.payload.body.text
-
-            evt = await DBMessage.get_by_gsid(gsid=mgs_id)
-            if evt:
-                content = await whatsapp_reply_to_matrix(body, evt, self.main_intent, self.log)
-                content.external_url = content.external_url
-                mxid = await self.main_intent.send_message(self.mxid, content)
-
-        if message.payload.type == "location":
-            text = ""
-            location = self.google_maps_url.replace(
-                "{latitude}", message.payload.body.latitude
-            ).replace("{longitude}", message.payload.body.longitude)
-            text += location
-            mxid = await self.send_text_message(text)
-
-        if not mxid:
-            mxid = await self.main_intent.send_notice(self.mxid, "Contenido no aceptado")
-
-        puppet: p.Puppet = await self.get_dm_puppet()
-        msg = DBMessage(
-            mxid=mxid,
-            mx_room=self.mxid,
-            sender=puppet.mxid,
-            gsid=message.payload.id,
-            gs_app=message.app,
-        )
-        await msg.insert()
-        asyncio.create_task(puppet.update_info(info))
-
-    async def handle_matrix_join(self, user: u.User) -> None:
+    async def handle_matrix_join(self, user: User) -> None:
         if self.is_direct or not await user.is_logged_in():
             return
 
-    async def handle_gupshup_status(self, status: GupshupPayload) -> None:
-        if not self.mxid:
+    async def handle_gupshup_status(self, status: Dict) -> None:
+        if not self.room_id:
             return
 
         async with self._send_lock:
@@ -415,7 +291,7 @@ class Portal(DBPortal, BasePortal):
                 pass
             elif status.type == GupshupMessageStatus.READ:
                 if msg:
-                    await self.main_intent.mark_read(self.mxid, msg.mxid)
+                    await self.main_intent.mark_read(self.room_id, msg.mxid)
                 else:
                     self.log.debug(f"Ignoring the null message")
             elif status.type == GupshupMessageStatus.ENQUEUED:
@@ -427,16 +303,14 @@ class Portal(DBPortal, BasePortal):
                     reason_es = self.error_codes.get(status.body.code).get("reason_es")
                     reason_es = f"<strong>{reason_es}</strong>"
                 if msg:
-                    await self.main_intent.react(self.mxid, msg.mxid, "\u274c")
-                await self.main_intent.send_notice(self.mxid, None, html=reason_es)
+                    await self.main_intent.react(self.room_id, msg.mxid, "\u274c")
+                await self.main_intent.send_notice(self.room_id, None, html=reason_es)
 
     async def handle_matrix_message(
         self,
-        sender: "u.User",
+        sender: "User",
         message: MessageEventContent,
         event_id: EventID,
-        is_gupshup_template: bool = False,
-        additional_data: Optional[dict] = None,
     ) -> None:
         orig_sender = sender
         sender, is_relay = await self.get_relay_sender(sender, f"message {event_id}")
@@ -444,64 +318,73 @@ class Portal(DBPortal, BasePortal):
             await self.apply_relay_message_format(orig_sender, message)
 
         if message.get_reply_to():
-            await DBMessage.get_by_mxid(message.get_reply_to(), self.mxid)
+            await DBMessage.get_by_mxid(message.get_reply_to(), self.room_id)
 
         if message.msgtype == MessageType.NOTICE and not self.config["bridge.bridge_notices"]:
             return
 
         if message.msgtype in (MessageType.TEXT, MessageType.NOTICE):
+            # if message.format == Format.HTML:
+            #    text = await matrix_to_whatsapp(message.formatted_body)
+            # else:
+            #    text = text = message.body
 
-            if message.format == Format.HTML:
-                text = await matrix_to_whatsapp(message.formatted_body)
-            else:
-                text = text = message.body
-
-            if additional_data:
-                resp = await self.gsc.send_message(
-                    data=await self.main_data_gs,
-                    additional_data=additional_data,
-                )
-            else:
-                resp = await self.gsc.send_message(
-                    data=await self.main_data_gs,
-                    body=text,
-                    is_gupshup_template=is_gupshup_template,
-                )
-
-        elif message.msgtype in (
-            MessageType.AUDIO,
-            MessageType.VIDEO,
-            MessageType.IMAGE,
-            MessageType.FILE,
-        ):
-            url = f"{self.homeserver_address}/_matrix/media/r0/download/{message.url[6:]}"
-            resp = await self.gsc.send_message(
-                data=await self.main_data_gs, media=url, body=message.body, msgtype=message.msgtype
+            response = await self.meta_client.send_message(
+                matrix_message_evt=message, recipient_id=self.ps_id
             )
-        elif message.msgtype == MessageType.LOCATION:
-            resp = await self.gsc.send_location(
-                self.phone, body=message.body, additional_data=additional_data
-            )
+
+            # if additional_data:
+            #    resp = await self.gsc.send_message(
+            #        data=await self.main_data_gs,
+            #        additional_data=additional_data,
+            #    )
+            # else:
+            #    resp = await self.gsc.send_message(
+            #        data=await self.main_data_gs,
+            #        body=text,
+            #        is_gupshup_template=is_gupshup_template,
+            #    )
+
+        # elif message.msgtype in (
+        #    MessageType.AUDIO,
+        #    MessageType.VIDEO,
+        #    MessageType.IMAGE,
+        #    MessageType.FILE,
+        # ):
+        #    url = f"{self.homeserver_address}/_matrix/media/r0/download/{message.url[6:]}"
+        #    resp = await self.gsc.send_message(
+        #        data=await self.main_data_gs, media=url, body=message.body, msgtype=message.msgtype
+        #    )
+        # elif message.msgtype == MessageType.LOCATION:
+        #    resp = await self.gsc.send_location(
+        #        self.phone, body=message.body, additional_data=additional_data
+        #    )
 
         else:
             self.log.debug(f"Ignoring unknown message {message}")
             return
-        self.log.debug(f"Gupshup send response: {resp}")
 
+        if not response:
+            self.log.debug(f"Error sending message {message}")
+            return
+
+        self.log.debug(f"Meta send response: {response}")
         await DBMessage(
-            mxid=event_id,
-            mx_room=self.mxid,
-            sender=self.gs_source,
-            gsid=GupshupMessageID(resp.get("messageId")),
-            gs_app=self.gs_app,
+            event_mxid=event_id,
+            room_id=self.room_id,
+            ps_id=self.ps_id,
+            sender=sender.mxid,
+            meta_message_id=MetaMessageID(response.get("message_id")),
+            app_page_id=self.app_page_id,
         ).insert()
 
     async def postinit(self) -> None:
-        if self.mxid:
-            self.by_mxid[self.mxid] = self
+        await self.init_meta_client
+        if self.room_id:
+            self.by_mxid[self.room_id] = self
 
-        if self.phone:
-            self.by_mxid[self.phone] = self
+        if self.ps_id:
+            self.by_ps_id[self.ps_id] = self
 
         if self.is_direct:
             puppet = await self.get_dm_puppet()
@@ -524,23 +407,21 @@ class Portal(DBPortal, BasePortal):
         return None
 
     @classmethod
-    async def get_by_chat_id(cls, chat_id: str, create: bool = True) -> Optional["Portal"]:
+    async def get_by_ps_id(
+        cls, ps_id: MetaPsID, *, app_page_id: MetaPageID, create: bool = True
+    ) -> Optional["Portal"]:
         try:
-            return cls.by_chat_id[chat_id]
+            return cls.by_ps_id[ps_id]
         except KeyError:
             pass
 
-        _, phone = chat_id.split("-")
-
-        portal = cast(cls, await super().get_by_chat_id(chat_id))
+        portal = cast(cls, await super().get_by_ps_id(ps_id))
         if portal:
-            portal.phone = phone
             await portal.postinit()
             return portal
 
         if create:
-            portal = cls(chat_id)
-            portal.phone = phone
+            portal = cls(ps_id, app_page_id)
             await portal.insert()
             await portal.postinit()
             return portal

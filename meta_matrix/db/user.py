@@ -14,44 +14,51 @@ class User:
     db: ClassVar[Database] = fake_db
 
     mxid: UserID
-    phone: str | None
-    gs_app: str | None
+    app_page_id: str | None
     notice_room: RoomID | None
 
+    @property
+    def _values(self):
+        return (
+            self.mxid,
+            self.app_page_id,
+            self.notice_room,
+        )
+
     async def insert(self) -> None:
-        q = 'INSERT INTO "user" (mxid, phone, gs_app, notice_room) VALUES ($1, $2, $3, $4)'
-        await self.db.execute(q, self.mxid, self.phone, self.gs_app, self.notice_room)
+        q = "INSERT INTO matrix_user (mxid, app_page_id, notice_room) VALUES ($1, $2, $3, $4)"
+        await self.db.execute(q, *self._values)
 
     async def update(self) -> None:
-        q = 'UPDATE "user" SET phone=$1, gs_app=$2, notice_room=$3 WHERE mxid=$4'
-        await self.db.execute(q, self.phone, self.gs_app, self.notice_room, self.mxid)
+        q = "UPDATE matrix_user SET app_page_id=$1, notice_room=$3 WHERE mxid=$4"
+        await self.db.execute(q, self.app_page_id, self.notice_room, self.mxid)
 
     @classmethod
     async def get_by_mxid(cls, mxid: UserID) -> User | None:
-        q = 'SELECT mxid, phone, gs_app, notice_room FROM "user" WHERE mxid=$1'
+        q = "SELECT mxid, app_page_id, notice_room FROM matrix_user WHERE mxid=$1"
         row = await cls.db.fetchrow(q, mxid)
         if not row:
             return None
         return cls(**row)
 
     @classmethod
-    async def get_by_phone(cls, phone: str) -> User | None:
-        q = 'SELECT mxid, phone, gs_app, notice_room FROM "user" WHERE phone=$1'
-        row = await cls.db.fetchrow(q, phone)
+    async def get_by_page_id(cls, app_page_id: str) -> User | None:
+        q = "SELECT mxid, app_page_id, notice_room FROM matrix_user WHERE app_page_id=$1"
+        row = await cls.db.fetchrow(q, app_page_id)
         if not row:
             return None
         return cls(**row)
 
     @classmethod
-    async def get_by_gs_app(cls, gs_app: str) -> User | None:
-        q = 'SELECT mxid, phone, gs_app, notice_room FROM "user" WHERE gs_app=$1'
-        row = await cls.db.fetchrow(q, gs_app)
+    async def get_by_meta_app(cls, meta_app: str) -> User | None:
+        q = "SELECT mxid, app_page_id, notice_room FROM matrix_user WHERE meta_app=$1"
+        row = await cls.db.fetchrow(q, meta_app)
         if not row:
             return None
         return cls(**row)
 
     @classmethod
     async def all_logged_in(cls) -> list[User]:
-        q = 'SELECT mxid, phone, gs_app, notice_room FROM "user" WHERE phone IS NOT NULL'
+        q = "SELECT mxid, app_page_id, notice_room FROM matrix_user WHERE app_page_id IS NOT NULL"
         rows = await cls.db.fetch(q)
         return [cls(**row) for row in rows]

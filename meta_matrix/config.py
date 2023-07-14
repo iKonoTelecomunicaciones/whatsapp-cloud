@@ -47,6 +47,7 @@ class Config(BaseBridgeConfig):
         copy_dict("bridge.relay.message_formats")
 
         copy("meta.base_url")
+        copy("meta.version")
         copy("meta.webhook_path")
         copy("meta.error_codes")
 
