@@ -150,7 +150,7 @@ class Portal(DBPortal, BasePortal):
             },
         ]
 
-        invites = [source.mxid, self.az.bot_mxid]
+        invites = [source.mxid]
         creation_content = {}
         if not self.config["bridge.federate_rooms"]:
             creation_content["m.federate"] = False
