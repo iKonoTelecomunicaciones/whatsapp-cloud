@@ -15,7 +15,7 @@ from .version import linkified_version, version
 from .web import ProvisioningAPI
 
 
-class GupshupBridge(Bridge):
+class MetaBridge(Bridge):
     name = "meta-matrix"
     module = "meta_matrix"
     command = "python -m meta-matrix"
@@ -78,7 +78,7 @@ class GupshupBridge(Bridge):
         return bool(Puppet.get_id_from_mxid(user_id))
 
     async def count_logged_in_users(self) -> int:
-        return len([user for user in User.by_page_id.values() if user.page_id])
+        return len([user for user in User.by_page_id.values() if user.app_page_id])
 
 
-GupshupBridge().run()
+MetaBridge().run()

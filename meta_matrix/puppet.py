@@ -8,14 +8,14 @@ from mautrix.types import SyncToken, UserID
 from mautrix.util.simple_template import SimpleTemplate
 from yarl import URL
 
-from meta.data import MetaMessageSender, MetaUserData
+from meta.data import MetaUserData
 from meta.types import MetaPageID, MetaPsID
 
 from .config import Config
 from .db import Puppet as DBPuppet
 
 if TYPE_CHECKING:
-    from .__main__ import GupshupBridge
+    from .__main__ import MetaBridge
     from .portal import Portal
 
 
@@ -61,7 +61,7 @@ class Puppet(DBPuppet, BasePuppet):
         self.intent = self._fresh_intent()
 
     @classmethod
-    def init_cls(cls, bridge: "GupshupBridge") -> AsyncIterable[Awaitable[None]]:
+    def init_cls(cls, bridge: "MetaBridge") -> AsyncIterable[Awaitable[None]]:
         cls.config = bridge.config
         cls.loop = bridge.loop
         cls.mx = bridge.matrix
@@ -73,9 +73,9 @@ class Puppet(DBPuppet, BasePuppet):
             prefix="@",
             suffix=f":{cls.hs_domain}",
         )
-        cls.sync_with_custom_puppets = cls.config["bridge.sync_with_custom_puppets"]
+        cls.sync_with_custom_puppets = False
 
-        cls.login_device_name = "Gupshup Bridge"
+        cls.login_device_name = "Meta Bridge"
         return (puppet.try_start() async for puppet in cls.all_with_custom_mxid())
 
     def intent_for(self, portal: "Portal") -> IntentAPI:

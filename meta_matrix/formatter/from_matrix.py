@@ -4,7 +4,7 @@ from mautrix.util.formatter import EntityType, MarkdownString
 from mautrix.util.formatter import MatrixParser as BaseMatrixParser
 
 
-async def matrix_to_whatsapp(html: str) -> str:
+async def matrix_to_facebook(html: str) -> str:
     parsed = await MatrixParser().parse(html)
     return parsed.text
 

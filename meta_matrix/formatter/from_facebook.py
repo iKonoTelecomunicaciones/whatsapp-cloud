@@ -1,5 +1,5 @@
 import re
-from typing import TYPE_CHECKING, Match, Optional, Tuple
+from typing import Match, Optional, Tuple
 
 from mautrix.appservice import IntentAPI
 from mautrix.errors import MatrixRequestError
@@ -11,10 +11,9 @@ from mautrix.types import (
     RelationType,
     TextMessageEventContent,
 )
+from mautrix.util.logging import TraceLogger
 
-if TYPE_CHECKING:
-    from ..db import Message
-
+from ..db import Message
 from ..puppet import Puppet as pu
 
 italic = re.compile(r"([\s>~*]|^)_(.+?)_([^a-zA-Z\d]|$)")
@@ -30,7 +29,7 @@ def code_block_repl(match: Match) -> str:
     return f"<code>{text}</code>"
 
 
-def whatsapp_to_matrix(text: str) -> Tuple[Optional[str], str]:
+def facebook_to_matrix(text: str) -> Tuple[Optional[str], str]:
     html = italic.sub(r"\1<em>\2</em>\3", text)
     html = bold.sub(r"\1<strong>\2</strong>\3", html)
     html = strike.sub(r"\1<del>\2</del>\3", html)
@@ -40,11 +39,11 @@ def whatsapp_to_matrix(text: str) -> Tuple[Optional[str], str]:
     return None, text
 
 
-async def whatsapp_reply_to_matrix(
+async def facebook_reply_to_matrix(
     body: Optional[str],
-    evt: "Message",
+    evt: Message,
     main_intent: Optional[IntentAPI] = None,
-    log: Optional[str] = None,
+    log: Optional[TraceLogger] = None,
 ) -> TextMessageEventContent:
     """Create content by replying to a message.
 
@@ -88,7 +87,7 @@ async def whatsapp_reply_to_matrix(
 
 
 async def _add_reply_header(
-    content: TextMessageEventContent, msg: "Message", main_intent: IntentAPI, log
+    content: TextMessageEventContent, msg: Message, main_intent: IntentAPI, log: TraceLogger
 ):
     """The reply parameters are added to the content and the reply is made to the message
 
@@ -114,14 +113,14 @@ async def _add_reply_header(
     if not msg:
         return
 
-    content.relates_to = RelatesTo(rel_type=RelationType.REFERENCE, event_id=msg.mxid)
+    content.relates_to = RelatesTo(rel_type=RelationType.REFERENCE, event_id=msg.event_mxid)
 
     try:
-        event: MessageEvent = await main_intent.get_event(msg.mx_room, msg.mxid)
+        event: MessageEvent = await main_intent.get_event(msg.room_id, msg.event_mxid)
         if isinstance(event.content, TextMessageEventContent):
             event.content.trim_reply_fallback()
         puppet = await pu.get_by_mxid(event.sender, create=False)
-        content.set_reply(event, displayname=puppet.name if puppet else event.sender)
+        content.set_reply(event, displayname=puppet.display_name if puppet else event.sender)
     except MatrixRequestError:
         log.exception("Failed to get event to add reply fallback")
         pass

@@ -2,18 +2,28 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING
 
+from mautrix import bridge as br
 from mautrix.bridge import BaseMatrixHandler, RejectMatrixInvite
-from mautrix.types import Event, EventID, EventType, ReactionEvent, RedactionEvent, RoomID, UserID
+from mautrix.types import (
+    Event,
+    EventID,
+    EventType,
+    ReactionEvent,
+    RedactionEvent,
+    RoomID,
+    SingleReceiptEventContent,
+    UserID,
+)
 
 from .portal import Portal
 from .user import User
 
 if TYPE_CHECKING:
-    from .__main__ import GupshupBridge
+    from .__main__ import MetaBridge
 
 
 class MatrixHandler(BaseMatrixHandler):
-    def __init__(self, bridge: "GupshupBridge") -> None:
+    def __init__(self, bridge: "MetaBridge") -> None:
         prefix, suffix = bridge.config["bridge.username_template"].format(userid=":").split(":")
         homeserver = bridge.config["homeserver.domain"]
         self.user_id_prefix = f"@{prefix}"
@@ -76,6 +86,11 @@ class MatrixHandler(BaseMatrixHandler):
             return
 
         await portal.handle_matrix_join(user)
+
+    async def handle_read_receipt(
+        self, user: User, portal: Portal, event_id: EventID, data: SingleReceiptEventContent
+    ) -> None:
+        await portal.handle_matrix_read_receipt(user, event_id)
 
     @staticmethod
     async def handle_redaction(

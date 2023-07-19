@@ -1,18 +1,16 @@
 from __future__ import annotations
 
-from asyncio import Lock, create_task
+from asyncio import Lock
 from string import Template
 from typing import TYPE_CHECKING, Any, Dict, List, Optional, Union, cast
 
 from mautrix.appservice import AppService, IntentAPI
 from mautrix.bridge import BasePortal
-from mautrix.errors import MatrixError, MUnknown
+from mautrix.errors import MatrixError
 from mautrix.types import (
     EventID,
     EventType,
-    FileInfo,
     Format,
-    MediaMessageEventContent,
     MessageEventContent,
     MessageType,
     PowerLevelStateEventContent,
@@ -22,19 +20,19 @@ from mautrix.types import (
 )
 
 from meta.api import MetaClient
-from meta.data import MetaMessageEvent, MetaMessageSender
+from meta.data import MetaMessageEvent, MetaMessageSender, MetaStatusEvent
 from meta.types import MetaMessageID, MetaPageID, MetaPsID
-from meta_matrix.formatter.from_matrix import matrix_to_whatsapp
+from meta_matrix.formatter.from_matrix import matrix_to_facebook
 
 from .db import Message as DBMessage
 from .db import MetaApplication as DBMetaApplication
 from .db import Portal as DBPortal
-from .formatter import whatsapp_reply_to_matrix, whatsapp_to_matrix
+from .formatter import facebook_reply_to_matrix, facebook_to_matrix
 from .puppet import Puppet
 from .user import User
 
 if TYPE_CHECKING:
-    from .__main__ import GupshupBridge
+    from .__main__ import MetaBridge
 
 StateBridge = EventType.find("m.bridge", EventType.Class.STATE)
 StateHalfShotBridge = EventType.find("uk.half-shot.bridge", EventType.Class.STATE)
@@ -99,7 +97,7 @@ class Portal(DBPortal, BasePortal):
         return self.ps_id is not None
 
     @classmethod
-    def init_cls(cls, bridge: "GupshupBridge") -> None:
+    def init_cls(cls, bridge: "MetaBridge") -> None:
         cls.config = bridge.config
         cls.matrix = bridge.matrix
         cls.az = bridge.az
@@ -108,12 +106,12 @@ class Portal(DBPortal, BasePortal):
         cls.private_chat_portal_meta = cls.config["bridge.private_chat_portal_meta"]
         cls.meta_client = bridge.meta_client
 
-    def send_text_message(self, message: str) -> Optional["Portal"]:
-        # html, text = whatsapp_to_matrix(message)
+    def send_text_message(self, message: str) -> Optional[EventID]:
+        html, text = facebook_to_matrix(message)
         content = TextMessageEventContent(msgtype=MessageType.TEXT, body=message)
-        # if html is not None:
-        #    content.format = Format.HTML
-        #    content.formatted_body = html
+        if html is not None:
+            content.format = Format.HTML
+            content.formatted_body = html
         return self.main_intent.send_message(self.room_id, content)
 
     async def create_matrix_room(self, source: User, sender: MetaMessageSender) -> RoomID:
@@ -128,6 +126,9 @@ class Portal(DBPortal, BasePortal):
 
     async def _create_matrix_room(self, source: User, sender: MetaMessageSender) -> RoomID:
         self.log.debug("Creating Matrix room")
+
+        creator_info = await self.meta_client.get_user_data(sender.id)
+
         if not self.config["bridge.federate_rooms"]:
             creation_content["m.federate"] = False
         power_levels = await self._get_power_levels(is_initial=True)
@@ -149,16 +150,18 @@ class Portal(DBPortal, BasePortal):
             },
         ]
 
-        invites = [source.mxid]
+        invites = [source.mxid, self.az.bot_mxid]
         creation_content = {}
         if not self.config["bridge.federate_rooms"]:
             creation_content["m.federate"] = False
         self.room_id = await self.main_intent.create_room(
-            name=self.config["bridge.room_name_template"].format(userid=sender.id),
+            name=self.config["bridge.room_name_template"].format(
+                userid=sender.id, displayname=f"{creator_info.first_name} {creator_info.last_name}"
+            ),
             is_direct=self.is_direct,
             initial_state=initial_state,
             invitees=invites,
-            topic="WhatsApp private chat",
+            topic="Meta private chat",
             creation_content=creation_content,
             # Make sure the power level event in initial_state is allowed
             # even if the server sends a default power level event before it.
@@ -272,39 +275,48 @@ class Portal(DBPortal, BasePortal):
         if not await self.create_matrix_room(source=source, sender=sender):
             return
 
-        has_been_sent = None
-        if message.entry[0].messaging[0].message:
-            message_text = message.entry[0].messaging[0].message.text
+        has_been_sent: EventID | None = None
+        if message.entry.messaging.message and not message.entry.messaging.message.reply_to:
+            message_text = message.entry.messaging.message.text
             has_been_sent = await self.send_text_message(message_text)
+        elif message.entry.messaging.message and message.entry.messaging.message.reply_to:
+            mgs_id = message.entry.messaging.message.reply_to.mid
+            body = message.entry.messaging.message.text
+
+            evt = await DBMessage.get_by_meta_message_id(meta_message_id=mgs_id)
+            if evt:
+                content = await facebook_reply_to_matrix(body, evt, self.main_intent, self.log)
+                content.external_url = content.external_url
+                has_been_sent = await self.main_intent.send_message(self.room_id, content)
+
+        puppet: Puppet = await self.get_dm_puppet()
+        msg = DBMessage(
+            event_mxid=has_been_sent,
+            room_id=self.room_id,
+            ps_id=self.ps_id,
+            sender=puppet.mxid,
+            meta_message_id=message.entry.messaging.message.mid,
+            app_page_id=message.entry.id,
+        )
+        await msg.insert()
 
     async def handle_matrix_join(self, user: User) -> None:
         if self.is_direct or not await user.is_logged_in():
             return
 
-    async def handle_gupshup_status(self, status: Dict) -> None:
+    async def handle_meta_status(self, status_event: MetaStatusEvent) -> None:
         if not self.room_id:
             return
 
         async with self._send_lock:
-            msg = await DBMessage.get_by_gsid(status.gsid)
-            if status.type == GupshupMessageStatus.DELIVERED:
+            msg = await DBMessage.get_last_message(self.room_id)
+            if status_event.entry.messaging.delivery:
                 pass
-            elif status.type == GupshupMessageStatus.READ:
+            elif status_event.entry.messaging.read:
                 if msg:
-                    await self.main_intent.mark_read(self.room_id, msg.mxid)
+                    await self.main_intent.mark_read(self.room_id, msg.event_mxid)
                 else:
                     self.log.debug(f"Ignoring the null message")
-            elif status.type == GupshupMessageStatus.ENQUEUED:
-                self.log.debug(f"Ignoring the enqueued message-event")
-            elif status.type == GupshupMessageStatus.FAILED:
-                msg = await DBMessage.get_by_gsid(status.id)
-                reason_es = "<strong>Mensaje fallido, por favor intente nuevamente</strong>"
-                if status.body.code in self.error_codes.keys():
-                    reason_es = self.error_codes.get(status.body.code).get("reason_es")
-                    reason_es = f"<strong>{reason_es}</strong>"
-                if msg:
-                    await self.main_intent.react(self.room_id, msg.mxid, "\u274c")
-                await self.main_intent.send_notice(self.room_id, None, html=reason_es)
 
     async def handle_matrix_message(
         self,
@@ -324,41 +336,22 @@ class Portal(DBPortal, BasePortal):
             return
 
         if message.msgtype in (MessageType.TEXT, MessageType.NOTICE):
-            # if message.format == Format.HTML:
-            #    text = await matrix_to_whatsapp(message.formatted_body)
-            # else:
-            #    text = text = message.body
+            aditional_data = {}
+            if message.format == Format.HTML:
+                text = await matrix_to_facebook(message.formatted_body)
+            else:
+                text = text = message.body
+
+            if message.get_reply_to():
+                reply_message = await DBMessage.get_by_mxid(message.get_reply_to(), self.room_id)
+                aditional_data["reply_to"] = {"mid": reply_message.meta_message_id}
 
             response = await self.meta_client.send_message(
-                matrix_message_evt=message, recipient_id=self.ps_id
+                message=text,
+                recipient_id=self.ps_id,
+                message_type=message.msgtype,
+                aditional_data=aditional_data,
             )
-
-            # if additional_data:
-            #    resp = await self.gsc.send_message(
-            #        data=await self.main_data_gs,
-            #        additional_data=additional_data,
-            #    )
-            # else:
-            #    resp = await self.gsc.send_message(
-            #        data=await self.main_data_gs,
-            #        body=text,
-            #        is_gupshup_template=is_gupshup_template,
-            #    )
-
-        # elif message.msgtype in (
-        #    MessageType.AUDIO,
-        #    MessageType.VIDEO,
-        #    MessageType.IMAGE,
-        #    MessageType.FILE,
-        # ):
-        #    url = f"{self.homeserver_address}/_matrix/media/r0/download/{message.url[6:]}"
-        #    resp = await self.gsc.send_message(
-        #        data=await self.main_data_gs, media=url, body=message.body, msgtype=message.msgtype
-        #    )
-        # elif message.msgtype == MessageType.LOCATION:
-        #    resp = await self.gsc.send_location(
-        #        self.phone, body=message.body, additional_data=additional_data
-        #    )
 
         else:
             self.log.debug(f"Ignoring unknown message {message}")
@@ -377,6 +370,9 @@ class Portal(DBPortal, BasePortal):
             meta_message_id=MetaMessageID(response.get("message_id")),
             app_page_id=self.app_page_id,
         ).insert()
+
+    async def handle_matrix_read_receipt(self, user: User, event_id: EventID):
+        await self.meta_client.send_read_receipt(self.ps_id)
 
     async def postinit(self) -> None:
         await self.init_meta_client

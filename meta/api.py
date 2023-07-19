@@ -4,7 +4,7 @@ import logging
 from typing import Dict, Optional
 
 from aiohttp import ClientConnectorError, ClientSession
-from mautrix.types import MessageEventContent, MessageType
+from mautrix.types import MessageType
 
 from meta_matrix.config import Config
 
@@ -45,11 +45,11 @@ class MetaClient:
 
     async def send_message(
         self,
-        matrix_message_evt: MessageEventContent,
+        message: str,
         recipient_id: MetaPsID,
+        message_type: MessageType,
+        aditional_data: Optional[Dict] = None,
     ) -> Dict[str, str]:
-        self.log.debug(f"Sending message {matrix_message_evt} to meta user {recipient_id}")
-
         headers = {"Content-Type": "application/json"}
         send_message_url = (
             f"{self.base_url}/{self.version}/{self.page_id}/"
@@ -58,14 +58,18 @@ class MetaClient:
 
         self.log.debug(f"Sending message to {send_message_url}")
 
-        if matrix_message_evt.msgtype == MessageType.TEXT:
+        if message_type == MessageType.TEXT:
             data = {
                 "recipient": {"id": recipient_id},
-                "message": {"text": matrix_message_evt.body},
+                "message": {"text": message},
             }
+            if aditional_data.get("reply_to"):
+                data["message_id"] = {"mid": aditional_data["reply_to"]["mid"]}
         else:
             self.log.error("Unsupported message type")
             return
+
+        self.log.debug(f"Sending message {data} to {recipient_id}")
 
         try:
             resp = await self.http.post(send_message_url, json=data, headers=headers)
@@ -73,3 +77,16 @@ class MetaClient:
             self.log.error(e)
         response_data = json.loads(await resp.text())
         return response_data
+
+    async def send_read_receipt(self, recipient_id: MetaPsID) -> None:
+        headers = {"Content-Type": "application/json"}
+        mark_message_as_read_url = (
+            f"{self.base_url}/{self.version}/me/messages?access_token={self.page_access_token}"
+        )
+
+        data = {"recipient": {"id": recipient_id}, "sender_action": "mark_seen"}
+
+        try:
+            await self.http.post(mark_message_as_read_url, json=data, headers=headers)
+        except ClientConnectorError as e:
+            self.log.error(e)

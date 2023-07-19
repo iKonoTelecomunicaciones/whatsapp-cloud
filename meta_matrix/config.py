@@ -30,7 +30,6 @@ class Config(BaseBridgeConfig):
         copy("bridge.displayname_template")
         copy("bridge.room_name_template")
         copy("bridge.command_prefix")
-        copy("bridge.google_maps_url")
 
         copy("bridge.federate_rooms")
         copy("bridge.bridge_notices")

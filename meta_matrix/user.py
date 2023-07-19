@@ -15,7 +15,7 @@ from .config import Config
 from .db.user import User as DBUser
 
 if TYPE_CHECKING:
-    from .__main__ import GupshupBridge
+    from .__main__ import MetaBridge
 
 
 class User(DBUser, BaseUser):
@@ -25,7 +25,7 @@ class User(DBUser, BaseUser):
     config: Config
     az: AppService
     loop: asyncio.AbstractEventLoop
-    bridge: "GupshupBridge"
+    bridge: "MetaBridge"
 
     relay_whitelisted: bool
     is_admin: bool
@@ -50,7 +50,7 @@ class User(DBUser, BaseUser):
         self.relay_whitelisted, self.is_whitelisted, self.is_admin, self.permission_level = perms
 
     @classmethod
-    def init_cls(cls, bridge: "GupshupBridge") -> None:
+    def init_cls(cls, bridge: "MetaBridge") -> None:
         cls.bridge = bridge
         cls.config = bridge.config
         cls.az = bridge.az
