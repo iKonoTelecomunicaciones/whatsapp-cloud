@@ -58,13 +58,19 @@ class MetaHandler:
 
         meta_page_id = data.get("entry")[0].get("id")
         meta_messaging = data.get("entry")[0].get("messaging")[0]
-        if not meta_page_id in await DBMetaApplication.get_all_meta_apps():
+        app_origin = data.get("object")
+        meta_apps, ig_apps = await DBMetaApplication.get_all_meta_apps()
+        if not meta_page_id in meta_apps and not meta_page_id in ig_apps:
             self.log.warning(
                 f"Ignoring event because the meta_app [{meta_page_id}] is not registered."
             )
             return web.Response(status=406)
 
-        if "message" in meta_messaging:
+        if app_origin == "instagram":
+            ig_app = await DBMetaApplication.get_by_ig_page_id(meta_page_id)
+            data.get("entry")[0]["id"] = ig_app.page_id
+
+        if "message" in meta_messaging and not meta_messaging.get("message").get("is_echo"):
             return await self.message_event(MetaMessageEvent.from_dict(data))
         elif "delivery" in meta_messaging or "read" in meta_messaging:
             return await self.status_event(MetaStatusEvent.from_dict(data))

@@ -8,7 +8,7 @@ from mautrix.types import SyncToken, UserID
 from mautrix.util.simple_template import SimpleTemplate
 from yarl import URL
 
-from meta.data import MetaUserData
+from meta.data import FacebookUserData, InstagramUserData
 from meta.types import MetaPageID, MetaPsID
 
 from .config import Config
@@ -96,19 +96,24 @@ class Puppet(DBPuppet, BasePuppet):
     async def save(self) -> None:
         await self.update()
 
-    async def update_info(self, info: MetaUserData) -> None:
+    async def update_info(self, info: FacebookUserData | InstagramUserData) -> None:
         update = False
         update = await self._update_name(info) or update
         if update:
             await self.update()
 
     @classmethod
-    def _get_displayname(cls, info: MetaUserData) -> str:
-        return cls.config["bridge.displayname_template"].format(
-            displayname=f"{info.first_name} {info.last_name}"
-        )
+    def _get_displayname(cls, info: FacebookUserData | InstagramUserData) -> str:
+        puppet_displayname = cls.config["bridge.displayname_template"]
 
-    async def _update_name(self, info: MetaUserData) -> bool:
+        try:
+            variables = {"displayname": f"{info.first_name} {info.last_name}", "userid": info.id}
+        except AttributeError:
+            variables = {"displayname": info.name, "userid": info.id, "username": info.username}
+
+        return puppet_displayname.format(**variables)
+
+    async def _update_name(self, info: FacebookUserData) -> bool:
         name = self._get_displayname(info)
         if name != self.display_name:
             self.display_name = name

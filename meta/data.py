@@ -142,9 +142,21 @@ class MetaStatusEvent(SerializableAttrs):
 
 
 @dataclass
-class MetaUserData(SerializableAttrs):
+class FacebookUserData(SerializableAttrs):
     id: MetaPsID = ib(metadata={"json": "id"})
     first_name: str = ib(metadata={"json": "first_name"})
     last_name: str = ib(metadata={"json": "last_name"})
     profile_pic: str = ib(metadata={"json": "profile_pic"})
     locale: str = ib(metadata={"json": "locale"}, default=None)
+
+
+@dataclass
+class InstagramUserData(SerializableAttrs):
+    id: MetaPsID = ib(metadata={"json": "id"})
+    name: str = ib(metadata={"json": "name"})
+    username: str = ib(metadata={"json": "username"})
+    profile_pic: str = ib(metadata={"json": "profile_pic"})
+    is_verified_user: bool = ib(metadata={"json": "is_verified_user"})
+    follower_count: int = ib(metadata={"json": "follower_count"})
+    is_user_follow_business: bool = ib(metadata={"json": "is_user_follow_business"})
+    is_business_follow_user: bool = ib(metadata={"json": "is_business_follow_user"})

@@ -8,7 +8,7 @@ from mautrix.types import MessageType
 
 from meta_matrix.config import Config
 
-from .data import MetaUserData
+from .data import FacebookUserData, InstagramUserData
 from .types import MetaPsID
 
 
@@ -29,7 +29,9 @@ class MetaClient:
         self.page_id = page_id
         self.http = ClientSession(loop=loop)
 
-    async def get_user_data(self, ps_id: MetaPsID) -> Optional[MetaUserData]:
+    async def get_user_data(
+        self, ps_id: MetaPsID
+    ) -> Optional[FacebookUserData] | Optional[InstagramUserData]:
         params = {
             "field": "fields=first_name,last_name,profile_pic,locale",
             "access_token": self.page_access_token,
@@ -40,8 +42,16 @@ class MetaClient:
             self.log.error(e)
             return None
 
+        self.log.debug(f"Getting user data from {await resp.json()}")
+
         response_data = await resp.json()
-        return MetaUserData(**response_data)
+
+        try:
+            user_data = FacebookUserData(**response_data)
+        except TypeError:
+            user_data = InstagramUserData(**response_data)
+
+        return user_data
 
     async def send_message(
         self,
