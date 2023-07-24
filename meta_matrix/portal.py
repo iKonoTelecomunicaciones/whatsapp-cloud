@@ -116,17 +116,23 @@ class Portal(DBPortal, BasePortal):
             content.formatted_body = html
         return self.main_intent.send_message(self.room_id, content)
 
-    async def create_matrix_room(self, source: User, sender: MetaMessageSender) -> RoomID:
+    async def create_matrix_room(
+        self, source: User, sender: MetaMessageSender, app_origin: str
+    ) -> RoomID:
         if self.room_id:
             return self.room_id
         async with self._create_room_lock:
             try:
                 self.ps_id = sender.id
-                return await self._create_matrix_room(source=source, sender=sender)
+                return await self._create_matrix_room(
+                    source=source, sender=sender, app_origin=app_origin
+                )
             except Exception:
                 self.log.exception("Failed to create portal")
 
-    async def _create_matrix_room(self, source: User, sender: MetaMessageSender) -> RoomID:
+    async def _create_matrix_room(
+        self, source: User, sender: MetaMessageSender, app_origin: str
+    ) -> RoomID:
         self.log.debug("Creating Matrix room")
 
         creator_info = await self.meta_client.get_user_data(sender.id)
@@ -154,12 +160,23 @@ class Portal(DBPortal, BasePortal):
 
         invites = [source.mxid]
         creation_content = {}
+        room_name_template: str = self.config["bridge.room_name_template"]
+        if app_origin == "page":
+            room_name_variables = {
+                "userid": sender.id,
+                "displayname": f"{creator_info.first_name} {creator_info.last_name}",
+            }
+        else:
+            room_name_variables = {
+                "userid": creator_info.id,
+                "displayname": creator_info.name,
+                "username": creator_info.username,
+            }
+
         if not self.config["bridge.federate_rooms"]:
             creation_content["m.federate"] = False
         self.room_id = await self.main_intent.create_room(
-            name=self.config["bridge.room_name_template"].format(
-                userid=sender.id, displayname=f"{creator_info.first_name} {creator_info.last_name}"
-            ),
+            name=room_name_template.format(**room_name_variables),
             is_direct=self.is_direct,
             initial_state=initial_state,
             invitees=invites,
@@ -274,7 +291,9 @@ class Portal(DBPortal, BasePortal):
     async def handle_meta_message(
         self, source: User, message: MetaMessageEvent, sender: MetaMessageSender
     ) -> None:
-        if not await self.create_matrix_room(source=source, sender=sender):
+        if not await self.create_matrix_room(
+            source=source, sender=sender, app_origin=message.object
+        ):
             return
 
         has_been_sent: EventID | None = None
@@ -362,6 +381,8 @@ class Portal(DBPortal, BasePortal):
                 )
                 content.external_url = content.external_url
                 has_been_sent = await self.main_intent.send_message(self.room_id, content)
+            else:
+                has_been_sent = await self.send_text_message(body)
 
         puppet: Puppet = await self.get_dm_puppet()
         msg = DBMessage(

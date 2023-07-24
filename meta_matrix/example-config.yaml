@@ -61,6 +61,7 @@ bridge:
     # How the rooms will be named?
     # {displayname} - displayname set by the Facebook or Instagram user
     # {userid} - ps_id number of the Facebook or Instagram user
+    # {username} - Instagram username of the user, `ONLY FOR INSTAGRAM ROOMS`
     room_name_template: "{userid}"
     # The prefix for commands. Only required in non-management rooms.
     command_prefix: "!mt"
