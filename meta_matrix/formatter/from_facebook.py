@@ -5,12 +5,12 @@ from mautrix.appservice import IntentAPI
 from mautrix.errors import MatrixRequestError
 from mautrix.types import (
     Format,
+    MediaMessageEventContent,
     MessageEvent,
     MessageType,
     RelatesTo,
     RelationType,
     TextMessageEventContent,
-    MediaMessageEventContent,
 )
 from mautrix.util.logging import TraceLogger
 

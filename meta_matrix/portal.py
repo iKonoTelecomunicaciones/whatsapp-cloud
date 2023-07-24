@@ -1,7 +1,7 @@
 from __future__ import annotations
 
-from asyncio import Lock
 import json
+from asyncio import Lock
 from string import Template
 from typing import TYPE_CHECKING, Any, Dict, List, Optional, Union, cast
 
@@ -11,15 +11,15 @@ from mautrix.errors import MatrixError
 from mautrix.types import (
     EventID,
     EventType,
+    FileInfo,
     Format,
-    MessageEventContent,
     MediaMessageEventContent,
+    MessageEventContent,
     MessageType,
     PowerLevelStateEventContent,
     RoomID,
     TextMessageEventContent,
     UserID,
-    FileInfo,
 )
 
 from meta.api import MetaClient

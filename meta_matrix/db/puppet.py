@@ -44,7 +44,7 @@ class Puppet:
     async def insert(self) -> None:
         q = """
             INSERT INTO puppet (ps_id, app_page_id, display_name, is_registered,
-            custom_mxid, access_token, next_batch, base_url) 
+            custom_mxid, access_token, next_batch, base_url)
             VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
         """
         await self.db.execute(q, *self._values)
@@ -72,7 +72,7 @@ class Puppet:
     async def get_by_ps_id(cls, ps_id: str) -> Puppet | None:
         q = """
             SELECT ps_id, app_page_id, display_name, is_registered, custom_mxid,
-            access_token, next_batch, base_url 
+            access_token, next_batch, base_url
             FROM puppet WHERE ps_id=$1
         """
         row = await cls.db.fetchrow(q, ps_id)
@@ -84,7 +84,7 @@ class Puppet:
     async def get_by_custom_mxid(cls, mxid: UserID) -> Puppet | None:
         q = """
             SELECT ps_id, app_page_id, display_name, is_registered, custom_mxid,
-            access_token, next_batch, base_url 
+            access_token, next_batch, base_url
             FROM puppet WHERE custom_mxid=$1
         """
         row = await cls.db.fetchrow(q, mxid)
@@ -96,7 +96,7 @@ class Puppet:
     async def all_with_custom_mxid(cls) -> list[Puppet]:
         q = """
             SELECT  ps_id, app_page_id, display_name, is_registered, custom_mxid,
-            access_token, next_batch, base_url 
+            access_token, next_batch, base_url
             FROM puppet WHERE custom_mxid IS NOT NULL
         """
         rows = await cls.db.fetch(q)
