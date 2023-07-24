@@ -6,22 +6,26 @@ from mautrix.types import SerializableAttrs
 from .types import MetaMessageID, MetaPageID, MetaPsID
 
 
+# This class is for the data of the Meta sender, this specifies who sent the message
 @dataclass
 class MetaMessageSender(SerializableAttrs):
     id: MetaPsID = ib(metadata={"json": "id"})
 
 
+# This class is for the data of the Meta page, this specifies the id of the Meta page
 @dataclass
 class MetaMessageRecipient(SerializableAttrs):
     id: MetaPageID = ib(metadata={"json": "id"})
 
 
+# This class is for the media message that contains the url of the media or the sticker id
 @dataclass
 class MetaPayload(SerializableAttrs):
     url: str = ib(metadata={"json": "url"}, default=None)
     sticker_id: str = ib(metadata={"json": "sticker_id"}, default=None)
 
 
+# This class is for the media messages, this specifies the type of the message and his payload
 @dataclass
 class MetaAttachment(SerializableAttrs):
     type: str = ib(metadata={"json": "type"}, default=None)
@@ -39,11 +43,14 @@ class MetaAttachment(SerializableAttrs):
         )
 
 
+# This class is for the message that contains a reply, this specifies the id of the message
 @dataclass
 class MetaReplyTo(SerializableAttrs):
     mid: MetaMessageID = ib(metadata={"json": "mid"}, default=None)
 
 
+# This class contains the data of the message, if it is a text message, a media message and if it
+# have a reply or not
 @dataclass
 class MetaMessageData(SerializableAttrs):
     mid: MetaMessageID = ib(metadata={"json": "mid"})
@@ -70,15 +77,20 @@ class MetaMessageData(SerializableAttrs):
         )
 
 
+# This class is for the delivery event, this specifies the message id or the watermark depending if
+# the message is sent from instagram or messenger
 @dataclass
 class MetaDeliveryData(SerializableAttrs):
     mids: List[MetaMessageID] = ib(metadata={"json": "mids"})
     watermark: int = ib(metadata={"json": "watermark"})
 
 
+# This class is for the read event, this specifies the message id or the watermark depending if
+# the message is sent from instagram or messenger
 @dataclass
 class MetaReadData(SerializableAttrs):
-    watermark: int = ib(metadata={"json": "watermark"})
+    watermark: int = ib(metadata={"json": "watermark"}, default=None)
+    mid: MetaMessageID = ib(metadata={"json": "mid"}, default=None)
 
 
 @dataclass
