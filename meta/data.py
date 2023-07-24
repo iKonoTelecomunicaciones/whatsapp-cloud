@@ -17,6 +17,29 @@ class MetaMessageRecipient(SerializableAttrs):
 
 
 @dataclass
+class MetaPayload(SerializableAttrs):
+    url: str = ib(metadata={"json": "url"}, default=None)
+    sticker_id: str = ib(metadata={"json": "sticker_id"}, default=None)
+
+
+@dataclass
+class MetaAttachment(SerializableAttrs):
+    type: str = ib(metadata={"json": "type"}, default=None)
+    payload: MetaPayload = ib(metadata={"json": "payload"}, default={})
+
+    @classmethod
+    def from_dict(cls, data: dict):
+        payload = None
+        if data.get("payload"):
+            payload = MetaPayload(**data.get("payload", {}))
+
+        return cls(
+            type=data.get("type", None),
+            payload=payload,
+        )
+
+
+@dataclass
 class MetaReplyTo(SerializableAttrs):
     mid: MetaMessageID = ib(metadata={"json": "mid"}, default=None)
 
@@ -25,7 +48,7 @@ class MetaReplyTo(SerializableAttrs):
 class MetaMessageData(SerializableAttrs):
     mid: MetaMessageID = ib(metadata={"json": "mid"})
     text: str = ib(metadata={"json": "text"})
-    attachments: List = ib(metadata={"json": "attachments"})
+    attachments: MetaAttachment = ib(metadata={"json": "attachments"}, default={})
     reply_to: MetaReplyTo = ib(metadata={"json": "reply_to"}, default=None)
 
     @classmethod
@@ -34,10 +57,15 @@ class MetaMessageData(SerializableAttrs):
         if data.get("reply_to"):
             reply_to = MetaReplyTo(**data.get("reply_to", {}))
 
+        try:
+            attachments = data.get("attachments", [])[0]
+        except IndexError:
+            attachments = {}
+
         return cls(
             mid=data.get("mid"),
             text=data.get("text"),
-            attachments=data.get("attachments"),
+            attachments=MetaAttachment.from_dict(attachments),
             reply_to=reply_to,
         )
 

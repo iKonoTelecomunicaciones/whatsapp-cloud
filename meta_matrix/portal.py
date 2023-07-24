@@ -12,11 +12,13 @@ from mautrix.types import (
     EventType,
     Format,
     MessageEventContent,
+    MediaMessageEventContent,
     MessageType,
     PowerLevelStateEventContent,
     RoomID,
     TextMessageEventContent,
     UserID,
+    FileInfo,
 )
 
 from meta.api import MetaClient
@@ -277,15 +279,87 @@ class Portal(DBPortal, BasePortal):
 
         has_been_sent: EventID | None = None
         if message.entry.messaging.message and not message.entry.messaging.message.reply_to:
-            message_text = message.entry.messaging.message.text
-            has_been_sent = await self.send_text_message(message_text)
+            meta_message_type = message.entry.messaging.message.attachments.type
+
+            if not meta_message_type:
+                message_text = message.entry.messaging.message.text
+                has_been_sent = await self.send_text_message(message_text)
+            else:
+                message_type = ""
+                response = await self.az.http_session.get(
+                    message.entry.messaging.message.attachments.payload.url
+                )
+                data = await response.read()
+
+                try:
+                    attachment_url = await self.main_intent.upload_media(data=data)
+                except Exception as e:
+                    self.log.exception(f"Message not receive :: error {e}")
+                    return
+
+                message_type = (
+                    MessageType.IMAGE
+                    if meta_message_type == "image"
+                    else MessageType.VIDEO
+                    if meta_message_type == "video"
+                    else MessageType.AUDIO
+                    if meta_message_type == "audio"
+                    else MessageType.FILE
+                    if meta_message_type == "file"
+                    else None
+                )
+
+                if not message_type:
+                    raise Exception("Message type not found")
+
+                content_attachment = MediaMessageEventContent(
+                    body="",
+                    msgtype=message_type,
+                    url=attachment_url,
+                    info=FileInfo(size=len(data)),
+                )
+
+                has_been_sent = await self.main_intent.send_message(
+                    self.room_id, content_attachment
+                )
+
         elif message.entry.messaging.message and message.entry.messaging.message.reply_to:
             mgs_id = message.entry.messaging.message.reply_to.mid
-            body = message.entry.messaging.message.text
+            meta_message_type = message.entry.messaging.message.attachments.type
+
+            if not meta_message_type:
+                body = message.entry.messaging.message.text
+                message_type = MessageType.TEXT
+
+            elif meta_message_type:
+                response = await self.az.http_session.get(
+                    message.entry.messaging.message.attachments.payload.url
+                )
+                data = await response.read()
+
+                try:
+                    body = await self.main_intent.upload_media(data=data)
+                except Exception as e:
+                    self.log.exception(f"Message not receive :: error {e}")
+                    return
+
+                message_type = (
+                    MessageType.IMAGE
+                    if meta_message_type == "image"
+                    else MessageType.AUDIO
+                    if meta_message_type == "audio"
+                    else MessageType.VIDEO
+                    if meta_message_type == "video"
+                    else MessageType.FILE
+                    if meta_message_type == "file"
+                    else None
+                )
 
             evt = await DBMessage.get_by_meta_message_id(meta_message_id=mgs_id)
             if evt:
-                content = await facebook_reply_to_matrix(body, evt, self.main_intent, self.log)
+                content = await facebook_reply_to_matrix(
+                    body, evt, self.main_intent, self.log, message_type
+                )
                 content.external_url = content.external_url
                 has_been_sent = await self.main_intent.send_message(self.room_id, content)
 
@@ -346,12 +420,42 @@ class Portal(DBPortal, BasePortal):
                 reply_message = await DBMessage.get_by_mxid(message.get_reply_to(), self.room_id)
                 aditional_data["reply_to"] = {"mid": reply_message.meta_message_id}
 
-            response = await self.meta_client.send_message(
-                message=text,
-                recipient_id=self.ps_id,
-                message_type=message.msgtype,
-                aditional_data=aditional_data,
-            )
+            try:
+                response = await self.meta_client.send_message(
+                    message=text,
+                    recipient_id=self.ps_id,
+                    message_type=message.msgtype,
+                    aditional_data=aditional_data,
+                )
+            except FileNotFoundError as error:
+                self.log.error(f"Error sending the message: {error}")
+                return
+
+        elif message.msgtype in (
+            MessageType.AUDIO,
+            MessageType.VIDEO,
+            MessageType.IMAGE,
+            MessageType.FILE,
+        ):
+            aditional_data = {}
+
+            if message.get_reply_to():
+                reply_message = await DBMessage.get_by_mxid(message.get_reply_to(), self.room_id)
+                aditional_data["reply_to"] = {"mid": reply_message.meta_message_id}
+
+            url = f"{self.homeserver_address}/_matrix/media/r0/download/{message.url[6:]}"
+
+            try:
+                response = await self.meta_client.send_message(
+                    message="",
+                    recipient_id=self.ps_id,
+                    message_type=message.msgtype,
+                    aditional_data=aditional_data,
+                    url=url,
+                )
+            except FileNotFoundError as error:
+                self.log.error(f"Error sending the attachment data: {error}")
+                return
 
         else:
             self.log.debug(f"Ignoring unknown message {message}")
