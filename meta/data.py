@@ -6,26 +6,56 @@ from mautrix.types import SerializableAttrs
 from .types import MetaMessageID, MetaPageID, MetaPsID
 
 
+# This class is for the data of the Meta sender, this specifies who sent the message
 @dataclass
 class MetaMessageSender(SerializableAttrs):
     id: MetaPsID = ib(metadata={"json": "id"})
 
 
+# This class is for the data of the Meta page, this specifies the id of the Meta page
 @dataclass
 class MetaMessageRecipient(SerializableAttrs):
     id: MetaPageID = ib(metadata={"json": "id"})
 
 
+# This class is for the media message that contains the url of the media or the sticker id
+@dataclass
+class MetaPayload(SerializableAttrs):
+    url: str = ib(metadata={"json": "url"}, default=None)
+    sticker_id: str = ib(metadata={"json": "sticker_id"}, default=None)
+
+
+# This class is for the media messages, this specifies the type of the message and his payload
+@dataclass
+class MetaAttachment(SerializableAttrs):
+    type: str = ib(metadata={"json": "type"}, default=None)
+    payload: MetaPayload = ib(metadata={"json": "payload"}, default={})
+
+    @classmethod
+    def from_dict(cls, data: dict):
+        payload = None
+        if data.get("payload"):
+            payload = MetaPayload(**data.get("payload", {}))
+
+        return cls(
+            type=data.get("type", None),
+            payload=payload,
+        )
+
+
+# This class is for the message that contains a reply, this specifies the id of the message
 @dataclass
 class MetaReplyTo(SerializableAttrs):
     mid: MetaMessageID = ib(metadata={"json": "mid"}, default=None)
 
 
+# This class contains the data of the message, like the type of message (text or media) and the
+# reply text if it is present.
 @dataclass
 class MetaMessageData(SerializableAttrs):
     mid: MetaMessageID = ib(metadata={"json": "mid"})
     text: str = ib(metadata={"json": "text"})
-    attachments: List = ib(metadata={"json": "attachments"})
+    attachments: MetaAttachment = ib(metadata={"json": "attachments"}, default={})
     reply_to: MetaReplyTo = ib(metadata={"json": "reply_to"}, default=None)
 
     @classmethod
@@ -34,23 +64,33 @@ class MetaMessageData(SerializableAttrs):
         if data.get("reply_to"):
             reply_to = MetaReplyTo(**data.get("reply_to", {}))
 
+        try:
+            attachments = data.get("attachments", [])[0]
+        except IndexError:
+            attachments = {}
+
         return cls(
             mid=data.get("mid"),
             text=data.get("text"),
-            attachments=data.get("attachments"),
+            attachments=MetaAttachment.from_dict(attachments),
             reply_to=reply_to,
         )
 
 
+# This class is for the delivery event, this specifies the message id or the watermark depending if
+# the message is sent from instagram or messenger
 @dataclass
 class MetaDeliveryData(SerializableAttrs):
     mids: List[MetaMessageID] = ib(metadata={"json": "mids"})
     watermark: int = ib(metadata={"json": "watermark"})
 
 
+# This class is for the read event, this specifies the message id or the watermark depending if
+# the message is sent from instagram or messenger
 @dataclass
 class MetaReadData(SerializableAttrs):
-    watermark: int = ib(metadata={"json": "watermark"})
+    watermark: int = ib(metadata={"json": "watermark"}, default=None)
+    mid: MetaMessageID = ib(metadata={"json": "mid"}, default=None)
 
 
 @dataclass

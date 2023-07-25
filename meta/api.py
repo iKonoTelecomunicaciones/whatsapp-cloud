@@ -59,6 +59,7 @@ class MetaClient:
         recipient_id: MetaPsID,
         message_type: MessageType,
         aditional_data: Optional[Dict] = None,
+        url: Optional[str] = None,
     ) -> Dict[str, str]:
         headers = {"Content-Type": "application/json"}
         send_message_url = (
@@ -75,6 +76,38 @@ class MetaClient:
             }
             if aditional_data.get("reply_to"):
                 data["message_id"] = {"mid": aditional_data["reply_to"]["mid"]}
+
+        # Send the media message to the Meta API
+        elif (
+            message_type == MessageType.IMAGE
+            or message_type == MessageType.VIDEO
+            or message_type == MessageType.AUDIO
+            or message_type == MessageType.FILE
+        ):
+            message_type = (
+                "image"
+                if message_type == MessageType.IMAGE
+                else "video"
+                if message_type == MessageType.VIDEO
+                else "audio"
+                if message_type == MessageType.AUDIO
+                else "file"
+                if message_type == MessageType.FILE
+                else None
+            )
+
+            # Fit the necessary data for the Meta API
+            data = {
+                "recipient": {"id": recipient_id},
+                "message": {
+                    "attachment": {"type": message_type, "payload": {"url": url}},
+                },
+            }
+
+            # If the message is a reply, add the message_id
+            if aditional_data.get("reply_to"):
+                data["message_id"] = {"mid": aditional_data["reply_to"]["mid"]}
+
         else:
             self.log.error("Unsupported message type")
             return
@@ -82,10 +115,17 @@ class MetaClient:
         self.log.debug(f"Sending message {data} to {recipient_id}")
 
         try:
+            # Send the message to the Meta API
             resp = await self.http.post(send_message_url, json=data, headers=headers)
         except ClientConnectorError as e:
             self.log.error(e)
+
         response_data = json.loads(await resp.text())
+
+        # If the message was not sent, raise an error
+        if response_data.get("error", {}):
+            raise FileNotFoundError(response_data)
+
         return response_data
 
     async def send_read_receipt(self, recipient_id: MetaPsID) -> None:

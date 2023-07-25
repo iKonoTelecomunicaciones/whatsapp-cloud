@@ -5,6 +5,7 @@ from mautrix.appservice import IntentAPI
 from mautrix.errors import MatrixRequestError
 from mautrix.types import (
     Format,
+    MediaMessageEventContent,
     MessageEvent,
     MessageType,
     RelatesTo,
@@ -44,7 +45,8 @@ async def facebook_reply_to_matrix(
     evt: Message,
     main_intent: Optional[IntentAPI] = None,
     log: Optional[TraceLogger] = None,
-) -> TextMessageEventContent:
+    message_type: MessageType = None,
+):
     """Create content by replying to a message.
 
     Defines that the input message (evt) is in response to another in the db,
@@ -71,17 +73,24 @@ async def facebook_reply_to_matrix(
     maint_Intent: IntentAPI object - IntentAPI
     """
     log.debug("Creating reply message")
-    content = TextMessageEventContent(
-        msgtype=MessageType.TEXT,
-        body=body,
-    )
+    if message_type == MessageType.TEXT:
+        content = TextMessageEventContent(
+            msgtype=message_type,
+            body=body,
+        )
 
-    content.format = Format.HTML
+        content.format = Format.HTML
+
+        if content.formatted_body:
+            content.formatted_body = content.formatted_body.replace("\n", "<br/>")
+
+    else:
+        content = MediaMessageEventContent(
+            msgtype=message_type,
+            url=body,
+        )
 
     await _add_reply_header(content=content, msg=evt, main_intent=main_intent, log=log)
-
-    if content.formatted_body:
-        content.formatted_body = content.formatted_body.replace("\n", "<br/>")
 
     return content
 

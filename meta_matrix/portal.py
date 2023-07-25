@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 from asyncio import Lock
 from string import Template
 from typing import TYPE_CHECKING, Any, Dict, List, Optional, Union, cast
@@ -10,7 +11,9 @@ from mautrix.errors import MatrixError
 from mautrix.types import (
     EventID,
     EventType,
+    FileInfo,
     Format,
+    MediaMessageEventContent,
     MessageEventContent,
     MessageType,
     PowerLevelStateEventContent,
@@ -289,26 +292,140 @@ class Portal(DBPortal, BasePortal):
     async def handle_meta_message(
         self, source: User, message: MetaMessageEvent, sender: MetaMessageSender
     ) -> None:
+        """
+        When a user of Meta send a message, this function takes it and sends it to Matrix
+
+        Parameters
+        ----------
+        source : User
+            The class that will be used to specify who receives the message.
+
+        message : MessageEventContent
+            The class that containt the data of the message.
+
+        sender: MetaMessageSender
+            The class that will be used to specify who send the message.
+
+        """
+        # Validate if the matrix room exists, if not, it is created
         if not await self.create_matrix_room(
             source=source, sender=sender, app_origin=message.object
         ):
             return
 
         has_been_sent: EventID | None = None
+        # Validate if the message exist and that the message has not a reply
         if message.entry.messaging.message and not message.entry.messaging.message.reply_to:
-            message_text = message.entry.messaging.message.text
-            has_been_sent = await self.send_text_message(message_text)
+            meta_message_type = message.entry.messaging.message.attachments.type
+
+            # Validate if the message is a text message, if is it, the message is sent to the Meta API
+            if not meta_message_type:
+                message_text = message.entry.messaging.message.text
+                has_been_sent = await self.send_text_message(message_text)
+            else:
+                message_type = ""
+                # Obtain the data of the message media
+                response = await self.az.http_session.get(
+                    message.entry.messaging.message.attachments.payload.url
+                )
+                data = await response.read()
+
+                try:
+                    # Upload the message media to Matrix
+                    attachment_url = await self.main_intent.upload_media(data=data)
+                except Exception as e:
+                    self.log.exception(f"Message not receive :: error {e}")
+                    return
+
+                message_type = (
+                    MessageType.IMAGE
+                    if meta_message_type == "image"
+                    else MessageType.VIDEO
+                    if meta_message_type == "video"
+                    else MessageType.AUDIO
+                    if meta_message_type == "audio"
+                    else MessageType.FILE
+                    if meta_message_type == "file"
+                    else None
+                )
+
+                if not message_type:
+                    raise Exception("Message type not found")
+
+                # Create the content of the message media for send to Matrix
+                content_attachment = MediaMessageEventContent(
+                    body="",
+                    msgtype=message_type,
+                    url=attachment_url,
+                    info=FileInfo(size=len(data)),
+                )
+
+                # Send the message to Matrix
+                has_been_sent = await self.main_intent.send_message(
+                    self.room_id, content_attachment
+                )
+
         elif message.entry.messaging.message and message.entry.messaging.message.reply_to:
             mgs_id = message.entry.messaging.message.reply_to.mid
-            body = message.entry.messaging.message.text
+            meta_message_type = message.entry.messaging.message.attachments.type
 
+            # Validate if the message is a text message, if is it, the message is sent to the Meta
+            # API
+            if not meta_message_type:
+                body = message.entry.messaging.message.text
+                message_type = MessageType.TEXT
+
+            else:
+                # Obtain the data of the message media
+                response = await self.az.http_session.get(
+                    message.entry.messaging.message.attachments.payload.url
+                )
+                data = await response.read()
+
+                try:
+                    # Upload the message media to Matrix
+                    body = await self.main_intent.upload_media(data=data)
+                except Exception as e:
+                    self.log.exception(f"Message not receive :: error {e}")
+                    return
+
+                message_type = (
+                    MessageType.IMAGE
+                    if meta_message_type == "image"
+                    else MessageType.AUDIO
+                    if meta_message_type == "audio"
+                    else MessageType.VIDEO
+                    if meta_message_type == "video"
+                    else MessageType.FILE
+                    if meta_message_type == "file"
+                    else None
+                )
+
+            # Obtain the message of the reply
             evt = await DBMessage.get_by_meta_message_id(meta_message_id=mgs_id)
             if evt:
-                content = await facebook_reply_to_matrix(body, evt, self.main_intent, self.log)
+                # Create the content of the message media for send to Matrix
+                content = await facebook_reply_to_matrix(
+                    body, evt, self.main_intent, self.log, message_type
+                )
+
                 content.external_url = content.external_url
+                # Send the message to Matrix
                 has_been_sent = await self.main_intent.send_message(self.room_id, content)
             else:
-                has_been_sent = await self.send_text_message(body)
+                # if the reply message does not exist, the message is sent as a normal message
+                # Create the content of the message media for send to Matrix
+                content_attachment = MediaMessageEventContent(
+                    body="",
+                    msgtype=message_type,
+                    url=body,
+                    info=FileInfo(size=len(data)),
+                )
+
+                # Send the message to Matrix
+                has_been_sent = await self.main_intent.send_message(
+                    self.room_id, content_attachment
+                )
 
         puppet: Puppet = await self.get_dm_puppet()
         msg = DBMessage(
@@ -345,6 +462,21 @@ class Portal(DBPortal, BasePortal):
         message: MessageEventContent,
         event_id: EventID,
     ) -> None:
+        """
+        It takes a message from matrix and sends it to the Meta API
+
+        Parameters
+        ----------
+        sender : User
+            The class that will be used to specify who sends the message.
+
+        message : MessageEventContent
+            The class that containts the data of the message.
+
+        event_id: EventID
+            The id of the event.
+
+        """
         orig_sender = sender
         sender, is_relay = await self.get_relay_sender(sender, f"message {event_id}")
         if is_relay:
@@ -356,6 +488,7 @@ class Portal(DBPortal, BasePortal):
         if message.msgtype == MessageType.NOTICE and not self.config["bridge.bridge_notices"]:
             return
 
+        # If the message is a text message, we send the message to the Meta API
         if message.msgtype in (MessageType.TEXT, MessageType.NOTICE):
             aditional_data = {}
             if message.format == Format.HTML:
@@ -367,12 +500,56 @@ class Portal(DBPortal, BasePortal):
                 reply_message = await DBMessage.get_by_mxid(message.get_reply_to(), self.room_id)
                 aditional_data["reply_to"] = {"mid": reply_message.meta_message_id}
 
-            response = await self.meta_client.send_message(
-                message=text,
-                recipient_id=self.ps_id,
-                message_type=message.msgtype,
-                aditional_data=aditional_data,
-            )
+            try:
+                response = await self.meta_client.send_message(
+                    message=text,
+                    recipient_id=self.ps_id,
+                    message_type=message.msgtype,
+                    aditional_data=aditional_data,
+                )
+            except Exception as error:
+                self.log.error(f"Error sending the message: {error}")
+                await self.main_intent.send_notice(
+                    self.room_id, f"Error sending content: {error_message}"
+                )
+                return
+        # If the message is a media message, we send the url of the media message to the Meta API
+        elif message.msgtype in (
+            MessageType.AUDIO,
+            MessageType.VIDEO,
+            MessageType.IMAGE,
+            MessageType.FILE,
+        ):
+            aditional_data = {}
+
+            # If the message was reply to another message, we add the message id to the
+            # reply_to field
+            if message.get_reply_to():
+                reply_message = await DBMessage.get_by_mxid(message.get_reply_to(), self.room_id)
+                aditional_data["reply_to"] = {"mid": reply_message.meta_message_id}
+
+            # We get the url of the media message. Message.url is something like mxc://xyz, so we
+            # remove the first 6 characters to get the media hash
+            media_mxc = message.url
+            media_hash = media_mxc[6:]
+            url = f"{self.homeserver_address}/_matrix/media/r0/download/{media_hash}"
+
+            # We send the media message to the Meta API
+            try:
+                response = await self.meta_client.send_message(
+                    message="",
+                    recipient_id=self.ps_id,
+                    message_type=message.msgtype,
+                    aditional_data=aditional_data,
+                    url=url,
+                )
+            except Exception as error:
+                self.log.error(f"Error sending the attachment data: {error}")
+                error_message = error.args[0].get("error", {}).get("message", "")
+                await self.main_intent.send_notice(
+                    self.room_id, f"Error sending content: {error_message}"
+                )
+                return
 
         else:
             self.log.debug(f"Ignoring unknown message {message}")
