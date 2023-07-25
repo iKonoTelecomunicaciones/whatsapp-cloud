@@ -293,7 +293,7 @@ class Portal(DBPortal, BasePortal):
         self, source: User, message: MetaMessageEvent, sender: MetaMessageSender
     ) -> None:
         """
-        When a user of Meta send a message, this function take it and send it to Matrix
+        When a user of Meta send a message, this function takes it and sends it to Matrix
 
         Parameters
         ----------
@@ -307,14 +307,14 @@ class Portal(DBPortal, BasePortal):
             The class that will be used to specify who send the message.
 
         """
-        # Validated if the matrix room exists, if not, it is created
+        # Validate if the matrix room exists, if not, it is created
         if not await self.create_matrix_room(
             source=source, sender=sender, app_origin=message.object
         ):
             return
 
         has_been_sent: EventID | None = None
-        # Validated if the message exist and that the message has not a reply
+        # Validate if the message exist and that the message has not a reply
         if message.entry.messaging.message and not message.entry.messaging.message.reply_to:
             meta_message_type = message.entry.messaging.message.attachments.type
 
@@ -324,7 +324,7 @@ class Portal(DBPortal, BasePortal):
                 has_been_sent = await self.send_text_message(message_text)
             else:
                 message_type = ""
-                # Optain the data of the message media
+                # Obtain the data of the message media
                 response = await self.az.http_session.get(
                     message.entry.messaging.message.attachments.payload.url
                 )
@@ -376,7 +376,7 @@ class Portal(DBPortal, BasePortal):
                 message_type = MessageType.TEXT
 
             else:
-                # Optain the data of the message media
+                # Obtain the data of the message media
                 response = await self.az.http_session.get(
                     message.entry.messaging.message.attachments.payload.url
                 )
@@ -463,15 +463,15 @@ class Portal(DBPortal, BasePortal):
         event_id: EventID,
     ) -> None:
         """
-        It takes a message from matrix and send it to the Meta API
+        It takes a message from matrix and sends it to the Meta API
 
         Parameters
         ----------
         sender : User
-            The class that will be used to specify who send the message.
+            The class that will be used to specify who sends the message.
 
         message : MessageEventContent
-            The class that containt the data of the message.
+            The class that containts the data of the message.
 
         event_id: EventID
             The id of the event.
@@ -510,7 +510,7 @@ class Portal(DBPortal, BasePortal):
             except Exception as error:
                 self.log.error(f"Error sending the message: {error}")
                 await self.main_intent.send_notice(
-                    self.room_id, f"Error al enviar contenido: {error_message}"
+                    self.room_id, f"Error sending content: {error_message}"
                 )
                 return
         # If the message is a media message, we send the url of the media message to the Meta API
@@ -528,8 +528,11 @@ class Portal(DBPortal, BasePortal):
                 reply_message = await DBMessage.get_by_mxid(message.get_reply_to(), self.room_id)
                 aditional_data["reply_to"] = {"mid": reply_message.meta_message_id}
 
-            # We get the url of the media message
-            url = f"{self.homeserver_address}/_matrix/media/r0/download/{message.url[6:]}"
+            # We get the url of the media message. Message.url is something like mxc://xyz, so we
+            # remove the first 6 characters to get the media hash
+            media_mxc = message.url
+            media_hash = media_mxc[6:]
+            url = f"{self.homeserver_address}/_matrix/media/r0/download/{media_hash}"
 
             # We send the media message to the Meta API
             try:
@@ -541,10 +544,10 @@ class Portal(DBPortal, BasePortal):
                     url=url,
                 )
             except Exception as error:
-                error_message = error.args[0].get("error", {}).get("message", "")
                 self.log.error(f"Error sending the attachment data: {error}")
+                error_message = error.args[0].get("error", {}).get("message", "")
                 await self.main_intent.send_notice(
-                    self.room_id, f"Error al enviar contenido: {error_message}"
+                    self.room_id, f"Error sending content: {error_message}"
                 )
                 return
 

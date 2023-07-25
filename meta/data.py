@@ -49,8 +49,8 @@ class MetaReplyTo(SerializableAttrs):
     mid: MetaMessageID = ib(metadata={"json": "mid"}, default=None)
 
 
-# This class contains the data of the message, if it is a text message, a media message and if it
-# have a reply or not
+# This class contains the data of the message, like the type of message (text or media) and the
+# reply text if it is present.
 @dataclass
 class MetaMessageData(SerializableAttrs):
     mid: MetaMessageID = ib(metadata={"json": "mid"})

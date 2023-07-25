@@ -122,7 +122,7 @@ class MetaClient:
 
         response_data = json.loads(await resp.text())
 
-        # If the message was not sent, raise an errorsss
+        # If the message was not sent, raise an error
         if response_data.get("error", {}):
             raise FileNotFoundError(response_data)
 
