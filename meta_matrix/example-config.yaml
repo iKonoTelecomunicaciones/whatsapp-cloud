@@ -55,14 +55,29 @@ bridge:
     # Localpart template of MXIDs for remote users.
     # {userid} is replaced with the phone number of the user (plain/E.164 international format).
     username_template: "meta_{userid}"
-    # Displayname template for remote users.
-    # {displayname} is replaced with the phone number of the user (human-readable international format).
-    displayname_template: "{displayname} (Meta)"
-    # How the rooms will be named?
-    # {displayname} - displayname set by the Facebook or Instagram user
-    # {userid} - ps_id number of the Facebook or Instagram user
-    # {username} - Instagram username of the user, `ONLY FOR INSTAGRAM ROOMS`
-    room_name_template: "{userid}"
+
+    facebook:
+        # Displayname template for remote users.
+        # {displayname} is replaced with the displayname of the remote user.
+        # {userid} is replaced with the ps_id number of the Facebook user.
+        displayname_template: "{displayname} (FB)"
+        # How the rooms will be named?
+        # {displayname} - displayname set by the Facebook user
+        # {userid} - ps_id number of the Facebook user
+        room_name_template: "{displayname} ({userid})"
+
+    instagram:
+        # Displayname template for remote users.
+        # {displayname} is replaced with the displayname of the remote user.
+        # {userid} - ps_id number of the Instagram user
+        # {username} - Instagram username of the user
+        displayname_template: "{displayname} (IG)"
+        # How the rooms will be named?
+        # {displayname} - displayname set by the Instagram user
+        # {userid} - ps_id number of the Instagram user
+        # {username} - Instagram username of the user
+        room_name_template: "{displayname} (@{username})"
+
     # The prefix for commands. Only required in non-management rooms.
     command_prefix: "!mt"
 

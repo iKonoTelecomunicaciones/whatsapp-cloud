@@ -28,6 +28,9 @@ class Portal:
             self.relay_user_id,
         )
 
+    # TODO: Implement this property in the methods to which it applies
+    _columns = "ps_id, app_page_id, room_id, relay_user_id"
+
     @classmethod
     def _from_row(cls, row: asyncpg.Record) -> Portal:
         return cls(**row)

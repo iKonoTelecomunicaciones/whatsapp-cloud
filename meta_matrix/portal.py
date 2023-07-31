@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import json
 from asyncio import Lock
 from string import Template
 from typing import TYPE_CHECKING, Any, Dict, List, Optional, Union, cast
@@ -93,7 +92,7 @@ class Portal(DBPortal, BasePortal):
             return
 
         self.meta_client.page_access_token = meta_app.page_access_token
-        self.meta_client.page_id = meta_app.page_id
+        self.meta_client.page_id = meta_app.outgoing_page_id
 
     @property
     def is_direct(self) -> bool:
@@ -161,18 +160,13 @@ class Portal(DBPortal, BasePortal):
 
         invites = [source.mxid]
         creation_content = {}
-        room_name_template: str = self.config["bridge.room_name_template"]
+        room_name_variables = {"userid": sender.id, "displayname": f"{creator_info.full_name}"}
+
         if app_origin == "page":
-            room_name_variables = {
-                "userid": sender.id,
-                "displayname": f"{creator_info.first_name} {creator_info.last_name}",
-            }
+            room_name_template: str = self.config["bridge.facebook.room_name_template"]
         else:
-            room_name_variables = {
-                "userid": creator_info.id,
-                "displayname": creator_info.name,
-                "username": creator_info.username,
-            }
+            room_name_template: str = self.config["bridge.instagram.room_name_template"]
+            room_name_variables["username"] = creator_info.username
 
         if not self.config["bridge.federate_rooms"]:
             creation_content["m.federate"] = False

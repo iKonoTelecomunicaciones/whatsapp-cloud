@@ -25,6 +25,9 @@ class User:
             self.notice_room,
         )
 
+    # TODO: Implement this property in the methods to which it applies
+    _columns = "mxid, app_page_id, notice_room"
+
     async def insert(self) -> None:
         q = "INSERT INTO matrix_user (mxid, app_page_id, notice_room) VALUES ($1, $2, $3, $4)"
         await self.db.execute(q, *self._values)
