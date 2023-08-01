@@ -37,6 +37,12 @@ class Puppet:
             str(self.base_url) if self.base_url else None,
         )
 
+    # TODO: Implement this property in the methods to which it applies
+    _columns = (
+        "ps_id, app_page_id, display_name, is_registered, custom_mxid, access_token, "
+        "next_batch, base_url"
+    )
+
     @classmethod
     def _from_row(cls, row: asyncpg.Record) -> Puppet:
         return cls(**row)

@@ -49,7 +49,7 @@ async def upgrade_v1(conn: Connection) -> None:
     await conn.execute(
         """CREATE TABLE meta_application (
             page_id             TEXT PRIMARY KEY,
-            ig_page_id          TEXT,
+            outgoing_page_id    TEXT,
             name                VARCHAR(255),
             admin_user          VARCHAR(255),
             page_access_token   TEXT

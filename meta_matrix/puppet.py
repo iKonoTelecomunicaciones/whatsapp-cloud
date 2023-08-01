@@ -104,12 +104,12 @@ class Puppet(DBPuppet, BasePuppet):
 
     @classmethod
     def _get_displayname(cls, info: FacebookUserData | InstagramUserData) -> str:
-        puppet_displayname = cls.config["bridge.displayname_template"]
-
-        try:
-            variables = {"displayname": f"{info.first_name} {info.last_name}", "userid": info.id}
-        except AttributeError:
-            variables = {"displayname": info.name, "userid": info.id, "username": info.username}
+        variables = {"displayname": f"{info.full_name}", "userid": info.id}
+        if isinstance(info, FacebookUserData):
+            puppet_displayname: str = cls.config["bridge.facebook.displayname_template"]
+        else:
+            puppet_displayname: str = cls.config["bridge.instagram.displayname_template"]
+            variables["username"] = info.username
 
         return puppet_displayname.format(**variables)
 

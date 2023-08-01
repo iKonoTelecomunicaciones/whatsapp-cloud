@@ -27,8 +27,10 @@ class Config(BaseBridgeConfig):
         copy("appservice.community_id")
 
         copy("bridge.username_template")
-        copy("bridge.displayname_template")
-        copy("bridge.room_name_template")
+        copy("bridge.facebook.displayname_template")
+        copy("bridge.facebook.room_name_template")
+        copy("bridge.instagram.displayname_template")
+        copy("bridge.instagram.room_name_template")
         copy("bridge.command_prefix")
 
         copy("bridge.federate_rooms")

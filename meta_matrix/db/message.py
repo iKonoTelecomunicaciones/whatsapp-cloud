@@ -37,6 +37,9 @@ class Message:
             self.created_at,
         )
 
+    # TODO: Implement this property in the methods to which it applies
+    _columns = "event_mxid, room_id, ps_id, sender, meta_message_id, app_page_id, created_at"
+
     async def insert(self) -> None:
         q = """
             INSERT INTO message (event_mxid, room_id, ps_id, sender,
