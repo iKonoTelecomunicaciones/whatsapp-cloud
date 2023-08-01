@@ -79,7 +79,7 @@ bridge:
         room_name_template: "{displayname} (@{username})"
 
     # The prefix for commands. Only required in non-management rooms.
-    command_prefix: "!mt"
+    command_prefix: "!meta"
 
     # Whether or not Matrix m.notice-type messages should be bridged.
     bridge_notices: false
