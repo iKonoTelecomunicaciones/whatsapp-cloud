@@ -215,7 +215,7 @@ class Portal(DBPortal, BasePortal):
                 )
                 await self.cleanup_and_delete()
         else:
-            self.log.debug(f"{user.mxid} left portal to {self.mxid}")
+            self.log.debug(f"{user.mxid} left portal {self.mxid}")
 
     def _get_invite_content(self, double_puppet: Puppet | None) -> dict[str, Any]:
         invite_content = {}
@@ -499,6 +499,10 @@ class Portal(DBPortal, BasePortal):
                 )
             except Exception as error:
                 self.log.error(f"Error sending the message: {error}")
+                error_message: str = error.args[0].get("error", {}).get("message", "")
+                await self.main_intent.send_notice(
+                    self.mxid, f"Error sending content: {error_message}"
+                )
                 return
         # If the message is a media message, we send the url of the media message to the Meta API
         elif message.msgtype in (
