@@ -17,19 +17,21 @@ from mautrix.types import (
     MessageEventContent,
     MessageType,
     PowerLevelStateEventContent,
+    ReactionEventContent,
     RoomID,
     TextMessageEventContent,
     UserID,
 )
 
 from meta.api import MetaClient
-from meta.data import MetaMessageEvent, MetaMessageSender, MetaStatusEvent
+from meta.data import MetaMessageEvent, MetaMessageSender, MetaReactionEvent, MetaStatusEvent
 from meta.types import MetaMessageID, MetaPageID, MetaPsID
 from meta_matrix.formatter.from_matrix import matrix_to_facebook
 
 from .db import Message as DBMessage
 from .db import MetaApplication as DBMetaApplication
 from .db import Portal as DBPortal
+from .db import Reaction as DBReaction
 from .formatter import facebook_reply_to_matrix, facebook_to_matrix
 from .puppet import Puppet
 from .user import User
@@ -386,7 +388,7 @@ class Portal(DBPortal, BasePortal):
                     # Upload the message media to Matrix
                     body = await self.main_intent.upload_media(data=data)
                 except Exception as e:
-                    self.log.exception(f"Message not receive :: error {e}")
+                    self.log.exception(f"Message not receive: error {e}")
                     return
 
                 message_type = (
@@ -456,6 +458,74 @@ class Portal(DBPortal, BasePortal):
                 else:
                     self.log.debug(f"Ignoring the null message")
 
+    async def handle_meta_reaction(
+        self, reaction_event: MetaReactionEvent, sender: UserID
+    ) -> None:
+        """
+        When a user of Meta reaction to a message, this function takes it and sends its to Matrix
+
+        Parameters
+        ----------
+        reaction_event : MetaReactionEvent
+            The class that containt the data of the reaction.
+        """
+        if not self.room_id:
+            return
+
+        async with self._send_lock:
+            msg_id = reaction_event.entry.messaging.reaction.mid
+            msg = await DBMessage.get_by_meta_message_id(meta_message_id=msg_id)
+
+            if msg:
+                if reaction_event.entry.messaging.reaction.action == "unreact":
+                    reaction_to_remove = await DBReaction.get_by_meta_message_id(
+                        msg.meta_message_id, sender
+                    )
+
+                    if reaction_to_remove:
+                        await DBReaction.delete_by_event_mxid(
+                            reaction_to_remove.event_mxid, self.room_id, sender
+                        )
+                        has_been_sent = await self.main_intent.redact(
+                            self.room_id, reaction_to_remove.event_mxid
+                        )
+                    return
+                else:
+                    message_with_reaction = await DBReaction.get_by_meta_message_id(
+                        msg.meta_message_id, sender
+                    )
+
+                    if message_with_reaction:
+                        await DBReaction.delete_by_event_mxid(
+                            message_with_reaction.event_mxid, self.room_id, sender
+                        )
+                        await self.main_intent.redact(
+                            self.room_id, message_with_reaction.event_mxid
+                        )
+
+                    try:
+                        has_been_sent = await self.main_intent.react(
+                            self.room_id,
+                            msg.event_mxid,
+                            reaction_event.entry.messaging.reaction.emoji,
+                        )
+                    except Exception as e:
+                        self.log.exception(f"Error sending reaction: {e}")
+                        await self.main_intent.send_notice(self.room_id, "Error sending reaction")
+                        return
+
+            else:
+                self.log.error(f"Message id not found, mid: {msg_id}")
+                return
+
+            await DBReaction(
+                event_mxid=has_been_sent,
+                room_id=self.room_id,
+                sender=sender,
+                meta_message_id=msg.meta_message_id,
+                reaction=reaction_event.entry.messaging.reaction.emoji,
+            ).insert()
+
     async def handle_matrix_message(
         self,
         sender: "User",
@@ -507,8 +577,16 @@ class Portal(DBPortal, BasePortal):
                     message_type=message.msgtype,
                     aditional_data=aditional_data,
                 )
-            except Exception as error:
+            except FileNotFoundError as error:
                 self.log.error(f"Error sending the message: {error}")
+                error_message = error.args[0].get("error", {}).get("message", "")
+                await self.main_intent.send_notice(
+                    self.room_id, f"This message is sending out of the permitted time"
+                )
+                return
+            except Exception as error:
+                self.log.error(f"Error sending the attachment data: {error}")
+                error_message = error.args[0].get("error", {}).get("message", "")
                 await self.main_intent.send_notice(
                     self.room_id, f"Error sending content: {error_message}"
                 )
@@ -543,6 +621,13 @@ class Portal(DBPortal, BasePortal):
                     aditional_data=aditional_data,
                     url=url,
                 )
+            except FileNotFoundError as error:
+                self.log.error(f"Error sending the message: {error}")
+                error_message = error.args[0].get("error", {}).get("message", "")
+                await self.main_intent.send_notice(
+                    self.room_id, f"This message is sending out of the permitted time"
+                )
+                return
             except Exception as error:
                 self.log.error(f"Error sending the attachment data: {error}")
                 error_message = error.args[0].get("error", {}).get("message", "")
@@ -568,6 +653,94 @@ class Portal(DBPortal, BasePortal):
             meta_message_id=MetaMessageID(response.get("message_id")),
             app_page_id=self.app_page_id,
         ).insert()
+
+    async def handle_matrix_reaction(
+        self,
+        message: DBMessage,
+        user: User,
+        reaction: ReactionEventContent,
+        event_id: EventID,
+    ) -> None:
+        """
+        When a user of Matrix react to a message, this function takes it and sends it to Meta
+
+        Parameters
+        ----------
+
+        message : DBMessage
+            The class that containt the data of the message.
+
+        sender: MetaMessageSender
+            The class that will be used to specify who send the message.
+
+        reaction: ReactionEventContent
+            The class that containt the data of the reaction.
+        """
+        if not message.meta_message_id:
+            self.log.error(f"Message id not found, mid: {message.meta_message_id}")
+            return
+
+        reaction_value = reaction.relates_to.key
+        message_with_reaction = await DBReaction.get_by_meta_message_id(
+            message.meta_message_id, user.mxid
+        )
+
+        if message_with_reaction:
+            await DBReaction.delete_by_event_mxid(
+                message_with_reaction.event_mxid, self.room_id, user.mxid
+            )
+            await self.main_intent.redact(self.room_id, message_with_reaction.event_mxid)
+
+        try:
+            await self.meta_client.send_reaction(
+                message_id=message.meta_message_id,
+                recipient_id=message.ps_id,
+                reaction="love",
+            )
+        except Exception as e:
+            self.log.exception(f"Error sending reaction: {e}")
+            self.main_intent.send_notice("Error sending reaction")
+            return
+
+        await DBReaction(
+            event_mxid=event_id,
+            room_id=self.room_id,
+            sender=user.mxid,
+            meta_message_id=message.meta_message_id,
+            reaction=reaction_value,
+        ).insert()
+
+    async def handle_matrix_unreaction(
+        self,
+        message: DBMessage,
+        user: User,
+    ) -> None:
+        """
+        When a user of Matrix unreact to a message, this function takes it and sends it to Meta
+
+        Parameters
+        ----------
+        message : DBMessage
+            The class that containt the data of the message.
+
+        reaction: ReactionEventContent
+            The class that containt the data of the reaction.
+        """
+        if not message.meta_message_id:
+            return
+
+        try:
+            await self.meta_client.send_reaction(
+                message_id=message.meta_message_id,
+                recipient_id=message.ps_id,
+                reaction="",
+                type_reaction="unreact",
+            )
+        except Exception as e:
+            self.log.exception(f"Error sending reaction: {e}")
+            return
+
+        await DBReaction.delete_by_event_mxid(message.event_mxid, self.room_id, user.mxid)
 
     async def handle_matrix_read_receipt(self, user: User, event_id: EventID):
         await self.meta_client.send_read_receipt(self.ps_id)

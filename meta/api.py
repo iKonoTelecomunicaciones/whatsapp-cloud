@@ -9,7 +9,7 @@ from mautrix.types import MessageType
 from meta_matrix.config import Config
 
 from .data import FacebookUserData, InstagramUserData
-from .types import MetaPsID
+from .types import MetaMessageID, MetaPageID, MetaPsID
 
 
 class MetaClient:
@@ -126,6 +126,35 @@ class MetaClient:
         if response_data.get("error", {}):
             raise FileNotFoundError(response_data)
 
+        return response_data
+
+    async def send_reaction(
+        self,
+        message_id: MetaMessageID,
+        recipient_id: MetaPsID,
+        reaction: str,
+        emoji: Optional[str] = "",
+        type_reaction: Optional[str] = "react",
+    ) -> Dict[str, str]:
+        headers = {"Content-Type": "application/json"}
+        send_message_url = (
+            f"{self.base_url}/{self.version}/me/messages?access_token={self.page_access_token}"
+        )
+        data = {
+            "recipient": {"id": recipient_id},
+            "sender_action": type_reaction,
+            "payload": {"message_id": message_id, "reaction": reaction, "emoji": emoji},
+        }
+
+        try:
+            # Send the message to the Meta API
+            self.log.debug(f"Sending reaction to {send_message_url}")
+            resp = await self.http.post(send_message_url, json=data, headers=headers)
+            self.log.debug(f"Meta response: {resp}")
+        except ClientConnectorError as e:
+            self.log.error(e)
+
+        response_data = json.loads(await resp.text())
         return response_data
 
     async def send_read_receipt(self, recipient_id: MetaPsID) -> None:
