@@ -25,17 +25,19 @@ class User:
             self.notice_room,
         )
 
+    _columns = "mxid, app_page_id, notice_room"
+
     async def insert(self) -> None:
-        q = "INSERT INTO matrix_user (mxid, app_page_id, notice_room) VALUES ($1, $2, $3, $4)"
+        q = f"INSERT INTO matrix_user ({self._columns}) VALUES ($1, $2, $3)"
         await self.db.execute(q, *self._values)
 
     async def update(self) -> None:
-        q = "UPDATE matrix_user SET app_page_id=$1, notice_room=$3 WHERE mxid=$4"
+        q = "UPDATE matrix_user SET app_page_id=$1, notice_room=$2 WHERE mxid=$3"
         await self.db.execute(q, self.app_page_id, self.notice_room, self.mxid)
 
     @classmethod
     async def get_by_mxid(cls, mxid: UserID) -> User | None:
-        q = "SELECT mxid, app_page_id, notice_room FROM matrix_user WHERE mxid=$1"
+        q = f"SELECT {cls._columns} FROM matrix_user WHERE mxid=$1"
         row = await cls.db.fetchrow(q, mxid)
         if not row:
             return None
@@ -43,7 +45,7 @@ class User:
 
     @classmethod
     async def get_by_page_id(cls, app_page_id: str) -> User | None:
-        q = "SELECT mxid, app_page_id, notice_room FROM matrix_user WHERE app_page_id=$1"
+        q = f"SELECT {cls._columns} FROM matrix_user WHERE app_page_id=$1"
         row = await cls.db.fetchrow(q, app_page_id)
         if not row:
             return None
@@ -51,7 +53,7 @@ class User:
 
     @classmethod
     async def get_by_meta_app(cls, meta_app: str) -> User | None:
-        q = "SELECT mxid, app_page_id, notice_room FROM matrix_user WHERE meta_app=$1"
+        q = f"SELECT {cls._columns} FROM matrix_user WHERE meta_app=$1"
         row = await cls.db.fetchrow(q, meta_app)
         if not row:
             return None
@@ -59,6 +61,6 @@ class User:
 
     @classmethod
     async def all_logged_in(cls) -> list[User]:
-        q = "SELECT mxid, app_page_id, notice_room FROM matrix_user WHERE app_page_id IS NOT NULL"
+        q = f"SELECT {cls._columns} FROM matrix_user WHERE app_page_id IS NOT NULL"
         rows = await cls.db.fetch(q)
         return [cls(**row) for row in rows]

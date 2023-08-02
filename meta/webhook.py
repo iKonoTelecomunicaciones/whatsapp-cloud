@@ -58,17 +58,12 @@ class MetaHandler:
 
         meta_page_id = data.get("entry")[0].get("id")
         meta_messaging = data.get("entry")[0].get("messaging")[0]
-        app_origin = data.get("object")
-        meta_apps, ig_apps = await DBMetaApplication.get_all_meta_apps()
-        if not meta_page_id in meta_apps and not meta_page_id in ig_apps:
+        meta_apps = await DBMetaApplication.get_all_meta_apps()
+        if not meta_page_id in meta_apps:
             self.log.warning(
                 f"Ignoring event because the meta_app [{meta_page_id}] is not registered."
             )
             return web.Response(status=406)
-
-        if app_origin == "instagram":
-            ig_app = await DBMetaApplication.get_by_ig_page_id(meta_page_id)
-            data.get("entry")[0]["id"] = ig_app.page_id
 
         if "message" in meta_messaging and not meta_messaging.get("message").get("is_echo"):
             return await self.message_event(MetaMessageEvent.from_dict(data))
@@ -93,10 +88,10 @@ class MetaHandler:
         return web.Response(status=204)
 
     async def status_event(self, status_event: MetaStatusEvent) -> web.Response:
-        """It receives a Gupshup status event, validates it,
+        """It receives a Meta status event, validates it,
         and then passes it to the portal to handle
         """
-        self.log.debug(f"Received Gupshup status event: {status_event}")
+        self.log.debug(f"Received Meta status event: {status_event}")
         sender = status_event.entry.messaging.sender
         portal: Portal = await Portal.get_by_ps_id(
             ps_id=sender.id, app_page_id=status_event.entry.id, create=False

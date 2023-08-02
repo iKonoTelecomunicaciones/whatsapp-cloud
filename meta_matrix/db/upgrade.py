@@ -9,7 +9,7 @@ async def upgrade_v1(conn: Connection) -> None:
     await conn.execute(
         """CREATE TABLE portal (
             ps_id           TEXT PRIMARY KEY,
-            room_id         VARCHAR(255),
+            mxid            VARCHAR(255),
             app_page_id     TEXT,
             relay_user_id   VARCHAR(255),
             encrypted       BOOLEAN DEFAULT false
@@ -49,7 +49,7 @@ async def upgrade_v1(conn: Connection) -> None:
     await conn.execute(
         """CREATE TABLE meta_application (
             page_id             TEXT PRIMARY KEY,
-            ig_page_id          TEXT,
+            outgoing_page_id    TEXT,
             name                VARCHAR(255),
             admin_user          VARCHAR(255),
             page_access_token   TEXT

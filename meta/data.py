@@ -222,6 +222,10 @@ class FacebookUserData(SerializableAttrs):
     profile_pic: str = ib(metadata={"json": "profile_pic"})
     locale: str = ib(metadata={"json": "locale"}, default=None)
 
+    @property
+    def full_name(self):
+        return f"{self.first_name} {self.last_name}".strip()
+
 
 @dataclass
 class InstagramUserData(SerializableAttrs):
@@ -233,3 +237,7 @@ class InstagramUserData(SerializableAttrs):
     follower_count: int = ib(metadata={"json": "follower_count"})
     is_user_follow_business: bool = ib(metadata={"json": "is_user_follow_business"})
     is_business_follow_user: bool = ib(metadata={"json": "is_business_follow_user"})
+
+    @property
+    def full_name(self):
+        return self.name
