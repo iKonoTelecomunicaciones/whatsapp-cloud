@@ -125,7 +125,7 @@ bridge:
     relay:
         # Whether relay mode should be allowed. If allowed, `!mt set-relay` can be used to turn any
         # authenticated user into a relaybot for that chat.
-        enabled: false
+        enabled: true
         # The formats to use when sending messages to Signal via a relay user.
         #
         # Available variables:
@@ -134,7 +134,7 @@ bridge:
         #   $sender_mxid        - The Matrix ID of the sender (e.g. @exampleuser:example.com)
         #   $message            - The message content
         message_formats:
-            m.text: '*$sender_displayname*: $message'
+            m.text: '$sender_displayname: $message'
             m.notice: '$sender_displayname: $message'
             m.file: '$sender_displayname sent a file'
             m.image: '$sender_displayname sent an image'
