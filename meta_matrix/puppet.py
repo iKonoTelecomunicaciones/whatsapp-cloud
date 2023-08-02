@@ -164,7 +164,7 @@ class Puppet(DBPuppet, BasePuppet):
         return ps_id
 
     @classmethod
-    async def get_by_mxid(cls, mxid: UserID, create: bool = True) -> Optional["Puppet"]:
+    async def get_by_mxid(cls, mxid: UserID, *, create: bool = True) -> Optional["Puppet"]:
         ps_id = cls.get_ps_id_from_mxid(mxid)
         if ps_id:
             return await cls.get_by_ps_id(ps_id, create=create)
