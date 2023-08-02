@@ -209,7 +209,7 @@ class Portal(DBPortal, BasePortal):
     async def handle_matrix_leave(self, user: User) -> None:
         if self.is_direct:
             self.log.info(f"{user.mxid} left private chat portal with {self.mxid}")
-            if Puppet.get_by_mxid(user.mxid):
+            if await Puppet.get_by_mxid(user.mxid, create=False):
                 self.log.info(
                     f"{user.mxid} was the recipient of this portal. Cleaning up and deleting..."
                 )
