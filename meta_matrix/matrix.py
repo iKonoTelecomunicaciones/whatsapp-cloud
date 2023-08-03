@@ -148,7 +148,7 @@ class MatrixHandler(BaseMatrixHandler):
         self.log.debug(f"Received Matrix event {event_id} from {user_id} in {room_id}")
         self.log.trace("Event %s content: %s", event_id, reaction)
         message_id = reaction.relates_to.event_id
-
+        self.log.error(f"userid: {self.config['bridge.username_template']}")
         user: User = await User.get_by_mxid(user_id)
         if not user:
             return

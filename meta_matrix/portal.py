@@ -459,7 +459,7 @@ class Portal(DBPortal, BasePortal):
         reaction_event : MetaReactionEvent
             The class that containt the data of the reaction.
         """
-        if not self.room_id:
+        if not self.mxid:
             return
 
         async with self._send_lock:
@@ -474,10 +474,10 @@ class Portal(DBPortal, BasePortal):
 
                     if reaction_to_remove:
                         await DBReaction.delete_by_event_mxid(
-                            reaction_to_remove.event_mxid, self.room_id, sender
+                            reaction_to_remove.event_mxid, self.mxid, sender
                         )
                         has_been_sent = await self.main_intent.redact(
-                            self.room_id, reaction_to_remove.event_mxid
+                            self.mxid, reaction_to_remove.event_mxid
                         )
                     return
                 else:
@@ -487,21 +487,19 @@ class Portal(DBPortal, BasePortal):
 
                     if message_with_reaction:
                         await DBReaction.delete_by_event_mxid(
-                            message_with_reaction.event_mxid, self.room_id, sender
+                            message_with_reaction.event_mxid, self.mxid, sender
                         )
-                        await self.main_intent.redact(
-                            self.room_id, message_with_reaction.event_mxid
-                        )
+                        await self.main_intent.redact(self.mxid, message_with_reaction.event_mxid)
 
                     try:
                         has_been_sent = await self.main_intent.react(
-                            self.room_id,
+                            self.mxid,
                             msg.event_mxid,
                             reaction_event.entry.messaging.reaction.emoji,
                         )
                     except Exception as e:
                         self.log.exception(f"Error sending reaction: {e}")
-                        await self.main_intent.send_notice(self.room_id, "Error sending reaction")
+                        await self.main_intent.send_notice(self.mxid, "Error sending reaction")
                         return
 
             else:
@@ -510,7 +508,7 @@ class Portal(DBPortal, BasePortal):
 
             await DBReaction(
                 event_mxid=has_been_sent,
-                room_id=self.room_id,
+                room_id=self.mxid,
                 sender=sender,
                 meta_message_id=msg.meta_message_id,
                 reaction=reaction_event.entry.messaging.reaction.emoji,
@@ -608,7 +606,7 @@ class Portal(DBPortal, BasePortal):
                 self.log.error(f"Error sending the message: {error}")
                 error_message = error.args[0].get("error", {}).get("message", "")
                 await self.main_intent.send_notice(
-                    self.room_id, f"This message is sending out of the permitted time"
+                    self.mxid, f"This message is sending out of the permitted time"
                 )
                 return
             except Exception as error:
@@ -670,9 +668,9 @@ class Portal(DBPortal, BasePortal):
 
         if message_with_reaction:
             await DBReaction.delete_by_event_mxid(
-                message_with_reaction.event_mxid, self.room_id, user.mxid
+                message_with_reaction.event_mxid, self.mxid, user.mxid
             )
-            await self.main_intent.redact(self.room_id, message_with_reaction.event_mxid)
+            await self.main_intent.redact(self.mxid, message_with_reaction.event_mxid)
 
         try:
             await self.meta_client.send_reaction(
@@ -687,7 +685,7 @@ class Portal(DBPortal, BasePortal):
 
         await DBReaction(
             event_mxid=event_id,
-            room_id=self.room_id,
+            room_id=self.mxid,
             sender=user.mxid,
             meta_message_id=message.meta_message_id,
             reaction=reaction_value,
@@ -723,7 +721,7 @@ class Portal(DBPortal, BasePortal):
             self.log.exception(f"Error sending reaction: {e}")
             return
 
-        await DBReaction.delete_by_event_mxid(message.event_mxid, self.room_id, user.mxid)
+        await DBReaction.delete_by_event_mxid(message.event_mxid, self.mxid, user.mxid)
 
     async def handle_matrix_read_receipt(self, user: User, event_id: EventID):
         await self.meta_client.send_read_receipt(self.ps_id)
