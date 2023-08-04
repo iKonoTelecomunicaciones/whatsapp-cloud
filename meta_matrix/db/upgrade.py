@@ -94,10 +94,6 @@ async def upgrade_v1(conn: Connection) -> None:
     )
 
     await conn.execute(
-        """ALTER TABLE message ADD CONSTRAINT FK_message_meta_application_app_page_id
-        FOREIGN KEY (app_page_id) references meta_application (page_id)"""
-    )
-    await conn.execute(
         """ALTER TABLE reaction ADD CONSTRAINT FK_message_meta_message_id
         FOREIGN KEY (meta_message_id) references message (meta_message_id)"""
     )

@@ -38,9 +38,11 @@ class Reaction:
             self.created_at,
         )
 
+    _columns = "event_mxid, room_id, sender, meta_message_id, reaction, created_at"
+
     async def insert(self) -> None:
-        q = """
-            INSERT INTO reaction (event_mxid, room_id, sender, meta_message_id, reaction, created_at)
+        q = f"""
+            INSERT INTO reaction ({self._columns})
             VALUES ($1, $2, $3, $4, $5, $6)
         """
         await self.db.execute(q, *self._values)
@@ -57,8 +59,8 @@ class Reaction:
     async def get_by_meta_message_id(
         cls, meta_message_id: MetaMessageID, sender: UserID
     ) -> Optional["Reaction"]:
-        q = """
-            SELECT event_mxid, room_id, sender, meta_message_id, reaction, created_at
+        q = f"""
+            SELECT {cls._columns}
             FROM reaction WHERE meta_message_id=$1 AND sender=$2
         """
         row = await cls.db.fetchrow(q, meta_message_id, sender)
@@ -68,8 +70,8 @@ class Reaction:
 
     @classmethod
     async def get_by_event_mxid(cls, event_mxid: EventID, room_id: RoomID) -> Optional["Reaction"]:
-        q = """
-            SELECT event_mxid, room_id, sender, meta_message_id, reaction, created_at
+        q = f"""
+            SELECT {cls._columns}
             FROM reaction WHERE event_mxid=$1 AND room_id=$2
         """
         row = await cls.db.fetchrow(q, event_mxid, room_id)
@@ -79,8 +81,8 @@ class Reaction:
 
     @classmethod
     async def get_last_reaction(cls, room_id: RoomID) -> "Reaction":
-        q = """
-            SELECT event_mxid, room_id, sender, meta_message_id, reaction, created_at
+        q = f"""
+            SELECT {cls._columns}
             FROM reaction WHERE room_id=$1 ORDER BY created_at DESC LIMIT 1
         """
         row = await cls.db.fetchrow(q, room_id)

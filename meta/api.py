@@ -149,12 +149,13 @@ class MetaClient:
         try:
             # Send the message to the Meta API
             self.log.debug(f"Sending reaction to {send_message_url}")
-            resp = await self.http.post(send_message_url, json=data, headers=headers)
-            self.log.debug(f"Meta response: {resp}")
+            response = await self.http.post(send_message_url, json=data, headers=headers)
+            self.log.debug(f"Meta response: {response}")
         except ClientConnectorError as e:
             self.log.error(e)
+            return
 
-        response_data = json.loads(await resp.text())
+        response_data = response.json()
         return response_data
 
     async def send_read_receipt(self, recipient_id: MetaPsID) -> None:

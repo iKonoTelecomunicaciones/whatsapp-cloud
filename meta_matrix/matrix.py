@@ -47,7 +47,8 @@ class MatrixHandler(BaseMatrixHandler):
     async def handle_event(self, evt: Event) -> None:
         if evt.type == EventType.ROOM_REDACTION:
             evt: RedactionEvent
-            await self.handle_unreaction(evt.room_id, evt.sender, evt.event_id)
+            self.log.error(f"Redaction: { evt.redacts}")
+            await self.handle_unreaction(evt.room_id, evt.sender, evt.event_id, evt.redacts)
 
         elif evt.type == EventType.REACTION:
             evt: ReactionEvent
@@ -93,7 +94,9 @@ class MatrixHandler(BaseMatrixHandler):
     ) -> None:
         await portal.handle_matrix_read_receipt(user, event_id)
 
-    async def handle_unreaction(self, room_id: RoomID, user_id: UserID, event_id: EventID) -> None:
+    async def handle_unreaction(
+        self, room_id: RoomID, user_id: UserID, event_id: EventID, react_event_id: EventID
+    ) -> None:
         """
         When a user of Matrix unreact to a message, this function takes the event and obtains with it
         the message to sends the unreact event to Meta.
@@ -108,6 +111,9 @@ class MatrixHandler(BaseMatrixHandler):
 
         reaction: ReactionEventContent
             The class that containt the data of the reaction.
+
+        react_event_id: EventID
+            The event_id of the message that was reacted
         """
         self.log.debug(f"Received Matrix event {event_id} from {user_id} in {room_id}")
         self.log.trace("Event %s content: %s", event_id)
@@ -119,9 +125,10 @@ class MatrixHandler(BaseMatrixHandler):
         if not portal:
             return
 
-        last_reaction = await Reaction.get_last_reaction(room_id)
-        message_id = last_reaction.meta_message_id
+        reacted_message = await Reaction.get_by_event_mxid(react_event_id, room_id)
+        message_id = reacted_message.meta_message_id
         message = await Message.get_by_meta_message_id(message_id)
+
         if not message:
             return
 
@@ -148,7 +155,6 @@ class MatrixHandler(BaseMatrixHandler):
         self.log.debug(f"Received Matrix event {event_id} from {user_id} in {room_id}")
         self.log.trace("Event %s content: %s", event_id, reaction)
         message_id = reaction.relates_to.event_id
-        self.log.error(f"userid: {self.config['bridge.username_template']}")
         user: User = await User.get_by_mxid(user_id)
         if not user:
             return
@@ -162,6 +168,7 @@ class MatrixHandler(BaseMatrixHandler):
         if not message:
             self.log.error(f"No message found for {message_id}")
             return
+        self.log.error(f"Mix: {message.event_mxid}")
 
         return await portal.handle_matrix_reaction(message, user, reaction, event_id)
 
