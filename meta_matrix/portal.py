@@ -4,6 +4,7 @@ from asyncio import Lock
 from string import Template
 from typing import TYPE_CHECKING, Any, Dict, List, Optional, Union, cast
 
+from markdown import markdown
 from mautrix.appservice import AppService, IntentAPI
 from mautrix.bridge import BasePortal
 from mautrix.errors import MatrixError
@@ -23,6 +24,7 @@ from mautrix.types import (
 
 from meta.api import MetaClient
 from meta.data import MetaMessageEvent, MetaMessageSender, MetaStatusEvent
+from meta.interactive_message import ButtonTemplate, GenericTemplate, QuickReply
 from meta.types import MetaMessageID, MetaPageID, MetaPsID
 from meta_matrix.formatter.from_matrix import matrix_to_facebook
 
@@ -314,8 +316,13 @@ class Portal(DBPortal, BasePortal):
 
             # Validate if the message is a text message, if is it, the message is sent to the Meta API
             if not meta_message_type:
-                message_text = message.entry.messaging.message.text
+                if not message.entry.messaging.message.quick_reply:
+                    message_text = message.entry.messaging.message.text
+                else:
+                    message_text = message.entry.messaging.message.quick_reply.payload
+
                 has_been_sent = await self.send_text_message(message_text)
+                meta_message_id = message.entry.messaging.message.mid
             else:
                 message_type = ""
                 # Obtain the data of the message media
@@ -356,6 +363,7 @@ class Portal(DBPortal, BasePortal):
 
                 # Send the message to Matrix
                 has_been_sent = await self.main_intent.send_message(self.mxid, content_attachment)
+                meta_message_id = message.entry.messaging.message.mid
 
         elif message.entry.messaging.message and message.entry.messaging.message.reply_to:
             mgs_id = message.entry.messaging.message.reply_to.mid
@@ -366,7 +374,6 @@ class Portal(DBPortal, BasePortal):
             if not meta_message_type:
                 body = message.entry.messaging.message.text
                 message_type = MessageType.TEXT
-
             else:
                 # Obtain the data of the message media
                 response = await self.az.http_session.get(
@@ -416,6 +423,11 @@ class Portal(DBPortal, BasePortal):
 
                 # Send the message to Matrix
                 has_been_sent = await self.main_intent.send_message(self.mxid, content_attachment)
+                meta_message_id = message.entry.messaging.message.mid
+        elif message.entry.messaging.postback:
+            message_text = message.entry.messaging.postback.payload
+            meta_message_id = message.entry.messaging.postback.mid
+            has_been_sent = await self.send_text_message(message_text)
 
         puppet: Puppet = await self.get_dm_puppet()
         msg = DBMessage(
@@ -423,7 +435,7 @@ class Portal(DBPortal, BasePortal):
             room_id=self.mxid,
             ps_id=self.ps_id,
             sender=puppet.mxid,
-            meta_message_id=message.entry.messaging.message.mid,
+            meta_message_id=meta_message_id,
             app_page_id=message.entry.id,
         )
         await msg.insert()
@@ -467,6 +479,11 @@ class Portal(DBPortal, BasePortal):
             The id of the event.
 
         """
+
+        if message.msgtype == "m.interactive_message":
+            await self.handle_interactive_message(sender, message, event_id)
+            return
+
         orig_sender = sender
         sender, is_relay = await self.get_relay_sender(sender, f"message {event_id}")
         if is_relay:
@@ -612,3 +629,53 @@ class Portal(DBPortal, BasePortal):
             return portal
 
         return None
+
+    async def handle_interactive_message(
+        self, sender: User, message: MessageEventContent, event_id: EventID
+    ) -> None:
+        interactive_message_type = message["interactive_message"]["type"]
+        if interactive_message_type == "quick_reply":
+            interactive_message = QuickReply.from_dict(message["interactive_message"])
+        elif interactive_message_type == "template":
+            template_type = message["interactive_message"].get("payload").get("template_type")
+
+            if template_type == "generic":
+                interactive_message = GenericTemplate.from_dict(message["interactive_message"])
+            elif template_type == "button":
+                interactive_message = ButtonTemplate.from_dict(message["interactive_message"])
+
+        msg = TextMessageEventContent(
+            body=interactive_message.message,
+            msgtype=MessageType.TEXT,
+            formatted_body=markdown(interactive_message.message.replace("\n", "<br>")),
+            format=Format.HTML,
+        )
+        msg.trim_reply_fallback()
+
+        # Send message in matrix format
+        await self.az.intent.send_message(self.mxid, msg)
+
+        try:
+            # Send message in meta format
+            response = await self.meta_client.send_message(
+                message="",
+                recipient_id=self.ps_id,
+                message_type="m.interactive_message",
+                aditional_data=interactive_message.serialize(),
+            )
+        except Exception:
+            error_message = "Interactive message type not supported"
+            self.log.error(error_message)
+            await self.main_intent.send_notice(
+                self.mxid, f"Error sending content: {error_message}"
+            )
+            return
+
+        await DBMessage(
+            event_mxid=event_id,
+            room_id=self.mxid,
+            ps_id=self.ps_id,
+            sender=sender.mxid,
+            meta_message_id=MetaMessageID(response.get("message_id")),
+            app_page_id=self.app_page_id,
+        ).insert()
