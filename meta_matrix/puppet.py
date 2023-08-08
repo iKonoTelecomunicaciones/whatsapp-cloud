@@ -22,6 +22,7 @@ if TYPE_CHECKING:
 class Puppet(DBPuppet, BasePuppet):
     by_ps_id: Dict[MetaPsID, "Puppet"] = {}
     by_custom_mxid: dict[UserID, Puppet] = {}
+    by_meta_origin: dict[str, Puppet] = {}
     hs_domain: str
     mxid_template: SimpleTemplate[str]
 
@@ -34,6 +35,7 @@ class Puppet(DBPuppet, BasePuppet):
         self,
         ps_id: MetaPsID,
         app_page_id: MetaPageID,
+        meta_origin: str = None,
         display_name: str | None = None,
         is_registered: bool = False,
         custom_mxid: UserID | None = None,
@@ -54,7 +56,7 @@ class Puppet(DBPuppet, BasePuppet):
 
         self.log = self.log.getChild(self.ps_id)
 
-        self.default_mxid = self.get_mxid_from_ps_id(self.ps_id)
+        self.default_mxid = self.get_mxid_from_ps_id(self.ps_id, meta_origin)
         self.custom_mxid = self.default_mxid
         self.default_mxid_intent = self.az.intent.user(self.default_mxid)
 
@@ -127,8 +129,9 @@ class Puppet(DBPuppet, BasePuppet):
         return False
 
     @classmethod
-    def get_mxid_from_ps_id(cls, ps_id: MetaPsID) -> UserID:
-        return UserID(cls.mxid_template.format_full(ps_id))
+    def get_mxid_from_ps_id(cls, ps_id: MetaPsID, meta_origin: str = "") -> UserID:
+        custom_mxid = f"{meta_origin}_{ps_id}"
+        return UserID(cls.mxid_template.format_full(custom_mxid))
 
     async def get_displayname(self) -> str:
         return await self.intent.get_displayname(self.mxid)
@@ -136,7 +139,12 @@ class Puppet(DBPuppet, BasePuppet):
     @classmethod
     @async_getter_lock
     async def get_by_ps_id(
-        cls, ps_id: MetaPsID, *, app_page_id: MetaPageID = None, create: bool = True
+        cls,
+        ps_id: MetaPsID,
+        *,
+        app_page_id: MetaPageID = None,
+        meta_origin: str = None,
+        create: bool = True,
     ) -> Optional["Puppet"]:
         try:
             return cls.by_ps_id[ps_id]
@@ -149,7 +157,7 @@ class Puppet(DBPuppet, BasePuppet):
             return puppet
 
         if create:
-            puppet = cls(ps_id, app_page_id)
+            puppet = cls(ps_id=ps_id, app_page_id=None, meta_origin=meta_origin)
             await puppet.insert()
             puppet._add_to_cache()
             return puppet
@@ -158,7 +166,11 @@ class Puppet(DBPuppet, BasePuppet):
 
     @classmethod
     def get_ps_id_from_mxid(cls, mxid: UserID) -> MetaPsID | None:
-        ps_id = cls.mxid_template.parse(mxid)
+        ps_id = None
+        origin_with_psid = cls.mxid_template.parse(mxid)
+        if origin_with_psid:
+            split_psid = origin_with_psid.split("_")
+            ps_id = split_psid[1]
         if not ps_id:
             return None
         return ps_id
@@ -188,10 +200,6 @@ class Puppet(DBPuppet, BasePuppet):
     @classmethod
     def get_id_from_mxid(cls, mxid: UserID) -> int | None:
         return cls.mxid_template.parse(mxid)
-
-    @classmethod
-    def get_mxid_from_ps_id(cls, ps_id: str) -> UserID:
-        return UserID(cls.mxid_template.format_full(ps_id))
 
     @classmethod
     async def all_with_custom_mxid(cls) -> AsyncGenerator["Puppet", None]:

@@ -65,6 +65,7 @@ class Portal(DBPortal, BasePortal):
         ps_id: str,
         app_page_id: str,
         mxid: Optional[RoomID] = None,
+        meta_origin: str = None,
         relay_user_id: UserID | None = None,
     ) -> None:
         super().__init__(ps_id, app_page_id, mxid, relay_user_id)
@@ -76,6 +77,7 @@ class Portal(DBPortal, BasePortal):
         self._relay_user = None
         self.error_codes = self.config["meta.error_codes"]
         self.homeserver_address = self.config["homeserver.public_address"]
+        self.meta_origin = meta_origin
 
     @property
     def main_intent(self) -> IntentAPI:
@@ -278,7 +280,9 @@ class Portal(DBPortal, BasePortal):
     async def get_dm_puppet(self) -> Puppet | None:
         if not self.is_direct:
             return None
-        return await Puppet.get_by_ps_id(self.ps_id, app_page_id=self.app_page_id)
+        return await Puppet.get_by_ps_id(
+            self.ps_id, app_page_id=self.app_page_id, meta_origin=self.meta_origin
+        )
 
     async def save(self) -> None:
         await self.update()
@@ -593,7 +597,12 @@ class Portal(DBPortal, BasePortal):
 
     @classmethod
     async def get_by_ps_id(
-        cls, ps_id: MetaPsID, *, app_page_id: MetaPageID, create: bool = True
+        cls,
+        ps_id: MetaPsID,
+        *,
+        app_page_id: MetaPageID,
+        meta_origin: str = None,
+        create: bool = True,
     ) -> Optional["Portal"]:
         try:
             return cls.by_ps_id[ps_id]
@@ -606,7 +615,7 @@ class Portal(DBPortal, BasePortal):
             return portal
 
         if create:
-            portal = cls(ps_id, app_page_id)
+            portal = cls(ps_id=ps_id, app_page_id=app_page_id, meta_origin=meta_origin)
             await portal.insert()
             await portal.postinit()
             return portal
