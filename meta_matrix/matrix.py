@@ -46,12 +46,9 @@ class MatrixHandler(BaseMatrixHandler):
 
     async def handle_event(self, evt: Event) -> None:
         if evt.type == EventType.ROOM_REDACTION:
-            evt: RedactionEvent
-            self.log.error(f"Redaction: { evt.redacts}")
             await self.handle_unreaction(evt.room_id, evt.sender, evt.event_id, evt.redacts)
 
         elif evt.type == EventType.REACTION:
-            evt: ReactionEvent
             await self.handle_reaction(evt.room_id, evt.sender, evt.content, evt.event_id)
 
     async def handle_invite(
@@ -126,6 +123,10 @@ class MatrixHandler(BaseMatrixHandler):
             return
 
         reacted_message = await Reaction.get_by_event_mxid(react_event_id, room_id)
+        if not reacted_message:
+            self.log.error(f"No message found for {react_event_id}")
+            return
+
         message_id = reacted_message.meta_message_id
         message = await Message.get_by_meta_message_id(message_id)
 
@@ -168,7 +169,6 @@ class MatrixHandler(BaseMatrixHandler):
         if not message:
             self.log.error(f"No message found for {message_id}")
             return
-        self.log.error(f"Mix: {message.event_mxid}")
 
         return await portal.handle_matrix_reaction(message, user, reaction, event_id)
 
