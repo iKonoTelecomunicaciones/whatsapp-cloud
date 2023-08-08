@@ -80,7 +80,10 @@ class MetaHandler:
         self.log.debug(f"Received Meta message event: {data}")
         sender = data.entry.messaging.sender
         page_id = data.entry.id
-        meta_origin = data.object
+        if data.object == "page":
+            meta_origin = "fb"
+        elif data.object == "instagram":
+            meta_origin = "ig"
         user: User = await User.get_by_page_id(page_id)
         portal: Portal = await Portal.get_by_ps_id(
             sender.id, app_page_id=page_id, meta_origin=meta_origin
