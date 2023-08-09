@@ -8,7 +8,7 @@ from meta_matrix.db import MetaApplication as DBMetaApplication
 from meta_matrix.portal import Portal
 from meta_matrix.user import User
 
-from .data import MetaMessageEvent, MetaStatusEvent
+from .data import MetaMessageEvent, MetaReactionEvent, MetaStatusEvent
 
 
 class MetaHandler:
@@ -69,6 +69,8 @@ class MetaHandler:
             return await self.message_event(MetaMessageEvent.from_dict(data))
         elif "delivery" in meta_messaging or "read" in meta_messaging:
             return await self.status_event(MetaStatusEvent.from_dict(data))
+        elif "reaction" in meta_messaging:
+            return await self.reaction_event(MetaReactionEvent.from_dict(data))
         else:
             self.log.debug(f"Integration type not supported.")
             return web.Response(status=406)
@@ -95,4 +97,16 @@ class MetaHandler:
             ps_id=sender.id, app_page_id=status_event.entry.id, create=False
         )
         await portal.handle_meta_status(status_event)
+        return web.Response(status=204)
+
+    async def reaction_event(self, reaction_event: MetaReactionEvent) -> web.Response:
+        """It receives a Meta reaction event, validates it,
+        and then passes it to the portal to handle
+        """
+        self.log.debug(f"Received Meta reaction event: {reaction_event}")
+        sender = reaction_event.entry.messaging.sender.id
+        portal: Portal = await Portal.get_by_ps_id(
+            ps_id=sender, app_page_id=reaction_event.entry.id, create=False
+        )
+        await portal.handle_meta_reaction(reaction_event, sender)
         return web.Response(status=204)

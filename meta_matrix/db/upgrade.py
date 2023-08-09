@@ -55,6 +55,17 @@ async def upgrade_v1(conn: Connection) -> None:
             page_access_token   TEXT
         )"""
     )
+    await conn.execute(
+        """CREATE TABLE reaction (
+            event_mxid          VARCHAR(255) PRIMARY KEY,
+            room_id             VARCHAR(255) NOT NULL,
+            sender              VARCHAR(255) NOT NULL,
+            meta_message_id     TEXT NOT NULL,
+            reaction            VARCHAR(255),
+            created_at          TIMESTAMP WITH TIME ZONE NOT NULL,
+            UNIQUE (event_mxid, room_id)
+        )"""
+    )
 
     # The page_id of meta applications are unique to your platform.
     await conn.execute(
@@ -80,4 +91,9 @@ async def upgrade_v1(conn: Connection) -> None:
     await conn.execute(
         """ALTER TABLE message ADD CONSTRAINT FK_message_portal_ps_id
         FOREIGN KEY (ps_id) references portal (ps_id)"""
+    )
+
+    await conn.execute(
+        """ALTER TABLE reaction ADD CONSTRAINT FK_message_meta_message_id
+        FOREIGN KEY (meta_message_id) references message (meta_message_id)"""
     )
