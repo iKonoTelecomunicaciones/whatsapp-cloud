@@ -170,7 +170,9 @@ class Puppet(DBPuppet, BasePuppet):
         origin_with_psid = cls.mxid_template.parse(mxid)
         if origin_with_psid:
             split_psid = origin_with_psid.split("_")
-            ps_id = split_psid[1]
+            if len(split_psid) > 1:
+                ps_id = split_psid[1]
+
         if not ps_id:
             return None
         return ps_id

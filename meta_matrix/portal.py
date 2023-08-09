@@ -193,7 +193,7 @@ class Portal(DBPortal, BasePortal):
         puppet: Puppet = await Puppet.get_by_ps_id(self.ps_id, app_page_id=self.app_page_id)
         puppet.display_name = f"User {self.ps_id}"
         await self.main_intent.invite_user(
-            self.mxid, puppet.mxid, extra_content=self._get_invite_content(puppet)
+            self.mxid, puppet.custom_mxid, extra_content=self._get_invite_content(puppet)
         )
         if puppet:
             try:
