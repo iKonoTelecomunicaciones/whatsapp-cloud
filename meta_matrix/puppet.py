@@ -55,9 +55,11 @@ class Puppet(DBPuppet, BasePuppet):
         )
 
         self.log = self.log.getChild(self.ps_id)
-
-        self.default_mxid = self.get_mxid_from_ps_id(self.ps_id, meta_origin)
-        self.custom_mxid = self.default_mxid
+        if meta_origin:
+            self.default_mxid = self.get_mxid_from_ps_id(self.ps_id, meta_origin)
+            self.custom_mxid = self.default_mxid
+        else:
+            self.default_mxid = self.custom_mxid
         self.default_mxid_intent = self.az.intent.user(self.default_mxid)
 
         self.intent = self._fresh_intent()

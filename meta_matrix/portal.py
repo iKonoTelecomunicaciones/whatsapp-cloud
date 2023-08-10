@@ -131,6 +131,7 @@ class Portal(DBPortal, BasePortal):
                 )
             except Exception:
                 self.log.exception("Failed to create portal")
+                return None
 
     async def _create_matrix_room(
         self, source: User, sender: MetaMessageSender, app_origin: str

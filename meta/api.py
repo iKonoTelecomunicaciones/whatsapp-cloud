@@ -119,6 +119,7 @@ class MetaClient:
             resp = await self.http.post(send_message_url, json=data, headers=headers)
         except ClientConnectorError as e:
             self.log.error(e)
+            return
 
         response_data = json.loads(await resp.text())
 
