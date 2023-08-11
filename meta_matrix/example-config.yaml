@@ -54,7 +54,7 @@ appservice:
 bridge:
     # Localpart template of MXIDs for remote users.
     # {userid} is replaced with the phone number of the user (plain/E.164 international format).
-    username_template: "meta_{userid}"
+    username_template: "mt{userid}"
 
     facebook:
         # Displayname template for remote users.

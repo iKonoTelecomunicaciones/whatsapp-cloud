@@ -22,7 +22,6 @@ if TYPE_CHECKING:
 class Puppet(DBPuppet, BasePuppet):
     by_ps_id: Dict[MetaPsID, "Puppet"] = {}
     by_custom_mxid: dict[UserID, Puppet] = {}
-    by_meta_origin: dict[str, Puppet] = {}
     hs_domain: str
     mxid_template: SimpleTemplate[str]
 
