@@ -159,7 +159,7 @@ class Puppet(DBPuppet, BasePuppet):
             return puppet
 
         if create:
-            puppet = cls(ps_id=ps_id, app_page_id=None, meta_origin=meta_origin)
+            puppet = cls(ps_id=ps_id, app_page_id=app_page_id, meta_origin=meta_origin)
             await puppet.insert()
             puppet._add_to_cache()
             return puppet
