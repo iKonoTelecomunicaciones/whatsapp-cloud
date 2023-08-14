@@ -105,6 +105,16 @@ class MetaReadData(SerializableAttrs):
     mid: MetaMessageID = ib(metadata={"json": "mid"}, default=None)
 
 
+# This class is for the reaction event, this specifies the message id, the emoji and the reaction
+# name
+@dataclass
+class MetaReaction(SerializableAttrs):
+    action: str = ib(metadata={"json": "action"}, default=None)
+    emoji: str = ib(metadata={"json": "emoji"}, default=None)
+    reaction: str = ib(metadata={"json": "reaction"}, default=None)
+    mid: MetaMessageID = ib(metadata={"json": "mid"}, default=None)
+
+
 @dataclass
 class MetaPostbackData(SerializableAttrs):
     title: str = ib(metadata={"json": "title"}, default=None)
@@ -121,6 +131,7 @@ class MetaMessaging(SerializableAttrs):
     delivery: MetaDeliveryData = ib(metadata={"json": "delivery"}, default={})
     read: MetaReadData = ib(metadata={"json": "read"}, default={})
     postback: MetaPostbackData = ib(metadata={"json": "postback"}, default={})
+    reaction: MetaReaction = ib(metadata={"json": "reaction"}, default={})
 
     @classmethod
     def from_dict(cls, data: dict):
@@ -128,6 +139,7 @@ class MetaMessaging(SerializableAttrs):
         delivery = None
         read = None
         postback = None
+        reaction = None
 
         if data.get("message"):
             message = MetaMessageData.from_dict(data.get("message", {}))
@@ -137,6 +149,9 @@ class MetaMessaging(SerializableAttrs):
             read = MetaReadData(**data.get("read", {}))
         elif data.get("postback"):
             postback = MetaPostbackData(**data.get("postback", {}))
+        elif data.get("reaction"):
+            reaction = MetaReaction(**data.get("reaction", {}))
+
 
         return cls(
             sender=MetaMessageSender(**data.get("sender")),
@@ -146,6 +161,7 @@ class MetaMessaging(SerializableAttrs):
             delivery=delivery,
             read=read,
             postback=postback,
+            reaction=reaction,
         )
 
 
@@ -171,6 +187,24 @@ class MetaEventEntry(SerializableAttrs):
 
 @dataclass
 class MetaMessageEvent(SerializableAttrs):
+    object: str = ib(metadata={"json": "object"})
+    entry: MetaEventEntry = ib(metadata={"json": "entry"}, default={})
+
+    @classmethod
+    def from_dict(cls, data: dict):
+        try:
+            entry_obj = data.get("entry", [])[0]
+        except IndexError:
+            entry_obj = {}
+
+        return cls(
+            object=data.get("object"),
+            entry=MetaEventEntry.from_dict(entry_obj),
+        )
+
+
+@dataclass
+class MetaReactionEvent(SerializableAttrs):
     object: str = ib(metadata={"json": "object"})
     entry: MetaEventEntry = ib(metadata={"json": "entry"}, default={})
 

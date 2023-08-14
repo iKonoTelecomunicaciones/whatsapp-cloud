@@ -4,13 +4,14 @@ from .message import Message
 from .meta_application import MetaApplication
 from .portal import Portal
 from .puppet import Puppet
+from .reaction import Reaction
 from .upgrade import upgrade_table
 from .user import User
 
 
 def init(db: Database) -> None:
-    for table in (Puppet, Portal, User, Message, MetaApplication):
+    for table in (Puppet, Portal, User, Message, MetaApplication, Reaction):
         table.db = db
 
 
-__all__ = ["upgrade_table", "Puppet", "Portal", "Message", "MetaApplication", "init"]
+__all__ = ["upgrade_table", "Puppet", "Portal", "Message", "Reaction", "MetaApplication", "init"]
