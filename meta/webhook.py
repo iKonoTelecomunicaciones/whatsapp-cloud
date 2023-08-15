@@ -65,7 +65,11 @@ class MetaHandler:
             )
             return web.Response(status=406)
 
-        if "message" in meta_messaging and not meta_messaging.get("message").get("is_echo"):
+        if (
+            "postback" in meta_messaging
+            or "message" in meta_messaging
+            and not meta_messaging.get("message").get("is_echo")
+        ):
             return await self.message_event(MetaMessageEvent.from_dict(data))
         elif "delivery" in meta_messaging or "read" in meta_messaging:
             return await self.status_event(MetaStatusEvent.from_dict(data))

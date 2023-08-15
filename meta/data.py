@@ -49,6 +49,11 @@ class MetaReplyTo(SerializableAttrs):
     mid: MetaMessageID = ib(metadata={"json": "mid"}, default=None)
 
 
+@dataclass
+class MetaQuickReply(SerializableAttrs):
+    payload: str = ib(metadata={"json": "payload"}, default=None)
+
+
 # This class contains the data of the message, like the type of message (text or media) and the
 # reply text if it is present.
 @dataclass
@@ -57,12 +62,18 @@ class MetaMessageData(SerializableAttrs):
     text: str = ib(metadata={"json": "text"})
     attachments: MetaAttachment = ib(metadata={"json": "attachments"}, default={})
     reply_to: MetaReplyTo = ib(metadata={"json": "reply_to"}, default=None)
+    quick_reply: MetaQuickReply = ib(metadata={"json": "quick_reply"}, default=None)
 
     @classmethod
     def from_dict(cls, data: dict):
         reply_to = None
+        attachments = None
+        quick_reply = None
+
         if data.get("reply_to"):
             reply_to = MetaReplyTo(**data.get("reply_to", {}))
+        elif data.get("quick_reply"):
+            quick_reply = MetaQuickReply(**data.get("quick_reply", {}))
 
         try:
             attachments = data.get("attachments", [])[0]
@@ -74,6 +85,7 @@ class MetaMessageData(SerializableAttrs):
             text=data.get("text"),
             attachments=MetaAttachment.from_dict(attachments),
             reply_to=reply_to,
+            quick_reply=quick_reply,
         )
 
 
@@ -104,6 +116,13 @@ class MetaReaction(SerializableAttrs):
 
 
 @dataclass
+class MetaPostbackData(SerializableAttrs):
+    title: str = ib(metadata={"json": "title"}, default=None)
+    payload: str = ib(metadata={"json": "payload"}, default=None)
+    mid: MetaMessageID = ib(metadata={"json": "mid"}, default=None)
+
+
+@dataclass
 class MetaMessaging(SerializableAttrs):
     sender: MetaMessageSender = ib(metadata={"json": "sender"})
     recipient: MetaMessageRecipient = ib(metadata={"json": "recipient"})
@@ -111,6 +130,7 @@ class MetaMessaging(SerializableAttrs):
     message: MetaMessageData = ib(metadata={"json": "message"}, default={})
     delivery: MetaDeliveryData = ib(metadata={"json": "delivery"}, default={})
     read: MetaReadData = ib(metadata={"json": "read"}, default={})
+    postback: MetaPostbackData = ib(metadata={"json": "postback"}, default={})
     reaction: MetaReaction = ib(metadata={"json": "reaction"}, default={})
 
     @classmethod
@@ -118,6 +138,7 @@ class MetaMessaging(SerializableAttrs):
         message = None
         delivery = None
         read = None
+        postback = None
         reaction = None
 
         if data.get("message"):
@@ -126,8 +147,11 @@ class MetaMessaging(SerializableAttrs):
             delivery = MetaDeliveryData(**data.get("delivery", {}))
         elif data.get("read"):
             read = MetaReadData(**data.get("read", {}))
+        elif data.get("postback"):
+            postback = MetaPostbackData(**data.get("postback", {}))
         elif data.get("reaction"):
             reaction = MetaReaction(**data.get("reaction", {}))
+
 
         return cls(
             sender=MetaMessageSender(**data.get("sender")),
@@ -136,6 +160,7 @@ class MetaMessaging(SerializableAttrs):
             message=message,
             delivery=delivery,
             read=read,
+            postback=postback,
             reaction=reaction,
         )
 

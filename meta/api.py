@@ -107,7 +107,16 @@ class MetaClient:
             # If the message is a reply, add the message_id
             if aditional_data.get("reply_to"):
                 data["message_id"] = {"mid": aditional_data["reply_to"]["mid"]}
+        elif message_type == "m.interactive_message":
+            data = {
+                "recipient": {"id": recipient_id},
+                "messaging_type": "RESPONSE",
+            }
 
+            if not aditional_data.get("type", None):
+                data["message"] = aditional_data
+            elif aditional_data.get("type") == "template":
+                data.update({"message": {"attachment": aditional_data}})
         else:
             self.log.error("Unsupported message type")
             return
