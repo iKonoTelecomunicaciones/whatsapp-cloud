@@ -69,6 +69,7 @@ class Portal(DBPortal, BasePortal):
         ps_id: str,
         app_page_id: str,
         mxid: Optional[RoomID] = None,
+        meta_origin: Optional[str] = None,
         relay_user_id: UserID | None = None,
     ) -> None:
         super().__init__(ps_id, app_page_id, mxid, relay_user_id)
@@ -80,6 +81,7 @@ class Portal(DBPortal, BasePortal):
         self._relay_user = None
         self.error_codes = self.config["meta.error_codes"]
         self.homeserver_address = self.config["homeserver.public_address"]
+        self.meta_origin = meta_origin
 
     @property
     def main_intent(self) -> IntentAPI:
@@ -133,6 +135,7 @@ class Portal(DBPortal, BasePortal):
                 )
             except Exception:
                 self.log.exception("Failed to create portal")
+                return None
 
     async def _create_matrix_room(
         self, source: User, sender: MetaMessageSender, app_origin: str
@@ -195,7 +198,7 @@ class Portal(DBPortal, BasePortal):
         puppet: Puppet = await Puppet.get_by_ps_id(self.ps_id, app_page_id=self.app_page_id)
         puppet.display_name = f"User {self.ps_id}"
         await self.main_intent.invite_user(
-            self.mxid, puppet.mxid, extra_content=self._get_invite_content(puppet)
+            self.mxid, puppet.custom_mxid, extra_content=self._get_invite_content(puppet)
         )
         if puppet:
             try:
@@ -282,7 +285,9 @@ class Portal(DBPortal, BasePortal):
     async def get_dm_puppet(self) -> Puppet | None:
         if not self.is_direct:
             return None
-        return await Puppet.get_by_ps_id(self.ps_id, app_page_id=self.app_page_id)
+        return await Puppet.get_by_ps_id(
+            self.ps_id, app_page_id=self.app_page_id, meta_origin=self.meta_origin
+        )
 
     async def save(self) -> None:
         await self.update()
@@ -619,13 +624,6 @@ class Portal(DBPortal, BasePortal):
                     aditional_data=aditional_data,
                     url=url,
                 )
-            except FileNotFoundError as error:
-                self.log.error(f"Error sending the message: {error}")
-                error_message = error.args[0].get("error", {}).get("message", "")
-                await self.main_intent.send_notice(
-                    self.mxid, f"This message is sending out of the permitted time"
-                )
-                return
             except Exception as error:
                 self.log.error(f"Error sending the attachment data: {error}")
                 error_message = error.args[0].get("error", {}).get("message", "")
@@ -773,7 +771,12 @@ class Portal(DBPortal, BasePortal):
 
     @classmethod
     async def get_by_ps_id(
-        cls, ps_id: MetaPsID, *, app_page_id: MetaPageID, create: bool = True
+        cls,
+        ps_id: MetaPsID,
+        *,
+        app_page_id: MetaPageID,
+        meta_origin: Optional[str] = None,
+        create: bool = True,
     ) -> Optional["Portal"]:
         try:
             return cls.by_ps_id[ps_id]
@@ -786,7 +789,7 @@ class Portal(DBPortal, BasePortal):
             return portal
 
         if create:
-            portal = cls(ps_id, app_page_id)
+            portal = cls(ps_id=ps_id, app_page_id=app_page_id, meta_origin=meta_origin)
             await portal.insert()
             await portal.postinit()
             return portal
