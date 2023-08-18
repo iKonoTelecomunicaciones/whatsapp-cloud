@@ -67,7 +67,7 @@ class Portal(DBPortal, BasePortal):
         ps_id: str,
         app_page_id: str,
         mxid: Optional[RoomID] = None,
-        meta_origin: str = None,
+        meta_origin: Optional[str] = None,
         relay_user_id: UserID | None = None,
     ) -> None:
         super().__init__(ps_id, app_page_id, mxid, relay_user_id)
@@ -607,13 +607,6 @@ class Portal(DBPortal, BasePortal):
                     aditional_data=aditional_data,
                     url=url,
                 )
-            except FileNotFoundError as error:
-                self.log.error(f"Error sending the message: {error}")
-                error_message = error.args[0].get("error", {}).get("message", "")
-                await self.main_intent.send_notice(
-                    self.mxid, f"This message is sending out of the permitted time"
-                )
-                return
             except Exception as error:
                 self.log.error(f"Error sending the attachment data: {error}")
                 error_message = error.args[0].get("error", {}).get("message", "")
@@ -765,7 +758,7 @@ class Portal(DBPortal, BasePortal):
         ps_id: MetaPsID,
         *,
         app_page_id: MetaPageID,
-        meta_origin: str = None,
+        meta_origin: Optional[str] = None,
         create: bool = True,
     ) -> Optional["Portal"]:
         try:

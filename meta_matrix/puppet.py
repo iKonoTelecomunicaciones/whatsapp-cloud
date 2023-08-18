@@ -34,7 +34,7 @@ class Puppet(DBPuppet, BasePuppet):
         self,
         ps_id: MetaPsID,
         app_page_id: MetaPageID,
-        meta_origin: str = None,
+        meta_origin: Optional[str] = None,
         display_name: str | None = None,
         is_registered: bool = False,
         custom_mxid: UserID | None = None,
@@ -144,7 +144,7 @@ class Puppet(DBPuppet, BasePuppet):
         ps_id: MetaPsID,
         *,
         app_page_id: MetaPageID = None,
-        meta_origin: str = None,
+        meta_origin: Optional[str] = None,
         create: bool = True,
     ) -> Optional["Puppet"]:
         try:
@@ -168,11 +168,9 @@ class Puppet(DBPuppet, BasePuppet):
     @classmethod
     def get_ps_id_from_mxid(cls, mxid: UserID) -> MetaPsID | None:
         ps_id = None
-        origin_with_psid = cls.mxid_template.parse(mxid)
-        if origin_with_psid:
-            split_psid = origin_with_psid.split("_")
-            if len(split_psid) > 1:
-                ps_id = split_psid[1]
+        meta_mxid = cls.mxid_template.parse(mxid)
+        if meta_mxid:
+            ps_id = meta_mxid.split("_")[1]
 
         if not ps_id:
             return None
