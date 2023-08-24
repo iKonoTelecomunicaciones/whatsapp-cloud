@@ -74,40 +74,16 @@ class ProvisioningAPI:
             raise self._missing_key_error(e)
 
         # Check if the data does not empty
-        if not meta_app_name:
+        if (
+            not meta_app_name
+            or not meta_app_page_id
+            or not meta_outgoing_page_id
+            or not meta_page_access_token
+            or not notice_room
+            or not admin_user
+        ):
             return web.HTTPBadRequest(
-                text=json.dumps({"error": "meta_app_name not entered", "state": "missing-field"}),
-                headers=self._headers,
-            )
-        elif not meta_app_page_id:
-            return web.HTTPBadRequest(
-                text=json.dumps(
-                    {"error": "meta_app_page_id not entered", "state": "missing-field"}
-                ),
-                headers=self._headers,
-            )
-        elif not meta_outgoing_page_id:
-            return web.HTTPBadRequest(
-                text=json.dumps(
-                    {"error": "meta_outgoing_page_id not entered", "state": "missing-field"}
-                ),
-                headers=self._headers,
-            )
-        elif not meta_page_access_token:
-            return web.HTTPBadRequest(
-                text=json.dumps(
-                    {"error": "meta_page_access_token not entered", "state": "missing-field"}
-                ),
-                headers=self._headers,
-            )
-        elif not notice_room:
-            return web.HTTPBadRequest(
-                text=json.dumps({"error": "notice_room not entered", "state": "missing-field"}),
-                headers=self._headers,
-            )
-        elif not admin_user:
-            return web.HTTPBadRequest(
-                text=json.dumps({"error": "admin_user not entered", "state": "missing-field"}),
+                text=json.dumps({"error": "All fields are mandatories", "state": "missing-field"}),
                 headers=self._headers,
             )
 
@@ -163,20 +139,8 @@ class ProvisioningAPI:
         request: web.Request
             The request that contains the data of the app and the user.
         """
-        try:
-            # Obtain the token from the request
-            token = request.headers["Authorization"]
-            token = token[len("Bearer ") :]
-        except KeyError:
-            logger.error(f"KeyError: {KeyError}")
-            raise web.HTTPBadRequest(
-                text=json.dumps({"error": "Missing Authorization header"}), headers=self._headers
-            )
-        # Validate the token
-        if token != self.shared_secret:
-            raise web.HTTPForbidden(
-                text=json.dumps({"error": "Invalid token"}), headers=self._headers
-            )
+        self.check_token(request)
+
         try:
             # Convert the data from the request to json
             data = dict(**await request.json())
@@ -202,235 +166,26 @@ class ProvisioningAPI:
             text=json.dumps({"error": f"Missing key {err}"}), headers=self._headers
         )
 
+    def check_token(self, request: web.Request) -> None:
+        """
+        Validated that the request has a valid token
 
-# async def login_options(self, _: web.Request) -> web.Response:
-#    return web.Response(status=200, headers=self._headers)
-#
-# async def _resolve_identifier(self, number: str) -> pu.Puppet:
-#    try:
-#        number = normalize_number(number).replace("+", "")
-#    except Exception as e:
-#        raise web.HTTPBadRequest(text=json.dumps({"error": str(e)}), headers=self._headers)
-#
-#    puppet: pu.Puppet = await pu.Puppet.get_by_phone(number)
-#
-#    return puppet
-#
-# async def start_pm(self, request: web.Request) -> web.Response:
-#    user = await self.check_token(request)
-#    puppet = await self._resolve_identifier(request.match_info["number"])
-#
-#    portal = await po.Portal.get_by_chat_id(
-#        chat_id=f"{user.gs_app}-{puppet.phone}", create=True
-#    )
-#
-#    if portal.mxid:
-#        await portal.main_intent.invite_user(portal.mxid, user.mxid)
-#        just_created = False
-#    else:
-#        chat_info = {
-#            "app": f"{user.gs_app}-{puppet.phone}",
-#        }
-#        info = ChatInfo.deserialize(chat_info)
-#        chat_customer = {"phone": puppet.phone, "name": puppet.name or puppet.custom_mxid}
-#        customer = GupshupMessageSender.deserialize(chat_customer)
-#        info.sender = customer
-#        await portal.create_matrix_room(user, info)
-#        just_created = True
-#    return web.json_response(
-#        {
-#            "room_id": portal.mxid,
-#            "just_created": just_created,
-#            "chat_id": portal.chat_id,
-#            "other_user": {
-#                "mxid": puppet.mxid,
-#                "displayname": puppet.name,
-#            },
-#        },
-#        headers=self._acao_headers,
-#        status=201 if just_created else 200,
-#    )
-#
-# async def template(self, request: web.Request) -> web.Response:
-#    user, data = await self._get_user(request)
-#
-#    try:
-#        room_id = data["room_id"]
-#        template_message = data["template_message"]
-#
-#    except KeyError as e:
-#        raise self._missing_key_error(e)
-#    if not room_id:
-#        return web.json_response(
-#            data={"error": "room_id not entered", "state": "missing-field"},
-#            status=400,
-#            headers=self._acao_headers,
-#        )
-#    elif not template_message:
-#        return web.json_response(
-#            data={"error": "template_message not entered", "state": "missing-field"},
-#            status=400,
-#            headers=self._acao_headers,
-#        )
-#
-#    msg = TextMessageEventContent(body=template_message, msgtype=MessageType.TEXT)
-#    msg.trim_reply_fallback()
-#
-#    portal: po.Portal = await po.Portal.get_by_mxid(room_id)
-#    if not portal:
-#        return web.json_response(
-#            data={"error": f"Failed to get room {room_id}"},
-#            status=400,
-#            headers=self._acao_headers,
-#        )
-#
-#    msg_event_id = await portal.az.intent.send_message(portal.mxid, msg)
-#
-#    await portal.handle_matrix_message(
-#        sender=user,
-#        message=msg,
-#        event_id=msg_event_id,
-#        is_gupshup_template=True,
-#    )
-#
-#    return web.json_response(
-#        data={"detail": "Template has been sent", "event_id": msg_event_id}
-#    )
-#
-# async def interactive_message(self, request: web.Request) -> web.Response:
-#    """
-#    QuickReplay:
-#
-#    ```
-#    {
-#        "room_id": "!foo:foo.com",
-#        "interactive_message": {
-#            "type": "quick_reply",
-#            "content": {
-#                "type": "text",
-#                "header": "Hello, This is the header.\n\n",
-#                "text": "Please select one of the following options",
-#                "caption": "",
-#                "filename": null,
-#                "url": null
-#            },
-#            "options": [
-#                {"type": "text", "title": "I agree", "description": null, "postbackText": null},
-#                {"type": "text", "title": "No Accept", "description": null, "postbackText": null}
-#            ]
-#        }
-#    }
-#    ```
-#
-#
-#    ListReplay:
-#
-#    ```
-#    {
-#        "room_id": "!foo:foo.com",
-#        "interactive_message": {
-#            "type": "list",
-#            "title": "Main title",
-#            "body": "Hello World",
-#            "msgid": "!foo:foo.com",
-#            "globalButtons": [{"type": "text", "title": "Open"}],
-#            "items": [
-#                {
-#                    "title": "Section title",
-#                    "subtitle": "SubSection title",
-#                    "options": [
-#                        {
-#                            "type": "text",
-#                            "title": "Option 1",
-#                            "description": null,
-#                            "postbackText": "1"
-#                        },
-#                        {
-#                            "type": "text",
-#                            "title": "Option 2",
-#                            "description": null,
-#                            "postbackText": "2"
-#                        },
-#                        {
-#                            "type": "text",
-#                            "title": "Option 3",
-#                            "description": null,
-#                            "postbackText": "3"
-#                        },
-#                        {
-#                            "type": "text",
-#                            "title": "Option 4",
-#                            "description": null,
-#                            "postbackText": "4"
-#                        }
-#                    ]
-#                }
-#            ]
-#        }
-#    }
-#    ```
-#    """
-#    user, data = await self._get_user(request)
-#
-#    try:
-#        room_id = data["room_id"]
-#        interactive_message = data["interactive_message"]
-#    except KeyError as e:
-#        raise self._missing_key_error(e)
-#
-#    if not room_id:
-#        return web.json_response(
-#            data={"error": "room_id not entered", "state": "missing-field"},
-#            status=400,
-#            headers=self._acao_headers,
-#        )
-#    elif not interactive_message:
-#        return web.json_response(
-#            data={"error": "interactive_message not entered", "state": "missing-field"},
-#            status=400,
-#            headers=self._acao_headers,
-#        )
-#
-#    interactive_message = InteractiveMessage.deserialize(interactive_message)
-#
-#    msg = TextMessageEventContent(
-#        body=interactive_message.message,
-#        msgtype=MessageType.TEXT,
-#        formatted_body=markdown(interactive_message.message.replace("\n", "<br>")),
-#        format=Format.HTML,
-#    )
-#
-#    msg.trim_reply_fallback()
-#
-#    portal = await po.Portal.get_by_mxid(room_id)
-#
-#    if not portal:
-#        return web.json_response(
-#            data={"error": f"Failed to get room {room_id}"},
-#            status=400,
-#            headers=self._acao_headers,
-#        )
-#    msg_event_id = await portal.az.intent.send_message(
-#        portal.mxid, msg
-#    )  # only be visible to the agent
-#    await portal.handle_matrix_message(
-#        sender=user,
-#        message=msg,
-#        event_id=msg_event_id,
-#        additional_data=interactive_message.serialize(),
-#    )
-#
-#    return web.json_response(data={"detail_1": interactive_message.message})
-#
-# async def _get_user(self, request: web.Request, read_body: bool = True) -> tuple[u.User, JSON]:
-#    user = await self.check_token(request)
-#
-#    if read_body:
-#        try:
-#            data = await request.json()
-#        except json.JSONDecodeError:
-#            raise web.HTTPBadRequest(text='{"error": "Malformed JSON"}', headers=self._headers)
-#    else:
-#        data = None
-#    return user, data
-#
+        Parameters
+        ----------
+        request: web.Request
+            The request that contains the data of the app and the user.
+        """
+        try:
+            # Obtain the token from the request
+            token = request.headers["Authorization"]
+            token = token[len("Bearer ") :]
+        except KeyError:
+            logger.error(f"KeyError: {KeyError}")
+            raise web.HTTPBadRequest(
+                text=json.dumps({"error": "Missing Authorization header"}), headers=self._headers
+            )
+        # Validate the token
+        if token != self.shared_secret:
+            raise web.HTTPForbidden(
+                text=json.dumps({"error": "Invalid token"}), headers=self._headers
+            )
