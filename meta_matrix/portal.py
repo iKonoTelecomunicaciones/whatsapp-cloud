@@ -279,8 +279,10 @@ class Portal(DBPortal, BasePortal):
     async def delete(self) -> None:
         await DBMessage.delete_all(self.mxid)
         self.by_mxid.pop(self.mxid, None)
+        self.by_ps_id.pop(self.ps_id, None)
         self.mxid = None
         await self.update()
+        self.log.debug(f"Deleting portal")
 
     async def get_dm_puppet(self) -> Puppet | None:
         if not self.is_direct:
