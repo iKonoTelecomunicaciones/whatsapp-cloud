@@ -278,7 +278,9 @@ class Portal(DBPortal, BasePortal):
 
     async def delete(self) -> None:
         await DBMessage.delete_all(self.mxid)
+        self.log.warning(f"Deleting portal {self.mxid}")
         self.by_mxid.pop(self.mxid, None)
+        self.by_ps_id.pop(self.ps_id, None)
         self.mxid = None
         await self.update()
 
