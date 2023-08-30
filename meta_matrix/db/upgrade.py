@@ -43,7 +43,8 @@ async def upgrade_v1(conn: Connection) -> None:
             meta_message_id     TEXT NOT NULL,
             app_page_id         TEXT NOT NULL,
             created_at          TIMESTAMP WITH TIME ZONE NOT NULL,
-            UNIQUE (event_mxid, room_id, meta_message_id)
+            UNIQUE (event_mxid, room_id),
+            UNIQUE (meta_message_id)
         )"""
     )
     await conn.execute(
