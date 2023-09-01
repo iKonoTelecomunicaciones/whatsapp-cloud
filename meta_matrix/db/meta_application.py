@@ -67,6 +67,16 @@ class MetaApplication:
         await cls.db.execute(q, name, admin_user, page_id, outgoing_page_id, page_access_token)
 
     @classmethod
+    async def update_by_admin_user(cls, user: str, values: dict) -> None:
+        """Update the app_name and  page_access_token of meta application using admin user."""
+        q = """
+            UPDATE meta_application
+            SET name=$2, page_access_token=$3
+            WHERE admin_user=$1
+        """
+        await cls.db.execute(q, user, *values)
+
+    @classmethod
     async def get_by_name(cls, name: str) -> Optional["MetaApplication"]:
         q = f"SELECT {cls._columns} FROM meta_application WHERE name=$1"
         row = await cls.db.fetchrow(q, name)
