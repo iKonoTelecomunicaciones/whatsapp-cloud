@@ -239,71 +239,55 @@ class ProvisioningAPI:
                 headers=self._headers,
             )
 
-        try:
-            # Check if the user is registered
-            user: User = await User.get_by_mxid(mxid=admin_user, create=False)
-            if not user:
-                return web.HTTPUnprocessableEntity(
-                    text=json.dumps(
-                        {
-                            "detail": {
-                                "data": None,
-                                "message": f"The user {admin_user} is not registered",
-                            }
-                        }
-                    ),
-                    headers=self._headers,
-                )
-
-            # Check if the meta_app is registered
-            meta_app: MetaApplication = await MetaApplication.get_by_admin_user(
-                admin_user=admin_user
-            )
-
-            if not meta_app:
-                return web.HTTPUnprocessableEntity(
-                    text=json.dumps(
-                        {
-                            "detail": {
-                                "data": None,
-                                "message": f"""The meta application with user {admin_user}
-                                            is not registered""",
-                            }
-                        }
-                    ),
-                    headers=self._headers,
-                )
-
-            # Update the meta_app with the send values
-            data_to_update = (
-                app_name if app_name else meta_app.name,
-                page_token if page_token else meta_app.page_access_token,
-            )
-
-            logger.debug(f"Update meta_app {meta_app.page_id}")
-            await meta_app.update_by_admin_user(user=meta_app.admin_user, values=data_to_update)
-
-            return web.HTTPOk(
-                text=json.dumps(
-                    {
-                        "detail": {
-                            "data": None,
-                            "message": f"The meta_app {meta_app.page_id} has been updated",
-                        }
-                    }
-                ),
-                headers=self._headers,
-            )
-        except Exception as e:
-            logger.error(f"Error: {e}")
+        # Check if the user is registered
+        user: User = await User.get_by_mxid(mxid=admin_user, create=False)
+        if not user:
             return web.HTTPUnprocessableEntity(
                 text=json.dumps(
                     {
                         "detail": {
-                            "data": e,
-                            "message": f"An error was ocurred when updating the meta_app: {e}",
+                            "data": None,
+                            "message": f"The user {admin_user} is not registered",
                         }
                     }
                 ),
                 headers=self._headers,
             )
+
+        # Check if the meta_app is registered
+        meta_app: MetaApplication = await MetaApplication.get_by_admin_user(admin_user=admin_user)
+
+        if not meta_app:
+            return web.HTTPUnprocessableEntity(
+                text=json.dumps(
+                    {
+                        "detail": {
+                            "data": None,
+                            "message": f"""The meta application with user {admin_user}
+                                        is not registered""",
+                        }
+                    }
+                ),
+                headers=self._headers,
+            )
+
+        # Update the meta_app with the send values
+        data_to_update = (
+            app_name if app_name else meta_app.name,
+            page_token if page_token else meta_app.page_access_token,
+        )
+
+        logger.debug(f"Update meta_app {meta_app.page_id}")
+        await meta_app.update_by_admin_user(user=meta_app.admin_user, values=data_to_update)
+
+        return web.HTTPOk(
+            text=json.dumps(
+                {
+                    "detail": {
+                        "data": None,
+                        "message": f"The meta_app {meta_app.page_id} has been updated",
+                    }
+                }
+            ),
+            headers=self._headers,
+        )

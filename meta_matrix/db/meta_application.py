@@ -68,6 +68,7 @@ class MetaApplication:
 
     @classmethod
     async def update_by_admin_user(cls, user: str, values: dict) -> None:
+        """Update the app_name and  page_access_token of meta application using admin user."""
         q = """
             UPDATE meta_application
             SET name=$2, page_access_token=$3
