@@ -25,6 +25,7 @@ class ProvisioningAPI:
         self.shared_secret = shared_secret
 
         self.app.router.add_route("POST", "/v1/register_app", self.register_app)
+        self.app.router.add_route("POST", "/v1/update_app", self.update_app)
 
     @property
     def _acao_headers(self) -> dict[str, str]:
@@ -188,4 +189,121 @@ class ProvisioningAPI:
         if token != self.shared_secret:
             raise web.HTTPForbidden(
                 text=json.dumps({"error": "Invalid token"}), headers=self._headers
+            )
+
+    async def update_app(self, request: web.Request) -> dict:
+        """
+        Update the meta_app
+
+        Parameters
+        ----------
+        request: web.Request
+            The request that contains the data of the app and the user.
+
+        Returns
+        -------
+        JSON
+            The response of the request with a success message or an error message
+        """
+        # Obtain the data from the request
+        data = await self._get_body(request)
+
+        if not data:
+            return web.HTTPBadRequest(
+                text=json.dumps(
+                    {
+                        "detail": {
+                            "data": None,
+                            "message": f"The request does not have data",
+                        }
+                    }
+                ),
+                headers=self._headers,
+            )
+
+        # Separate the data from the request
+        app_name = data.get("app_name", None)
+        page_token = data.get("page_access_token", None)
+        admin_user = data.get("admin_user", None)
+
+        if not admin_user:
+            return web.HTTPUnprocessableEntity(
+                text=json.dumps(
+                    {
+                        "detail": {
+                            "data": None,
+                            "message": f"The user was not provided",
+                        }
+                    }
+                ),
+                headers=self._headers,
+            )
+
+        try:
+            # Check if the user is registered
+            user: User = await User.get_by_mxid(mxid=admin_user, create=False)
+            if not user:
+                return web.HTTPUnprocessableEntity(
+                    text=json.dumps(
+                        {
+                            "detail": {
+                                "data": None,
+                                "message": f"The user {admin_user} is not registered",
+                            }
+                        }
+                    ),
+                    headers=self._headers,
+                )
+
+            # Check if the meta_app is registered
+            meta_app: MetaApplication = await MetaApplication.get_by_admin_user(
+                admin_user=admin_user
+            )
+
+            if not meta_app:
+                return web.HTTPUnprocessableEntity(
+                    text=json.dumps(
+                        {
+                            "detail": {
+                                "data": None,
+                                "message": f"""The meta application with user {admin_user}
+                                            is not registered""",
+                            }
+                        }
+                    ),
+                    headers=self._headers,
+                )
+
+            # Update the meta_app with the send values
+            data_to_update = (
+                app_name if app_name else meta_app.name,
+                page_token if page_token else meta_app.page_access_token,
+            )
+
+            logger.debug(f"Update meta_app {meta_app.page_id}")
+            await meta_app.update_by_admin_user(user=meta_app.admin_user, values=data_to_update)
+
+            return web.HTTPOk(
+                text=json.dumps(
+                    {
+                        "detail": {
+                            "data": None,
+                            "message": f"The meta_app {meta_app.page_id} has been updated",
+                        }
+                    }
+                ),
+                headers=self._headers,
+            )
+        except Exception as e:
+            logger.error(f"Error: {e}")
+            return web.HTTPUnprocessableEntity(
+                text=json.dumps(
+                    {
+                        "detail": {
+                            "data": e,
+                            "message": f"An error was ocurred when updating the meta_app: {e}",
+                        }
+                    }
+                ),
+                headers=self._headers,
             )
