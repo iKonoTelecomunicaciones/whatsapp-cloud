@@ -25,7 +25,7 @@ class ProvisioningAPI:
         self.shared_secret = shared_secret
 
         self.app.router.add_route("POST", "/v1/register_app", self.register_app)
-        self.app.router.add_route("POST", "/v1/update_app", self.update_app)
+        self.app.router.add_route("PATCH", "/v1/update_app", self.update_app)
 
     @property
     def _acao_headers(self) -> dict[str, str]:
@@ -36,7 +36,7 @@ class ProvisioningAPI:
         return {
             "Access-Control-Allow-Origin": "*",
             "Access-Control-Allow-Headers": "Authorization, Content-Type",
-            "Access-Control-Allow-Methods": "GET, POST, OPTIONS",
+            "Access-Control-Allow-Methods": "GET, POST, PATCH, OPTIONS",
         }
 
     @property
@@ -224,7 +224,7 @@ class ProvisioningAPI:
         # Separate the data from the request
         app_name = data.get("app_name", None)
         page_token = data.get("page_access_token", None)
-        admin_user = data.get("admin_user", None)
+        admin_user = request.query.get("user_id", None)
 
         if not admin_user:
             return web.HTTPUnprocessableEntity(
