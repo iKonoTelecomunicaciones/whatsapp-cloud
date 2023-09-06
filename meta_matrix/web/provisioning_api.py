@@ -89,8 +89,9 @@ class ProvisioningAPI:
             )
 
         try:
-            # Check if the user is already registered, this acd user can register because the
-            # bridge register the acd user when listeng that the acd user is created in the control room
+            # Check if the user is already registered. This acd user can be registered because the
+            # bridge registers the acd user when it listens that the acd user is invited to the
+            # control room
             user: User = await User.get_by_mxid(mxid=admin_user)
             if user.app_page_id:
                 return web.HTTPUnprocessableEntity(
