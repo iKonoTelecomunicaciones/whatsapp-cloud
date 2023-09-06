@@ -89,8 +89,11 @@ class ProvisioningAPI:
             )
 
         try:
-            # Check if the user is already registered
-            if await User.get_by_mxid(mxid=admin_user, create=False):
+            # Check if the user is already registered. This acd user can be registered because the
+            # bridge registers the acd user when it listens that the acd user is invited to the
+            # control room
+            user: User = await User.get_by_mxid(mxid=admin_user)
+            if user.app_page_id:
                 return web.HTTPUnprocessableEntity(
                     text=json.dumps({"error": "You already have a registered meta_app"}),
                     headers=self._headers,
@@ -114,8 +117,7 @@ class ProvisioningAPI:
                 page_access_token=meta_page_access_token,
             )
 
-            # Create the user and add the page_id and the notice_room
-            user: User = await User.get_by_mxid(mxid=admin_user)
+            # Add the page_id and the notice_room
             user.app_page_id = meta_app_page_id
             user.notice_room = notice_room
             await user.update()
