@@ -1,6 +1,6 @@
 import setuptools
 
-from meta_matrix.get_version import git_revision, git_tag, linkified_version, version
+from whatsapp_matrix.get_version import git_revision, git_tag, linkified_version, version
 
 with open("requirements.txt") as reqs:
     install_requires = reqs.read().splitlines()
@@ -23,7 +23,7 @@ try:
 except IOError:
     long_desc = "Failed to read README.md"
 
-with open("meta_matrix/version.py", "w") as version_file:
+with open("whatsapp_matrix/version.py", "w") as version_file:
     version_file.write(
         f"""# Generated in setup.py
 
@@ -35,15 +35,15 @@ linkified_version = {linkified_version!r}
     )
 
 setuptools.setup(
-    name="meta-matrix",
+    name="whatsapp-cloud",
     version=version,
-    url="https://github.com/iKonoTelecomunicaciones/meta-matrix",
+    url="https://github.com/iKonoTelecomunicaciones/whatsapp-cloud",
     project_urls={
-        "Changelog": "https://github.com/bramenn/gupshup/blob/master/CHANGELOG.md",
+        "Changelog": "https://github.com/iKonoTelecomunicaciones/whatsapp-cloud/blob/master/CHANGELOG.md",
     },
-    author="Esteban Galvis Triana",
-    author_email="egalvis@ikono.com.co",
-    description="A Meta Matrix bridge.",
+    author="Juan Manuel Cardenas",
+    author_email="juan.cardenas@ikono.com.co",
+    description="A Whatsapp Matrix bridge.",
     long_description=long_desc,
     long_description_content_type="text/markdown",
     packages=setuptools.find_packages(),
@@ -61,11 +61,11 @@ setuptools.setup(
         "Programming Language :: Python :: 3.9",
     ],
     package_data={
-        "meta_matrix": [
+        "whatsapp_matrix": [
             "example-config.yaml",
         ],
     },
     data_files=[
-        (".", ["meta_matrix/example-config.yaml"]),
+        (".", ["whatsapp_matrix/example-config.yaml"]),
     ],
 )

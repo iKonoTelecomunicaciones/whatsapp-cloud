@@ -1,12 +1,12 @@
 #!/bin/sh
-cd /opt/meta-matrix
+cd /opt/whatsapp-cloud
 
 # Define functions.
 function fixperms {
 	chown -R $UID:$GID /data
 
-	# /opt/meta-matrix is read-only, so disable file logging if it's pointing there.
-	if [[ "$(yq e '.logging.handlers.file.filename' /data/config.yaml)" == "./meta-matrix.log" ]]; then
+	# /opt/whatsapp-cloud is read-only, so disable file logging if it's pointing there.
+	if [[ "$(yq e '.logging.handlers.file.filename' /data/config.yaml)" == "./whatsapp-cloud.log" ]]; then
 		yq -I4 e -i 'del(.logging.root.handlers[] | select(. == "file"))' /data/config.yaml
 		yq -I4 e -i 'del(.logging.handlers.file)' /data/config.yaml
 	fi
@@ -14,7 +14,7 @@ function fixperms {
 
 
 if [ ! -f /data/config.yaml ]; then
-	cp example-config.yaml /data/config.yaml
+	cp whatsapp_matrix/example-config.yaml /data/config.yaml
 	echo "Didn't find a config file."
 	echo "Copied default config file to /data/config.yaml"
 	echo "Modify that config file to your liking."
@@ -24,7 +24,7 @@ if [ ! -f /data/config.yaml ]; then
 fi
 
 if [ ! -f /data/registration.yaml ]; then
-	python3 -m meta_matrix -g -c /data/config.yaml -r /data/registration.yaml
+	python3 -m whatsapp_matrix -g -c /data/config.yaml -r /data/registration.yaml
 	echo "Didn't find a registration file."
 	echo "Generated one for you."
 	echo "Copy that over to synapses app service directory."
@@ -34,8 +34,8 @@ fi
 
 if [ "$1" = "dev" ]; then
 	pip install --ignore-installed -r requirements-dev.txt
-	watchmedo auto-restart -R -p="*.py" -d="." /opt/meta-matrix/docker-run.sh
+	watchmedo auto-restart -R -p="*.py" -d="." /opt/whatsapp-cloud/docker-run.sh
 fi
 
 fixperms
-exec su-exec $UID:$GID python3 -m meta_matrix -c /data/config.yaml
+exec su-exec $UID:$GID python3 -m whatsapp_matrix -c /data/config.yaml

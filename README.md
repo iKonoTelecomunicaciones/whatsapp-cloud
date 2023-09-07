@@ -5,17 +5,12 @@ Intagram and Facebook pages Matrix-Meta <-> Matrix bridge built using [mautrix-p
 
 This bridge is based on:
 
- - [Gupshup bridge](https://github.com/iKonoTelecomunicaciones/gupshup)
+ - [Whatsapp bridge](https://github.com/iKonoTelecomunicaciones/whatsapp-cloud)
 
 
 ## Installation
 
-The first step is to have an account on the https://www.gupshup.io/auth/login platform. Then you must create a gupshup application.
-
-![image](https://user-images.githubusercontent.com/50601186/181797721-cd041594-3afe-444d-9804-5ec96bc53323.png)
-
-Now choose the Access API option:
-![image](https://user-images.githubusercontent.com/50601186/181797944-62cb775b-7544-49d6-9118-18c5acf61b98.png)
+The first step is to have an account on the whatsapp business platform. Then you must create a whatsapp application.
 
 ### Documentation
 
@@ -23,13 +18,13 @@ NOTE: This bridge is inspired by the mautrix bridges, so you can follow the docu
 [Bridge setup](https://docs.mau.fi/bridges/python/setup.html)
 (or [with Docker](https://docs.mau.fi/bridges/general/docker-setup.html))
 
-Docker image: `ikonoim/gupshup-matrix:latest`
+Docker image: `ikonoim/whatsapp-cloud:latest`
 
-### Register a Gupsgup application on the bridge
+### Register a Whatsapp application on the bridge
 
 - Create a room without encryption
 - Then invite the bridge bot (you must have the user registered in the config section `bridge.permissions` as admin)
-- Send the command `register-app <gs_app_name> <gs_app_phone> <api_key> <app_id>`
+- Send the command `register-app <ws_app_name> <ws_phone_id> <token>`
 - you can now start receiving incoming messages on the registered number
 
 
@@ -37,4 +32,4 @@ Docker image: `ikonoim/gupshup-matrix:latest`
 
 Matrix room:
 
-[`#gupshup-bridge:matrix.org`](https://matrix.to/#/#gupshup-bridge:matrix.org)
+[`#whatsapp-bridge:matrix.org`](https://matrix.to/#/#whatsapp-bridge:matrix.org)

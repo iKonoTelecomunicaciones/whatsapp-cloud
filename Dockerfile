@@ -24,19 +24,19 @@ RUN apk add --no-cache \
   jq \
   yq
 
-COPY requirements.txt /opt/meta-matrix/requirements.txt
-COPY requirements-dev.txt /opt/meta-matrix/requirements-dev.txt
-WORKDIR /opt/meta-matrix
+COPY requirements.txt /opt/whatsapp-cloud/requirements.txt
+COPY requirements-dev.txt /opt/whatsapp-cloud/requirements-dev.txt
+WORKDIR /opt/whatsapp-cloud
 RUN apk add --virtual .build-deps python3-dev libffi-dev build-base \
   && pip3 install -r requirements.txt \
   && apk del .build-deps
 
-COPY . /opt/meta-matrix
+COPY . /opt/whatsapp-cloud
 RUN apk add git && pip3 install .[all] && apk del git \
   # This doesn't make the image smaller, but it's needed so that the `version` command works properly
-  && cp meta_matrix/example-config.yaml . && rm -rf meta_matrix
+  && cp whatsapp_matrix/example-config.yaml . && rm -rf whatsapp_matrix
 
 ENV UID=1337 GID=1337
 VOLUME /data
 
-CMD ["/opt/meta-matrix/docker-run.sh"]
+CMD ["/opt/whatsapp-cloud/docker-run.sh"]
