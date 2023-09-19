@@ -88,4 +88,4 @@ class WhatsappHandler:
         portal: Portal = await Portal.get_by_phone_id(sender.wa_id, app_business_id=business_id)
 
         await portal.handle_whatsapp_message(user, data, sender)
-        return web.Response(status=204)
+        return web.Response(status=200)
