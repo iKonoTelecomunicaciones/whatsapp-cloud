@@ -1,7 +1,7 @@
-# meta-matrix
+# Whatsapp-cloud
 
 
-Intagram and Facebook pages Matrix-Meta <-> Matrix bridge built using [mautrix-python](https://github.com/mautrix/python)
+Whatsapp business account Whatsapp-cloud <-> Matrix bridge built using [mautrix-python](https://github.com/mautrix/python)
 
 This bridge is based on:
 
