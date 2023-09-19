@@ -1,7 +1,7 @@
 from attr import dataclass, ib
 from mautrix.types import SerializableAttrs
 
-from .types import WhatsappPhone, WsBusinessID, WSPhoneID, WhatsappMessageID
+from .types import WhatsappMessageID, WhatsappPhone, WsBusinessID, WSPhoneID
 
 
 @dataclass

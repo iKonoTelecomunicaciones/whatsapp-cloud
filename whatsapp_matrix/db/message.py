@@ -8,7 +8,7 @@ from attr import dataclass
 from mautrix.types import EventID, RoomID, UserID
 from mautrix.util.async_db import Database
 
-from whatsapp.types import WhatsappMessageID, WsBusinessID, WhatsappPhone
+from whatsapp.types import WhatsappMessageID, WhatsappPhone, WsBusinessID
 
 fake_db = Database.create("") if TYPE_CHECKING else None
 

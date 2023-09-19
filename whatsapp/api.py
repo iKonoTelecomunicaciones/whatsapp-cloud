@@ -8,7 +8,7 @@ from mautrix.types import MessageType
 
 from whatsapp_matrix.config import Config
 
-from .types import WsBusinessID, WSPhoneID, WhatsappPhone
+from .types import WhatsappPhone, WsBusinessID, WSPhoneID
 
 
 class WhatsappClient:

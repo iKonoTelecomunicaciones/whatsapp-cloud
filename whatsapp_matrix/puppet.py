@@ -8,7 +8,7 @@ from mautrix.types import SyncToken, UserID
 from mautrix.util.simple_template import SimpleTemplate
 from yarl import URL
 
-from whatsapp.types import WsBusinessID, WhatsappPhone
+from whatsapp.types import WhatsappPhone, WsBusinessID
 
 from .config import Config
 from .db import Puppet as DBPuppet

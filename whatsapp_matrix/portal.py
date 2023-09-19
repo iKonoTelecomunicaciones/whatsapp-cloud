@@ -20,12 +20,12 @@ from mautrix.types import (
 
 from whatsapp.api import WhatsappClient
 from whatsapp.data import WhatsappMessageEvent
-from whatsapp.types import WhatsappMessageID, WsBusinessID, WhatsappPhone
+from whatsapp.types import WhatsappMessageID, WhatsappPhone, WsBusinessID
 from whatsapp_matrix.formatter.from_matrix import matrix_to_whatsapp
 
 from .db import Message as DBMessage
-from .db import WhatsappApplication as DBWhatsappApplication
 from .db import Portal as DBPortal
+from .db import WhatsappApplication as DBWhatsappApplication
 from .formatter import whatsapp_to_matrix
 from .puppet import Puppet
 from .user import User

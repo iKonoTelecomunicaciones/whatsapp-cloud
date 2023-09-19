@@ -3,12 +3,7 @@ from __future__ import annotations
 from typing import TYPE_CHECKING
 
 from mautrix.bridge import BaseMatrixHandler, RejectMatrixInvite
-from mautrix.types import (
-    EventID,
-    RoomID,
-    SingleReceiptEventContent,
-    UserID,
-)
+from mautrix.types import EventID, RoomID, SingleReceiptEventContent, UserID
 
 from .portal import Portal
 from .user import User

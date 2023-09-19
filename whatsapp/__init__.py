@@ -1,4 +1,4 @@
 from .api import WhatsappClient
 from .data import WhatsappMessageEvent
-from .types import WsBusinessID, WhatsappPhone
+from .types import WhatsappPhone, WsBusinessID
 from .webhook import WhatsappHandler
