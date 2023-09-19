@@ -86,10 +86,10 @@ jobs:
 
           echo "** Download updated docker image **"
           # Download updated docker image to testing server
-          ssh -tt ${{secrets.TESTING}} "docker pull ikonoim/whatsapp-cloud:${{secrets.TAG_TESTING}}"
+          ssh -tt ${{secrets.TESTING}} "docker pull ikonoim/whatsapp-cloud:${{vars.TAG_TESTING}}"
 
           echo "** Update whatsapp image in registered domains **"
-          for domain in  ${{secrets.DOMAINS}}; do
+          for domain in  ${{vars.DOMAINS}}; do
             echo " >> Setting service variables"
             stack_name=$(echo ${domain} | tr -d '.')
             service=$(echo ${domain} | cut -d '.' -f1)
