@@ -8,3 +8,5 @@ WsBusinessID = NewType("WsBusinessID", str)
 WhatsappPhone = NewType("WhatsappPhone", str)
 # ID of the message
 WhatsappMessageID = NewType("WhatsappMessageID", str)
+# ID of the media
+WhatsappMediaID = NewType("WhatsappMediaID", str)

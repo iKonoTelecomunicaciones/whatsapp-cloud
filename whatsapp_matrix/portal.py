@@ -9,7 +9,9 @@ from mautrix.bridge import BasePortal
 from mautrix.types import (
     EventID,
     EventType,
+    FileInfo,
     Format,
+    MediaMessageEventContent,
     MessageEventContent,
     MessageType,
     PowerLevelStateEventContent,
@@ -19,7 +21,7 @@ from mautrix.types import (
 )
 
 from whatsapp.api import WhatsappClient
-from whatsapp.data import WhatsappMessageEvent
+from whatsapp.data import WhatsappContacts, WhatsappMessageEvent, WhatsappUserData
 from whatsapp.types import WhatsappMessageID, WhatsappPhone, WsBusinessID
 from whatsapp_matrix.formatter.from_matrix import matrix_to_whatsapp
 
@@ -130,7 +132,7 @@ class Portal(DBPortal, BasePortal):
         # Send the message to Matrix
         return self.main_intent.send_message(self.mxid, content)
 
-    async def create_matrix_room(self, source: User, sender: Dict) -> RoomID:
+    async def create_matrix_room(self, source: User, sender: WhatsappContacts) -> RoomID:
         """
         Create a matrix room where to contact with the customer
 
@@ -153,7 +155,7 @@ class Portal(DBPortal, BasePortal):
                 self.log.exception(f"Failed to create portal: {error}")
                 return None
 
-    async def _create_matrix_room(self, source: User, sender: Dict) -> RoomID:
+    async def _create_matrix_room(self, source: User, sender: WhatsappContacts) -> RoomID:
         """
         Create and configure a matrix room
 
@@ -222,6 +224,7 @@ class Portal(DBPortal, BasePortal):
         puppet: Puppet = await Puppet.get_by_phone_id(
             self.phone_id, app_business_id=self.app_business_id
         )
+
         await puppet.update_info(sender)
 
         # Invite the user to the room
@@ -331,7 +334,7 @@ class Portal(DBPortal, BasePortal):
         await self.update()
 
     async def handle_whatsapp_message(
-        self, source: User, message: WhatsappMessageEvent, sender: Dict
+        self, source: User, message: WhatsappMessageEvent, sender: WhatsappContacts
     ) -> None:
         """
         When a user of Whatsapp send a message, this function takes it and sends to Matrix
@@ -353,15 +356,60 @@ class Portal(DBPortal, BasePortal):
             return
 
         has_been_sent: EventID | None = None
+        message_data = message.entry.changes.value.messages
         # Validate if the message exist and that the message has not a reply
-        if message.entry.changes.value.messages:
-            whatsapp_message_type = message.entry.changes.value.messages.type
+        if message_data:
+            whatsapp_message_type = message_data.type
+            whatsapp_message_id = message_data.id
 
             # Validate if the message is a text message, if is it, the message is sent to the Whatsapp API
             if whatsapp_message_type == "text":
-                message_text = message.entry.changes.value.messages.text.body
+                message_text = message_data.text.body
                 has_been_sent = await self.send_text_message(message_text)
-                whatsapp_message_id = message.entry.changes.value.messages.id
+            else:
+                # Validate what kind of message is and obtain the id of the message
+                if whatsapp_message_type == "image":
+                    message_type = MessageType.IMAGE
+                    media_id = message_data.image.id
+                elif whatsapp_message_type == "video":
+                    message_type = MessageType.VIDEO
+                    media_id = message_data.video.id
+                else:
+                    self.log.error("Unsupported message type")
+                    await self.az.intent.send_notice(self.mxid, "Error getting the message")
+                    return
+
+                # Obtain the url from Whatsapp API
+                media_data = await self.whatsapp_client.get_media(media_id=media_id)
+
+                if not media_data:
+                    self.log.error("Error getting the data of the media")
+                    await self.az.intent.send_notice(
+                        self.mxid, "Error getting the data of the media"
+                    )
+                    return
+
+                # Obtain the media file
+                data = await media_data.read()
+
+                try:
+                    # Upload the message media to Matrix
+                    attachment_url = await self.main_intent.upload_media(data=data)
+                except Exception as e:
+                    self.log.exception(f"Message not receive, error: {e}")
+                    return
+
+                # Create the content of the message media for send to Matrix
+                content_attachment = MediaMessageEventContent(
+                    body="",
+                    msgtype=message_type,
+                    url=attachment_url,
+                    info=FileInfo(size=len(data)),
+                )
+
+                # Send the message to Matrix
+                has_been_sent = await self.main_intent.send_message(self.mxid, content_attachment)
+
         puppet: Puppet = await self.get_dm_puppet()
 
         # Save the message in the database
@@ -431,9 +479,29 @@ class Portal(DBPortal, BasePortal):
                     self.mxid, f"Error sending content: {error_message}"
                 )
                 return
+        elif message.msgtype in (MessageType.IMAGE, MessageType.VIDEO):
+            # We get the url of the media message. Message.url is something like mxc://xyz, so we
+            # remove the first 6 characters to get the media hash
+            media_mxc = message.url
+            media_hash = media_mxc[6:]
+            url = f"{self.homeserver_address}/_matrix/media/r0/download/{media_hash}"
+            # We send the media message to the Whatsapp API
+            try:
+                response = await self.whatsapp_client.send_message(
+                    phone_id=self.phone_id,
+                    message_type=message.msgtype,
+                    url=url,
+                )
+            except Exception as error:
+                self.log.error(f"Error sending the attachment data: {error}")
+                error_message = error.args[0].get("error", {}).get("message", "")
+                await self.main_intent.send_notice(
+                    self.mxid, f"Error sending content: {error_message}"
+                )
+                return
 
         else:
-            self.log.debug(f"Ignoring unknown message {message}")
+            self.log.error(f"Ignoring unknown message {message}")
             return
 
         if not response:
