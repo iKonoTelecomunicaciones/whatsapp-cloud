@@ -65,6 +65,10 @@ bridge:
         # {displayname} - displayname set by the Whatsapp user
         # {userid} - number number of the Whatsapp user
         room_name_template: "{displayname} ({userid})"
+        # Url to open maps
+        # Google maps URL.
+        # {latitude} and {longitude} is replaced with valid values.
+        google_maps_url: https://www.google.com/maps
 
     # The prefix for commands. Only required in non-management rooms.
     command_prefix: "!ws"

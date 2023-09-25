@@ -6,7 +6,7 @@ from typing import Dict, Optional
 from aiohttp import ClientConnectorError, ClientSession
 from mautrix.types import MessageType
 
-from whatsapp.data import WhatsappMediaData, WhatsappUserData
+from whatsapp.data import WhatsappMediaData
 from whatsapp_matrix.config import Config
 
 from .types import WhatsappMediaID, WhatsappPhone, WsBusinessID, WSPhoneID
@@ -63,18 +63,31 @@ class WhatsappClient:
         self.log.debug(f"Sending message to {send_message_url}")
 
         # Set the data to send to Whatsapp API
-        if message_type == MessageType.TEXT:
-            message_data = {"preview_url": False, "body": message}
-            type_message = "text"
-        elif message_type == MessageType.IMAGE:
-            message_data = {"link": url}
-            type_message = "image"
-        elif message_type == MessageType.VIDEO:
-            message_data = {"link": url}
-            type_message = "video"
-        else:
+        type_message = (
+            "text"
+            if message_type == MessageType.TEXT
+            else "image"
+            if message_type == MessageType.IMAGE
+            else "video"
+            if message_type == MessageType.VIDEO
+            else "audio"
+            if message_type == MessageType.AUDIO
+            else "document"
+            if message_type == MessageType.FILE
+            else None
+        )
+
+        if not type_message:
             self.log.error("Unsupported message type")
-            return
+            raise FileExistsError("Unsupported message type")
+
+        message_data = (
+            {"preview_url": False, "body": message}
+            if message_type == MessageType.TEXT
+            else {"link": url, "filename": "File"}
+            if message_type == MessageType.FILE
+            else {"link": url}
+        )
 
         data = {
             "messaging_product": "whatsapp",

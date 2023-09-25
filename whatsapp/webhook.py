@@ -59,8 +59,13 @@ class WhatsappHandler:
         data = dict(**await request.json())
         self.log.debug(f"The event arrives {data}")
 
-        ws_business_id = data.get("entry")[0].get("id")
-        ws_value = data.get("entry")[0].get("changes")[0].get("value")
+        # Create the event object
+        ws_event = WhatsappMessageEvent.from_dict(data)
+
+        # Get the business id and the value of the event
+        ws_business_id = ws_event.entry.id
+        ws_value = ws_event.entry.changes.value
+        # Get all the whatsapp apps
         ws_apps = await DBWhatsappApplication.get_all_ws_apps()
 
         # Validate if the app is registered
@@ -68,14 +73,33 @@ class WhatsappHandler:
             self.log.warning(
                 f"Ignoring event because the whatsapp_app [{ws_business_id}] is not registered."
             )
-            return web.Response(status=406)
+            return web.Response(status=400)
 
         # Validate if the event is a message
-        if ws_value.get("messages"):
-            return await self.message_event(WhatsappMessageEvent.from_dict(data))
+        if ws_value.messages.id:
+            return await self.message_event(ws_event)
         else:
-            self.log.debug(f"Integration type not supported.")
-            return web.Response(status=406)
+            # If the event is an error, we send to the user the message error
+            if ws_event.entry.changes.value.statuses.status == "failed":
+                # Get the phone id
+                wa_id = ws_event.entry.changes.value.statuses.recipient_id
+                # Get the error information
+                errors = ws_event.entry.changes.value.statuses.errors
+                message_error = errors.error_data.details
+
+                self.log.error(
+                    f"Whatsapp return an error: {ws_event.entry.changes.value.statuses}"
+                )
+                portal: Portal = await Portal.get_by_phone_id(
+                    wa_id, app_business_id=ws_business_id, create=False
+                )
+                if portal:
+                    await portal.handle_whatsapp_error(message_error=message_error)
+                return web.Response(status=400)
+            else:
+                self.log.debug(f"Integration type not supported.")
+
+            return web.Response(status=400)
 
     async def message_event(self, data: WhatsappMessageEvent) -> web.Response:
         """It validates the incoming request, fetches the portal associated with the sender,
