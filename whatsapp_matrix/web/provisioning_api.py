@@ -87,6 +87,16 @@ class ProvisioningAPI:
                 text=json.dumps({"detail": {"message": "All fields are mandatories"}}),
                 headers=self._headers,
             )
+
+        # Check if the business_id and the phone_id are the same
+        if app_business_id == app_phone_id:
+            return web.HTTPNotAcceptable(
+                text=json.dumps(
+                    {"detail": {"message": "The business_id and the phone_id can not be the same"}}
+                ),
+                headers=self._headers,
+            )
+
         # Check if the user is already registered. This acd user can be registered because the
         # bridge registers the acd user when it listens that the acd user is invited to the
         # control room
