@@ -48,7 +48,7 @@ class WhatsappApplication:
         page_access_token: str,
     ) -> None:
         q = f"INSERT INTO ws_application ({cls._columns}) VALUES ($1, $2, $3, $4, $5)"
-        await cls.db.execute(q, name, admin_user, business_id, ws_phone_id, page_access_token)
+        await cls.db.execute(q, business_id, ws_phone_id, name, admin_user, page_access_token)
 
     @classmethod
     async def update(
@@ -90,6 +90,15 @@ class WhatsappApplication:
     ) -> Optional["WhatsappApplication"]:
         q = f"SELECT {cls._columns} FROM ws_application WHERE business_id=$1"
         row = await cls.db.fetchrow(q, business_id)
+
+        if not row:
+            return None
+        return cls._from_row(row)
+
+    @classmethod
+    async def get_by_ws_phone_id(cls, ws_phone_id: WSPhoneID) -> Optional["WhatsappApplication"]:
+        q = f"SELECT {cls._columns} FROM ws_application WHERE ws_phone_id=$1"
+        row = await cls.db.fetchrow(q, ws_phone_id)
 
         if not row:
             return None
