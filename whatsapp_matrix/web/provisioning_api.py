@@ -115,7 +115,7 @@ class ProvisioningAPI:
                 text=json.dumps(
                     {
                         "detail": {
-                            "message": f"This whatsapp_app {app_business_id} is already registered"
+                            "message": f"This app_business_id {app_business_id} is already registered"
                         }
                     }
                 ),
@@ -137,7 +137,7 @@ class ProvisioningAPI:
             admin_user=admin_user,
             business_id=app_business_id,
             ws_phone_id=app_phone_id,
-            access_token=access_token,
+            page_access_token=access_token,
         )
 
         # Create the user and add the business_id and the notice_room
