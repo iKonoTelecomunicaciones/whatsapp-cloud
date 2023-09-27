@@ -78,27 +78,23 @@ class WhatsappHandler:
         # Validate if the event is a message
         if ws_value.messages.id:
             return await self.message_event(ws_event)
+        # If the event is an error, we send to the user the message error
+        elif ws_value.statuses.status == "failed":
+            # Get the phone id
+            wa_id = ws_value.statuses.recipient_id
+            # Get the error information
+            errors = ws_value.statuses.errors
+            message_error = errors.error_data.details
+
+            self.log.error(f"Whatsapp return an error: {ws_value.statuses}")
+            portal: Portal = await Portal.get_by_phone_id(
+                wa_id, app_business_id=ws_business_id, create=False
+            )
+            if portal:
+                await portal.handle_whatsapp_error(message_error=message_error)
+            return web.Response(status=400)
         else:
-            # If the event is an error, we send to the user the message error
-            if ws_event.entry.changes.value.statuses.status == "failed":
-                # Get the phone id
-                wa_id = ws_event.entry.changes.value.statuses.recipient_id
-                # Get the error information
-                errors = ws_event.entry.changes.value.statuses.errors
-                message_error = errors.error_data.details
-
-                self.log.error(
-                    f"Whatsapp return an error: {ws_event.entry.changes.value.statuses}"
-                )
-                portal: Portal = await Portal.get_by_phone_id(
-                    wa_id, app_business_id=ws_business_id, create=False
-                )
-                if portal:
-                    await portal.handle_whatsapp_error(message_error=message_error)
-                return web.Response(status=400)
-            else:
-                self.log.debug(f"Integration type not supported.")
-
+            self.log.debug(f"Integration type not supported.")
             return web.Response(status=400)
 
     async def message_event(self, data: WhatsappMessageEvent) -> web.Response:
