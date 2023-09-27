@@ -22,7 +22,7 @@ from mautrix.types import (
 )
 
 from whatsapp.api import WhatsappClient
-from whatsapp.data import WhatsappContacts, WhatsappMessageEvent
+from whatsapp.data import WhatsappContacts, WhatsappEvent, WhatsappStatusesEvent
 from whatsapp.types import WhatsappMessageID, WhatsappPhone, WsBusinessID
 from whatsapp_matrix.formatter.from_matrix import matrix_to_whatsapp
 
@@ -337,7 +337,7 @@ class Portal(DBPortal, BasePortal):
         await self.update()
 
     async def handle_whatsapp_message(
-        self, source: User, message: WhatsappMessageEvent, sender: WhatsappContacts
+        self, source: User, message: WhatsappEvent, sender: WhatsappContacts
     ) -> None:
         """
         When a user of Whatsapp send a message, this function takes it and sends to Matrix
@@ -659,3 +659,17 @@ class Portal(DBPortal, BasePortal):
             The message error that whatsapp return.
         """
         await self.main_intent.send_notice(self.mxid, message_error)
+
+    async def handle_whatsapp_read(self):
+        """
+        Send a read event to Matrix
+        """
+        if not self.mxid:
+            return
+
+        async with self._send_lock:
+            msg = await DBMessage.get_last_message(self.mxid)
+            if msg:
+                await self.main_intent.mark_read(self.mxid, msg.event_mxid)
+            else:
+                self.log.debug(f"Ignoring the null message")
