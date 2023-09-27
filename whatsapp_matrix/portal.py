@@ -77,6 +77,7 @@ class Portal(DBPortal, BasePortal):
         self.error_codes = self.config["whatsapp.error_codes"]
         self.homeserver_address = self.config["homeserver.public_address"]
         self.google_maps_url = self.config["bridge.whatsapp_cloud.google_maps_url"]
+        self.openstreetmap_url = self.config["bridge.whatsapp_cloud.openstreetmap_url"]
 
     @property
     def main_intent(self) -> IntentAPI:
@@ -437,6 +438,17 @@ class Portal(DBPortal, BasePortal):
                     location = message_data.location
                     longitude = location.longitude
                     latitude = location.latitude
+                    long_direction = "E" if longitude > 0 else "W"
+                    lat_direction = "N" if latitude > 0 else "S"
+
+                    # Create the body of the location message
+                    body = (
+                        f"{location.name} - {round(abs(latitude), 4)}° {lat_direction}, "
+                        f"{round(abs(longitude), 4)}° {long_direction}"
+                    )
+
+                    # Create the url of the location message
+                    url = f"{self.openstreetmap_url}{latitude}/{longitude}"
 
                     # create the content of the location message
                     content_attachment = LocationMessageEventContent(
@@ -445,6 +457,10 @@ class Portal(DBPortal, BasePortal):
                         geo_uri=f"geo:{latitude},{longitude}",
                         external_url=f"{self.google_maps_url}?q={latitude},{longitude}",
                     )
+
+                    content_attachment["format"] = str(Format.HTML)
+                    content_attachment["formatted_body"] = f"Location: <a href='{url}'>{body}</a>"
+
                 # Send the message to Matrix
                 has_been_sent = await self.main_intent.send_message(self.mxid, content_attachment)
 

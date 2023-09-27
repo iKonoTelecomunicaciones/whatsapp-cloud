@@ -69,6 +69,7 @@ bridge:
         # Google maps URL.
         # {latitude} and {longitude} is replaced with valid values.
         google_maps_url: https://www.google.com/maps
+        openstreetmap_url: https://www.openstreetmap.org/#map=15/
 
     # The prefix for commands. Only required in non-management rooms.
     command_prefix: "!ws"
