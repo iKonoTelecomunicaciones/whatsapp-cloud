@@ -37,6 +37,7 @@ class WhatsappClient:
         message_type: MessageType,
         message: Optional[str] = None,
         url: Optional[str] = None,
+        location: Optional[tuple] = None,
     ) -> Dict[str, str]:
         """
         Send a message to the user.
@@ -51,6 +52,16 @@ class WhatsappClient:
 
         message_type: MessageType
             The type of the message that will be send to the user.
+
+        url: str
+            The url of the file that will be send to the user.
+
+        location: tuple
+            The location of the user, contains the latitude and longitude.
+
+        Returns
+        -------
+        Return the response of the Whatsapp API.
         """
         # Set the headers for the request to the Whatsapp API
         headers = {
@@ -74,6 +85,8 @@ class WhatsappClient:
             if message_type == MessageType.AUDIO
             else "document"
             if message_type == MessageType.FILE
+            else "location"
+            if message_type == MessageType.LOCATION
             else None
         )
 
@@ -86,6 +99,8 @@ class WhatsappClient:
             if message_type == MessageType.TEXT
             else {"link": url, "filename": "File"}
             if message_type == MessageType.FILE
+            else {"latitude": location[0], "longitude": location[1]}
+            if message_type == MessageType.LOCATION
             else {"link": url}
         )
 
@@ -102,9 +117,9 @@ class WhatsappClient:
         try:
             # Send the message to the Whatsapp API
             resp = await self.http.post(send_message_url, json=data, headers=headers)
-        except ClientConnectorError as e:
-            self.log.error(e)
-            return
+        except ClientConnectorError as error:
+            self.log.error(error)
+            raise ClientConnectorError(error.args[0])
 
         response_data = json.loads(await resp.text())
 
