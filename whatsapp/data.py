@@ -228,7 +228,7 @@ class WhatsappErrors(SerializableAttrs):
 
 
 @dataclass
-class WhatsappStatuses(SerializableAttrs):
+class WhatsappStatusesEvent(SerializableAttrs):
     """
     Contain the information of the error status.
 
@@ -408,14 +408,12 @@ class WhatsappValue(SerializableAttrs):
     metadata: WhatsappMetaData = ib(metadata={"json": "metadata"}, default={})
     contacts: WhatsappContacts = ib(metadata={"json": "contacts"}, default={})
     messages: WhatsappMessages = ib(metadata={"json": "messages"}, default={})
-    statuses: WhatsappStatuses = ib(metadata={"json": "statuses"}, default={})
 
     @classmethod
     def from_dict(cls, data: dict):
         metadata_obj = None
         contacts_obj = None
         messages_obj = None
-        statuses_obj = None
 
         if data.get("metadata"):
             metadata_obj = WhatsappMetaData(**data.get("metadata", {}))
@@ -430,17 +428,11 @@ class WhatsappValue(SerializableAttrs):
         except IndexError:
             messages_obj = {}
 
-        try:
-            statuses_obj = data.get("statuses", [])[0]
-        except IndexError:
-            statuses_obj = {}
-
         return cls(
             messaging_product=data.get("messaging_product", ""),
             metadata=metadata_obj,
             contacts=WhatsappContacts.from_dict(contacts_obj),
             messages=WhatsappMessages.from_dict(messages_obj),
-            statuses=WhatsappStatuses.from_dict(statuses_obj),
         )
 
 
