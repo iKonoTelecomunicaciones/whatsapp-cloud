@@ -129,7 +129,9 @@ class WhatsappHandler:
         )
         # Handle the read event
         if portal:
-            await portal.handle_whatsapp_read()
+            message_id = data.entry.changes.value.statuses.id
+            await portal.handle_whatsapp_read(message_id=message_id)
             return web.Response(status=200)
         else:
+            self.log.error(f"Portal not found.")
             return web.Response(status=406)

@@ -6,7 +6,7 @@ from typing import TYPE_CHECKING, Any, Dict, List, Optional, Union, cast
 
 from aiohttp import ClientConnectorError
 from mautrix.appservice import AppService, IntentAPI
-from mautrix.bridge import BasePortal
+from mautrix.bridge import BasePortal, async_getter_lock
 from mautrix.types import (
     EventID,
     EventType,
@@ -147,6 +147,11 @@ class Portal(DBPortal, BasePortal):
 
         sender : Dict
             Dictionary that contains the data of who sends the message.
+
+        Exceptions
+        ----------
+        Exception:
+            Show and error if the portal does not create.
         """
         # Validate if the matrix room exists, if not, it is created
         if self.mxid:
@@ -354,6 +359,10 @@ class Portal(DBPortal, BasePortal):
         sender: WhatsappMessageSender
             The class that will be used to specify who send the message.
 
+        Exceptions
+        ----------
+        Exception:
+            Show and error if the media does not upload.
         """
         # Validate if the matrix room exists, if not, it is created
         if not await self.create_matrix_room(source=source, sender=sender):
@@ -478,6 +487,21 @@ class Portal(DBPortal, BasePortal):
         )
         await msg.insert()
 
+    async def handle_whatsapp_read(self, message_id: WhatsappMessageID) -> None:
+        """
+        Send a read event to Matrix
+        """
+        if not self.mxid:
+            self.log.critical("No mxid, ignoring read")
+            return
+
+        async with self._send_lock:
+            msg = await DBMessage.get_by_whatsapp_message_id(message_id)
+            if msg:
+                await self.main_intent.mark_read(self.mxid, msg.event_mxid)
+            else:
+                self.log.debug(f"Ignoring the null message")
+
     async def handle_matrix_join(self, user: User) -> None:
         if self.is_direct or not await user.is_logged_in():
             return
@@ -502,6 +526,12 @@ class Portal(DBPortal, BasePortal):
         event_id: EventID
             The id of the event.
 
+        Exceptions
+        ----------
+        FileExistsError:
+            If the message is not sent, an error is raised.
+        ClientConnectorError:
+            If there is an error with the connection
         """
 
         orig_sender = sender
@@ -611,6 +641,34 @@ class Portal(DBPortal, BasePortal):
             app_business_id=self.app_business_id,
         ).insert()
 
+    async def handle_matrix_read(self, room_id: RoomID, event_id: EventID) -> None:
+        """
+        Send a read event to Whatsapp
+
+        Exceptions
+        ----------
+        Exception:
+            Show and error if the event does not send.
+        """
+        if not self.mxid:
+            self.log.critical("No mxid, ignoring read")
+            return
+        if not event_id:
+            self.log.critical("No event_id, ignoring read")
+            return
+
+        message: DBMessage = await DBMessage.get_by_mxid(event_id, room_id)
+        # We send the location message to the Whatsapp API
+        try:
+            response = await self.whatsapp_client.mark_read(message_id=message.whatsapp_message_id)
+        except Exception as error:
+            self.log.error(f"Error sending the read event: {error}")
+            return
+
+        if response:
+            self.log.debug(f"Whatsapp send response: {response}")
+            return
+
     async def postinit(self) -> None:
         await self.init_whatsapp_client
         if self.mxid:
@@ -692,17 +750,3 @@ class Portal(DBPortal, BasePortal):
             The message error that whatsapp return.
         """
         await self.main_intent.send_notice(self.mxid, message_error)
-
-    async def handle_whatsapp_read(self):
-        """
-        Send a read event to Matrix
-        """
-        if not self.mxid:
-            return
-
-        async with self._send_lock:
-            msg = await DBMessage.get_last_message(self.mxid)
-            if msg:
-                await self.main_intent.mark_read(self.mxid, msg.event_mxid)
-            else:
-                self.log.debug(f"Ignoring the null message")

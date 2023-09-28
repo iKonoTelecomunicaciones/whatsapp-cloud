@@ -9,7 +9,7 @@ from mautrix.types import MessageType
 from whatsapp.data import WhatsappMediaData
 from whatsapp_matrix.config import Config
 
-from .types import WhatsappMediaID, WhatsappPhone, WsBusinessID, WSPhoneID
+from .types import WhatsappMediaID, WhatsappMessageID, WhatsappPhone, WsBusinessID, WSPhoneID
 
 
 class WhatsappClient:
@@ -138,6 +138,11 @@ class WhatsappClient:
         media_id : str
             The id of the media.
 
+        Exceptions
+        ----------
+        ClientConnectorError:
+            If the connection to the Whatsapp API fails.
+
         Returns
         -------
         File:
@@ -172,3 +177,51 @@ class WhatsappClient:
             return None
 
         return media
+
+    async def mark_read(self, message_id: WhatsappMessageID):
+        """
+        Mark the message as read.
+
+        Parameters
+        ----------
+        message_id : str
+            The id of the message.
+
+        Exceptions
+        ----------
+        ClientConnectorError:
+            If the connection to the Whatsapp API fails.
+        FileNotFoundError:
+            If the message was not sent.
+
+        Returns
+        -------
+        Return the response of the Whatsapp API.
+        """
+        # Set the headers for the request to the Whatsapp API
+        headers = {
+            "Content-Type": "application/json",
+            "Authorization": f"Bearer {self.page_access_token}",
+        }
+        # Set the url to send the message to Wahtsapp API
+        mark_read_url = f"{self.base_url}/{self.version}/{self.ws_phone_id}/messages"
+
+        # Set the data to send to Whatsapp API
+        data = {"messaging_product": "whatsapp", "status": "read", "message_id": message_id}
+
+        self.log.debug(f"Marking message as read {data} to {message_id}")
+
+        try:
+            # Send the message to the Whatsapp API
+            resp = await self.http.post(mark_read_url, data=data, headers=headers)
+        except ClientConnectorError as error:
+            self.log.error(error)
+            raise ClientConnectorError(error.args[0])
+
+        response_data = json.loads(await resp.text())
+
+        # If the message was not sent, raise an error
+        if response_data.get("error", {}):
+            raise FileNotFoundError(response_data)
+
+        return response_data

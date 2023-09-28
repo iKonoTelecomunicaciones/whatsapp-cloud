@@ -3,7 +3,15 @@ from __future__ import annotations
 from typing import TYPE_CHECKING
 
 from mautrix.bridge import BaseMatrixHandler, RejectMatrixInvite
-from mautrix.types import EventID, RoomID, SingleReceiptEventContent, UserID
+from mautrix.types import (
+    EventID,
+    EventType,
+    PresenceEvent,
+    ReceiptEvent,
+    RoomID,
+    TypingEvent,
+    UserID,
+)
 
 from .portal import Portal
 from .user import User
@@ -36,6 +44,29 @@ class MatrixHandler(BaseMatrixHandler):
 
         # We out the user from the portal
         await portal.handle_matrix_leave(user)
+
+    async def handle_ephemeral_event(self, evt: ReceiptEvent) -> None:
+        """
+        Handle the ephemeral events, like reads, typing, etc.
+        """
+        self.log.debug(f"Received event: {evt}")
+        # Validate that the event is a read event
+        if evt.type == EventType.RECEIPT:
+            room_id = evt.room_id
+            portal: Portal = await Portal.get_by_mxid(room_id)
+            if not portal:
+                self.log.error("The read event can't be send because the portal does not exist")
+                return
+
+            # We send the read event to Whatsapp Api, for this we need the event id of the read
+            # event, so we get the event id from the content of the read event
+            event_id = ""
+            for content in evt.content:
+                event_id = content
+
+            self.log.debug(f"Send read event: {evt}")
+            await portal.handle_matrix_read(room_id=evt.room_id, event_id=event_id)
+        return
 
     async def handle_invite(
         self, room_id: RoomID, user_id: UserID, inviter: User, event_id: EventID
