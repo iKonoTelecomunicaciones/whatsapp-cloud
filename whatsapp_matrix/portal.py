@@ -4,6 +4,7 @@ from asyncio import Lock
 from string import Template
 from typing import TYPE_CHECKING, Any, Dict, List, Optional, Union, cast
 
+from aiohttp import ClientConnectorError
 from mautrix.appservice import AppService, IntentAPI
 from mautrix.bridge import BasePortal
 from mautrix.types import (
@@ -504,6 +505,7 @@ class Portal(DBPortal, BasePortal):
         """
 
         orig_sender = sender
+        response = None
         sender, is_relay = await self.get_relay_sender(sender, f"message {event_id}")
         if is_relay:
             await self.apply_relay_message_format(orig_sender, message)
@@ -530,6 +532,10 @@ class Portal(DBPortal, BasePortal):
                 self.log.error(f"Error sending the message: {error}")
                 await self.main_intent.send_notice(self.mxid, f"Error sending the message")
                 return
+            except ClientConnectorError as error:
+                self.log.error(f"Error with the connection: {error}")
+                await self.main_intent.send_notice(self.mxid, f"Error with the connection")
+                return
 
         elif message.msgtype in (
             MessageType.IMAGE,
@@ -551,9 +557,36 @@ class Portal(DBPortal, BasePortal):
                     message_type=message.msgtype,
                     url=url,
                 )
-            except Exception as error:
-                self.log.error(f"Error sending the attachment data: {error}")
-                await self.main_intent.send_notice(self.mxid, "Error sending the attachment data")
+            except FileExistsError as error:
+                self.log.error(f"Error sending the file: {error}")
+                await self.main_intent.send_notice(self.mxid, f"Error sending the file")
+                return
+            except ClientConnectorError as error:
+                self.log.error(f"Error with the connection: {error}")
+                await self.main_intent.send_notice(self.mxid, f"Error with the connection")
+                return
+
+        elif message.msgtype == MessageType.LOCATION:
+            # We get the directions of the location message and we send it to the Whatsapp API
+            # A location message has a geo_uri like geo:37.786971,-122.399677 and we need to get
+            # the latitude and longitude to send it to the Whatsapp API
+            latitud = message.geo_uri.split(",")[0].split(":")[1]
+            longitud = message.geo_uri.split(",")[1].split(";")[0]
+
+            # We send the location message to the Whatsapp API
+            try:
+                response = await self.whatsapp_client.send_message(
+                    phone_id=self.phone_id,
+                    message_type=message.msgtype,
+                    location=(latitud, longitud),
+                )
+            except FileExistsError as error:
+                self.log.error(f"Error sending the file: {error}")
+                await self.main_intent.send_notice(self.mxid, f"Error sending the location")
+                return
+            except ClientConnectorError as error:
+                self.log.error(f"Error with the connection: {error}")
+                await self.main_intent.send_notice(self.mxid, f"Error with the connection")
                 return
 
         else:
