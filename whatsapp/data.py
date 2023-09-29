@@ -9,7 +9,7 @@ class WhatsappLocation(SerializableAttrs):
     """
     Contain the location of the customer.
 
-    - address: Te address of the location.
+    - address: The address of the location.
 
     - latitude: The latitude of the location.
 
@@ -17,7 +17,7 @@ class WhatsappLocation(SerializableAttrs):
 
     - name: The name of the location .
 
-    - url: The url of the documnet.
+    - url: The url of the document.
     """
 
     address: str = ib(metadata={"json": "address"}, default="")
@@ -30,15 +30,15 @@ class WhatsappLocation(SerializableAttrs):
 @dataclass
 class WhatsappDocument(SerializableAttrs):
     """
-    Contain the documnet of the customer.
+    Contain the document of the customer.
 
-    - id: Te id of the documnet.
+    - id: The id of the document.
 
-    - hash: The hash of the documnet.
+    - hash: The hash of the document.
 
-    - mime_type: The type of the documnet.
+    - mime_type: The type of the document.
 
-    - filename: The name of the documnet.
+    - filename: The name of the document.
     """
 
     id: str = ib(metadata={"json": "id"}, default="")
@@ -61,7 +61,7 @@ class WhatsappSticker(SerializableAttrs):
     """
     Contain the sticker of the customer.
 
-    - id: Te id of the sticker.
+    - id: The id of the sticker.
 
     - hash: The hash of the sticker.
 
@@ -90,7 +90,7 @@ class WhatsappAudio(SerializableAttrs):
     """
     Contain the audio of the customer.
 
-    - id: Te id of the audio.
+    - id: The id of the audio.
 
     - hash: The hash of the audio.
 
@@ -119,7 +119,7 @@ class WhatsappVideo(SerializableAttrs):
     """
     Contain the video of the customer.
 
-    - id: Te id of the video.
+    - id: The id of the video.
 
     - hash: The hash of the video.
 
@@ -144,7 +144,7 @@ class WhatsappImage(SerializableAttrs):
     """
     Contain the image of the customer.
 
-    - id: Te id of the image.
+    - id: The id of the image.
 
     - hash: The hash of the image.
 

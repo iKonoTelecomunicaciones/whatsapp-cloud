@@ -118,13 +118,8 @@ class WhatsappClient:
             data["context"] = {"message_id": aditional_data["reply_to"]["wc_message_id"]}
         self.log.debug(f"Sending message {data} to {phone_id}")
 
-        try:
-            # Send the message to the Whatsapp API
-            resp = await self.http.post(send_message_url, json=data, headers=headers)
-        except ClientConnectorError as error:
-            self.log.error(error)
-            raise ClientConnectorError(error.args[0])
-
+        # Send the message to the Whatsapp API
+        resp = await self.http.post(send_message_url, json=data, headers=headers)
         response_data = json.loads(await resp.text())
 
         # If the message was not sent, raise an error
