@@ -528,7 +528,7 @@ class Portal(DBPortal, BasePortal):
                     phone_id=self.phone_id,
                     message_type=message.msgtype,
                 )
-            except FileExistsError as error:
+            except TypeError as error:
                 self.log.error(f"Error sending the message: {error}")
                 await self.main_intent.send_notice(self.mxid, f"Error sending the message")
                 return
@@ -557,7 +557,7 @@ class Portal(DBPortal, BasePortal):
                     message_type=message.msgtype,
                     url=url,
                 )
-            except FileExistsError as error:
+            except TypeError as error:
                 self.log.error(f"Error sending the file: {error}")
                 await self.main_intent.send_notice(self.mxid, f"Error sending the file")
                 return
@@ -580,7 +580,7 @@ class Portal(DBPortal, BasePortal):
                     message_type=message.msgtype,
                     location=(latitud, longitud),
                 )
-            except FileExistsError as error:
+            except TypeError as error:
                 self.log.error(f"Error sending the file: {error}")
                 await self.main_intent.send_notice(self.mxid, f"Error sending the location")
                 return

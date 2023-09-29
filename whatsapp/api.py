@@ -92,7 +92,7 @@ class WhatsappClient:
 
         if not type_message:
             self.log.error("Unsupported message type")
-            raise FileExistsError("Unsupported message type")
+            raise TypeError("Unsupported message type")
 
         message_data = (
             {"preview_url": False, "body": message}
@@ -114,13 +114,8 @@ class WhatsappClient:
 
         self.log.debug(f"Sending message {data} to {phone_id}")
 
-        try:
-            # Send the message to the Whatsapp API
-            resp = await self.http.post(send_message_url, json=data, headers=headers)
-        except ClientConnectorError as error:
-            self.log.error(error)
-            raise ClientConnectorError(error.args[0])
-
+        # Send the message to the Whatsapp API
+        resp = await self.http.post(send_message_url, json=data, headers=headers)
         response_data = json.loads(await resp.text())
 
         # If the message was not sent, raise an error
