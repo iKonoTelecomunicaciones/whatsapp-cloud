@@ -22,13 +22,13 @@ class WhatsappClient:
         loop: asyncio.AbstractEventLoop,
         page_access_token: Optional[str] = None,
         business_id: Optional[WsBusinessID] = None,
-        ws_phone_id: Optional[WSPhoneID] = None,
+        wc_phone_id: Optional[WSPhoneID] = None,
     ) -> None:
         self.base_url = config["whatsapp.base_url"]
         self.version = config["whatsapp.version"]
         self.page_access_token = page_access_token
         self.business_id = business_id
-        self.ws_phone_id = ws_phone_id
+        self.wc_phone_id = wc_phone_id
         self.http = ClientSession(loop=loop)
 
     async def send_message(
@@ -38,6 +38,7 @@ class WhatsappClient:
         message: Optional[str] = None,
         url: Optional[str] = None,
         location: Optional[tuple] = None,
+        aditional_data: Optional[Dict] = None,
     ) -> Dict[str, str]:
         """
         Send a message to the user.
@@ -69,7 +70,7 @@ class WhatsappClient:
             "Authorization": f"Bearer {self.page_access_token}",
         }
         # Set the url to send the message to Wahtsapp API
-        send_message_url = f"{self.base_url}/{self.version}/{self.ws_phone_id}/messages"
+        send_message_url = f"{self.base_url}/{self.version}/{self.wc_phone_id}/messages"
 
         self.log.debug(f"Sending message to {send_message_url}")
 
@@ -112,6 +113,9 @@ class WhatsappClient:
             type_message: message_data,
         }
 
+        # If the message is a reply, add the message_id
+        if aditional_data.get("reply_to"):
+            data["context"] = {"message_id": aditional_data["reply_to"]["wc_message_id"]}
         self.log.debug(f"Sending message {data} to {phone_id}")
 
         try:
@@ -204,7 +208,7 @@ class WhatsappClient:
             "Authorization": f"Bearer {self.page_access_token}",
         }
         # Set the url to send the message to Wahtsapp API
-        mark_read_url = f"{self.base_url}/{self.version}/{self.ws_phone_id}/messages"
+        mark_read_url = f"{self.base_url}/{self.version}/{self.wc_phone_id}/messages"
 
         # Set the data to send to Whatsapp API
         data = {"messaging_product": "whatsapp", "status": "read", "message_id": message_id}

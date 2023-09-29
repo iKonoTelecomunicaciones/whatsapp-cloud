@@ -48,9 +48,9 @@ async def upgrade_v1(conn: Connection) -> None:
         )"""
     )
     await conn.execute(
-        """CREATE TABLE ws_application (
+        """CREATE TABLE wc_application (
             business_id             TEXT PRIMARY KEY,
-            ws_phone_id             TEXT,
+            wc_phone_id             TEXT,
             name                VARCHAR(255),
             admin_user          VARCHAR(255),
             page_access_token   TEXT
@@ -59,23 +59,23 @@ async def upgrade_v1(conn: Connection) -> None:
 
     # The business_id of meta applications are unique to your platform.
     await conn.execute(
-        """ALTER TABLE message ADD CONSTRAINT FK_message_ws_application_app_business_id
-        FOREIGN KEY (app_business_id) references ws_application (business_id)"""
+        """ALTER TABLE message ADD CONSTRAINT FK_message_wc_application_app_business_id
+        FOREIGN KEY (app_business_id) references wc_application (business_id)"""
     )
 
     await conn.execute(
-        """ALTER TABLE portal ADD CONSTRAINT FK_portal_ws_application_app_business_id
-        FOREIGN KEY (app_business_id) references ws_application (business_id)"""
+        """ALTER TABLE portal ADD CONSTRAINT FK_portal_wc_application_app_business_id
+        FOREIGN KEY (app_business_id) references wc_application (business_id)"""
     )
 
     await conn.execute(
-        """ALTER TABLE matrix_user ADD CONSTRAINT FK_matrix_user_ws_application_app_business_id
-        FOREIGN KEY (app_business_id) references ws_application (business_id)"""
+        """ALTER TABLE matrix_user ADD CONSTRAINT FK_matrix_user_wc_application_app_business_id
+        FOREIGN KEY (app_business_id) references wc_application (business_id)"""
     )
 
     await conn.execute(
-        """ALTER TABLE puppet ADD CONSTRAINT FK_puppet_ws_application_app_business_id
-        FOREIGN KEY (app_business_id) references ws_application (business_id)"""
+        """ALTER TABLE puppet ADD CONSTRAINT FK_puppet_wc_application_app_business_id
+        FOREIGN KEY (app_business_id) references wc_application (business_id)"""
     )
 
     await conn.execute(

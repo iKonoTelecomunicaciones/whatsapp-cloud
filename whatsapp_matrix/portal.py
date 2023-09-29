@@ -6,7 +6,7 @@ from typing import TYPE_CHECKING, Any, Dict, List, Optional, Union, cast
 
 from aiohttp import ClientConnectorError
 from mautrix.appservice import AppService, IntentAPI
-from mautrix.bridge import BasePortal, async_getter_lock
+from mautrix.bridge import BasePortal
 from mautrix.types import (
     EventID,
     EventType,
@@ -23,9 +23,10 @@ from mautrix.types import (
 )
 
 from whatsapp.api import WhatsappClient
-from whatsapp.data import WhatsappContacts, WhatsappEvent, WhatsappStatusesEvent
+from whatsapp.data import WhatsappContacts, WhatsappEvent
 from whatsapp.types import WhatsappMessageID, WhatsappPhone, WsBusinessID
 from whatsapp_matrix.formatter.from_matrix import matrix_to_whatsapp
+from whatsapp_matrix.formatter.from_whatsapp import whatsapp_reply_to_matrix
 
 from .db import Message as DBMessage
 from .db import Portal as DBPortal
@@ -98,7 +99,7 @@ class Portal(DBPortal, BasePortal):
 
         self.whatsapp_client.page_access_token = whatsapp_app.page_access_token
         self.whatsapp_client.business_id = whatsapp_app.business_id
-        self.whatsapp_client.ws_phone_id = whatsapp_app.ws_phone_id
+        self.whatsapp_client.wc_phone_id = whatsapp_app.wc_phone_id
 
     @property
     def is_direct(self) -> bool:
@@ -370,109 +371,126 @@ class Portal(DBPortal, BasePortal):
 
         has_been_sent: EventID | None = None
         message_data = message.entry.changes.value.messages
-        # Validate if the message exist and that the message has not a reply
-        if message_data:
-            whatsapp_message_type = message_data.type
-            whatsapp_message_id = message_data.id
 
-            # Validate if the message is a text message, if is it, the message is sent to the Whatsapp API
-            if whatsapp_message_type == "text":
-                message_text = message_data.text.body
-                has_been_sent = await self.send_text_message(message_text)
-            else:
-                file_name = ""
+        if not message_data:
+            self.log.error("No message data")
+            return
 
-                # Validate what kind of message is and obtain the id of the message
-                if whatsapp_message_type == "image":
-                    message_type = MessageType.IMAGE
-                    media_id = message_data.image.id
+        # Validate if the message exist and that the message has a reply
+        whatsapp_message_type = message_data.type
+        whatsapp_message_id = message_data.id
+        file_name = ""
+        media_id = None
+        messasge_reply = {}
 
-                elif whatsapp_message_type == "video":
-                    message_type = MessageType.VIDEO
-                    media_id = message_data.video.id
+        if message_data.context:
+            reply_message_id = message_data.context.id
+            messasge_reply: DBMessage = await DBMessage.get_by_whatsapp_message_id(
+                reply_message_id
+            )
 
-                elif whatsapp_message_type == "audio":
-                    message_type = MessageType.AUDIO
-                    media_id = message_data.audio.id
-                    # This is to distinguish between a voice message and an audio message
-                    file_name = "Voice Audio" if message_data.audio.voice else "Audio"
+        # Validate what kind of message is and obtain the id of the message
+        if whatsapp_message_type == "text":
+            message_type = MessageType.TEXT
+            attachment = message_data.text.body
 
-                elif whatsapp_message_type == "sticker":
-                    message_type = MessageType.IMAGE
-                    media_id = message_data.sticker.id
+        elif whatsapp_message_type == "image":
+            message_type = MessageType.IMAGE
+            media_id = message_data.image.id
 
-                elif whatsapp_message_type == "document":
-                    message_type = MessageType.FILE
-                    media_id = message_data.document.id
-                    file_name = message_data.document.filename
+        elif whatsapp_message_type == "video":
+            message_type = MessageType.VIDEO
+            media_id = message_data.video.id
 
-                elif whatsapp_message_type == "location":
-                    message_type = MessageType.LOCATION
+        elif whatsapp_message_type == "audio":
+            message_type = MessageType.AUDIO
+            media_id = message_data.audio.id
+            # This is to distinguish between a voice message and an audio message
+            file_name = "Voice Audio" if message_data.audio.voice else "Audio"
 
-                else:
-                    self.log.error("Unsupported message type")
-                    await self.az.intent.send_notice(self.mxid, "Error getting the message")
+        elif whatsapp_message_type == "sticker":
+            message_type = MessageType.IMAGE
+            media_id = message_data.sticker.id
+
+        elif whatsapp_message_type == "document":
+            message_type = MessageType.FILE
+            media_id = message_data.document.id
+            file_name = message_data.document.filename
+
+        elif whatsapp_message_type == "location":
+            message_type = MessageType.LOCATION
+
+        else:
+            self.log.error("Unsupported message type")
+            await self.az.intent.send_notice(self.mxid, "Error getting the message")
+            return
+
+        if message_type == MessageType.TEXT:
+            content_attachment = TextMessageEventContent(msgtype=message_type, body=attachment)
+
+        elif message_type != MessageType.LOCATION:
+            if media_id:
+                # Obtain the url of the file from Whatsapp API
+                media_data = await self.whatsapp_client.get_media(media_id=media_id)
+
+                if not media_data:
+                    self.log.error("Error getting the data of the media")
+                    await self.az.intent.send_notice(
+                        self.mxid, "Error getting the data of the media"
+                    )
                     return
 
-                if message_type != MessageType.LOCATION:
-                    # Obtain the url of the file from Whatsapp API
-                    media_data = await self.whatsapp_client.get_media(media_id=media_id)
+                # Obtain the media file
+                data = await media_data.read()
 
-                    if not media_data:
-                        self.log.error("Error getting the data of the media")
-                        await self.az.intent.send_notice(
-                            self.mxid, "Error getting the data of the media"
-                        )
-                        return
+                try:
+                    # Upload the message media to Matrix
+                    attachment = await self.main_intent.upload_media(data=data)
+                except Exception as e:
+                    self.log.exception(f"Message not receive, error: {e}")
+                    return
 
-                    # Obtain the media file
-                    data = await media_data.read()
+            # Create the content of the message media for send to Matrix
+            content_attachment = MediaMessageEventContent(
+                body=file_name,
+                msgtype=message_type,
+                url=attachment,
+                info=FileInfo(size=len(data)),
+            )
 
-                    try:
-                        # Upload the message media to Matrix
-                        attachment_url = await self.main_intent.upload_media(data=data)
-                    except Exception as e:
-                        self.log.exception(f"Message not receive, error: {e}")
-                        return
+        else:
+            # Obtain the dat of the location
+            location = message_data.location
+            longitude = location.longitude
+            latitude = location.latitude
+            long_direction = "E" if longitude > 0 else "W"
+            lat_direction = "N" if latitude > 0 else "S"
 
-                    # Create the content of the message media for send to Matrix
-                    content_attachment = MediaMessageEventContent(
-                        body=file_name,
-                        msgtype=message_type,
-                        url=attachment_url,
-                        info=FileInfo(size=len(data)),
-                    )
+            # Create the body of the location message
+            body = (
+                f"{location.name} - {round(abs(latitude), 4)}° {lat_direction}, "
+                f"{round(abs(longitude), 4)}° {long_direction}"
+            )
 
-                else:
-                    # Obtain the dat of the location
-                    location = message_data.location
-                    longitude = location.longitude
-                    latitude = location.latitude
-                    long_direction = "E" if longitude > 0 else "W"
-                    lat_direction = "N" if latitude > 0 else "S"
+            # Create the url of the location message
+            url = f"{self.openstreetmap_url}{latitude}/{longitude}"
 
-                    # Create the body of the location message
-                    body = (
-                        f"{location.name} - {round(abs(latitude), 4)}° {lat_direction}, "
-                        f"{round(abs(longitude), 4)}° {long_direction}"
-                    )
+            # create the content of the location message
+            content_attachment = LocationMessageEventContent(
+                body=f"{location.name} {location.address}",
+                msgtype=message_type,
+                geo_uri=f"geo:{latitude},{longitude}",
+                external_url=f"{self.google_maps_url}?q={latitude},{longitude}",
+            )
 
-                    # Create the url of the location message
-                    url = f"{self.openstreetmap_url}{latitude}/{longitude}"
+            content_attachment["format"] = str(Format.HTML)
+            content_attachment["formatted_body"] = f"Location: <a href='{url}'>{body}</a>"
 
-                    # create the content of the location message
-                    content_attachment = LocationMessageEventContent(
-                        body=f"{location.name} {location.address}",
-                        msgtype=message_type,
-                        geo_uri=f"geo:{latitude},{longitude}",
-                        external_url=f"{self.google_maps_url}?q={latitude},{longitude}",
-                    )
-
-                    content_attachment["format"] = str(Format.HTML)
-                    content_attachment["formatted_body"] = f"Location: <a href='{url}'>{body}</a>"
-
-                # Send the message to Matrix
-                has_been_sent = await self.main_intent.send_message(self.mxid, content_attachment)
+        has_been_sent = await self.send_data_message(
+            content_attachment=content_attachment,
+            messasge_reply=messasge_reply,
+            message_type=message_type,
+        )
 
         puppet: Puppet = await self.get_dm_puppet()
 
@@ -486,6 +504,27 @@ class Portal(DBPortal, BasePortal):
             app_business_id=message.entry.id,
         )
         await msg.insert()
+
+    async def send_data_message(
+        self, content_attachment: Any, messasge_reply: DBMessage, message_type: str
+    ) -> EventID:
+        """
+        Obtain the data of the message that will be send to Matrix and validate if the message has
+        a reply, if is it, the message is sent to Matrix with the reply message
+        """
+        if messasge_reply:
+            # Create the content of the message media for send to Matrix
+            content = await whatsapp_reply_to_matrix(
+                content_attachment, messasge_reply, self.main_intent, self.log, message_type
+            )
+
+            content.external_url = content.external_url
+            # Send the message to Matrix
+            return await self.main_intent.send_message(self.mxid, content)
+
+        else:
+            # Send the message to Matrix
+            return await self.main_intent.send_message(self.mxid, content_attachment)
 
     async def handle_whatsapp_read(self, message_id: WhatsappMessageID) -> None:
         """
@@ -536,12 +575,20 @@ class Portal(DBPortal, BasePortal):
 
         orig_sender = sender
         response = None
+        aditional_data = {}
         sender, is_relay = await self.get_relay_sender(sender, f"message {event_id}")
         if is_relay:
             await self.apply_relay_message_format(orig_sender, message)
 
         if message.msgtype == MessageType.NOTICE and not self.config["bridge.bridge_notices"]:
             return
+
+        if message.get_reply_to():
+            reply_message: DBMessage = await DBMessage.get_by_mxid(
+                message.get_reply_to(), self.mxid
+            )
+            if reply_message:
+                aditional_data["reply_to"] = {"wc_message_id": reply_message.whatsapp_message_id}
 
         # If the message is a text message, we send the message to the Whatsapp API
         if message.msgtype in (MessageType.TEXT, MessageType.NOTICE):
@@ -557,6 +604,7 @@ class Portal(DBPortal, BasePortal):
                     message=text,
                     phone_id=self.phone_id,
                     message_type=message.msgtype,
+                    aditional_data=aditional_data,
                 )
             except FileExistsError as error:
                 self.log.error(f"Error sending the message: {error}")
@@ -586,6 +634,7 @@ class Portal(DBPortal, BasePortal):
                     phone_id=self.phone_id,
                     message_type=message.msgtype,
                     url=url,
+                    aditional_data=aditional_data,
                 )
             except FileExistsError as error:
                 self.log.error(f"Error sending the file: {error}")
@@ -609,6 +658,7 @@ class Portal(DBPortal, BasePortal):
                     phone_id=self.phone_id,
                     message_type=message.msgtype,
                     location=(latitud, longitud),
+                    aditional_data=aditional_data,
                 )
             except FileExistsError as error:
                 self.log.error(f"Error sending the file: {error}")

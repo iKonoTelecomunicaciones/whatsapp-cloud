@@ -60,38 +60,38 @@ class WhatsappHandler:
         self.log.debug(f"The event arrives {data}")
 
         # Get the business id and the value of the event
-        ws_business_id = data.get("entry")[0].get("id")
-        ws_value = data.get("entry")[0].get("changes")[0].get("value")
+        wc_business_id = data.get("entry")[0].get("id")
+        wc_value = data.get("entry")[0].get("changes")[0].get("value")
         # Get all the whatsapp apps
-        ws_apps = await DBWhatsappApplication.get_all_ws_apps()
+        wc_apps = await DBWhatsappApplication.get_all_wc_apps()
 
         # Validate if the app is registered
-        if not ws_business_id in ws_apps:
+        if not wc_business_id in wc_apps:
             self.log.warning(
-                f"Ignoring event because the whatsapp_app [{ws_business_id}] is not registered."
+                f"Ignoring event because the whatsapp_app [{wc_business_id}] is not registered."
             )
             return web.Response(status=406)
 
         # Validate if the event is a message, read or error
         # If the event is a message, we send a message event to matrix
-        if ws_value.get("messages"):
+        if wc_value.get("messages"):
             return await self.message_event(WhatsappEvent.from_dict(data))
 
         # If the event is a read, we send a read event to matrix
-        elif ws_value.get("statuses")[0].get("status") == "read":
+        elif wc_value.get("statuses")[0].get("status") == "read":
             return await self.read_event(WhatsappEvent.from_dict(data))
 
         # If the event is an error, we send to the user the message error
-        elif ws_value.get("statuses")[0].get("status") == "failed":
-            ws_statuses = WhatsappStatusesEvent.from_dict(ws_value.get("statuses")[0])
+        elif wc_value.get("statuses")[0].get("status") == "failed":
+            wc_statuses = WhatsappStatusesEvent.from_dict(wc_value.get("statuses")[0])
             # Get the phone id
-            wa_id = ws_statuses.recipient_id
+            wa_id = wc_statuses.recipient_id
             # Get the error information
-            message_error = ws_statuses.errors.error_data.details
+            message_error = wc_statuses.errors.error_data.details
 
-            self.log.error(f"Whatsapp return an error: {ws_statuses}")
+            self.log.error(f"Whatsapp return an error: {wc_statuses}")
             portal: Portal = await Portal.get_by_phone_id(
-                wa_id, app_business_id=ws_business_id, create=False
+                wa_id, app_business_id=wc_business_id, create=False
             )
             if portal:
                 await portal.handle_whatsapp_error(message_error=message_error)

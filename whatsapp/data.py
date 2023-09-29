@@ -330,7 +330,7 @@ class WhatsappMessages(SerializableAttrs):
         document_obj = None
 
         if data.get("context", {}):
-            context_obj = WhatsappContext(**data.get("context", {}))
+            context_obj = WhatsappContext.from_dict(data.get("context", {}))
 
         if data.get("text", ""):
             text_obj = WhatsappText(**data.get("text", {}))
