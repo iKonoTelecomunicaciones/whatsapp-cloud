@@ -96,6 +96,15 @@ class WhatsappApplication:
         return cls._from_row(row)
 
     @classmethod
+    async def get_by_wc_phone_id(cls, wc_phone_id: WSPhoneID) -> Optional["WhatsappApplication"]:
+        q = f"SELECT {cls._columns} FROM wc_application WHERE wc_phone_id=$1"
+        row = await cls.db.fetchrow(q, wc_phone_id)
+
+        if not row:
+            return None
+        return cls._from_row(row)
+
+    @classmethod
     async def get_by_admin_user(cls, admin_user: UserID) -> Optional["WhatsappApplication"]:
         q = f"SELECT {cls._columns} FROM wc_application WHERE admin_user=$1"
         row = await cls.db.fetchrow(q, admin_user)

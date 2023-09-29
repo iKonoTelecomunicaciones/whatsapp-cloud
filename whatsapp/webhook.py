@@ -62,7 +62,10 @@ class WhatsappHandler:
         # Get the business id and the value of the event
         wc_business_id = data.get("entry")[0].get("id")
         wc_value = data.get("entry")[0].get("changes")[0].get("value")
+        wc_business_id = data.get("entry")[0].get("id")
+        wc_value = data.get("entry")[0].get("changes")[0].get("value")
         # Get all the whatsapp apps
+        wc_apps = await DBWhatsappApplication.get_all_wc_apps()
         wc_apps = await DBWhatsappApplication.get_all_wc_apps()
 
         # Validate if the app is registered
@@ -84,11 +87,16 @@ class WhatsappHandler:
         # If the event is an error, we send to the user the message error
         elif wc_value.get("statuses")[0].get("status") == "failed":
             wc_statuses = WhatsappStatusesEvent.from_dict(wc_value.get("statuses")[0])
+        elif wc_value.get("statuses")[0].get("status") == "failed":
+            wc_statuses = WhatsappStatusesEvent.from_dict(wc_value.get("statuses")[0])
             # Get the phone id
+            wa_id = wc_statuses.recipient_id
             wa_id = wc_statuses.recipient_id
             # Get the error information
             message_error = wc_statuses.errors.error_data.details
+            message_error = wc_statuses.errors.error_data.details
 
+            self.log.error(f"Whatsapp return an error: {wc_statuses}")
             self.log.error(f"Whatsapp return an error: {wc_statuses}")
             portal: Portal = await Portal.get_by_phone_id(
                 wa_id, app_business_id=wc_business_id, create=False
