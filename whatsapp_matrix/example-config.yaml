@@ -54,7 +54,7 @@ appservice:
 bridge:
     # Localpart template of MXIDs for remote users.
     # {userid} is replaced with the phone number of the user (plain/E.164 international format).
-    username_template: "ws_{userid}"
+    username_template: "wc_{userid}"
 
     whatsapp_cloud:
         # Displayname template for remote users.
@@ -122,13 +122,13 @@ bridge:
         #   $sender_mxid        - The Matrix ID of the sender (e.g. @exampleuser:example.com)
         #   $message            - The message content
         message_formats:
-            m.text: '$sender_displayname: $message'
-            m.notice: '$sender_displayname: $message'
-            m.file: '$sender_displayname sent a file'
-            m.image: '$sender_displayname sent an image'
-            m.audio: '$sender_displayname sent an audio file'
-            m.video: '$sender_displayname sent a video'
-            m.location: '$sender_displayname sent a location'
+            m.text: "$sender_displayname: $message"
+            m.notice: "$sender_displayname: $message"
+            m.file: "$sender_displayname sent a file"
+            m.image: "$sender_displayname sent an image"
+            m.audio: "$sender_displayname sent an audio file"
+            m.video: "$sender_displayname sent a video"
+            m.location: "$sender_displayname sent a location"
 
 # Whatsapp webhook settings.
 whatsapp:

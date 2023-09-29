@@ -28,7 +28,7 @@ class ProvisioningAPI:
         self.app.router.add_route("PATCH", "/v1/update_app", self.update_app)
 
     @property
-    def _access_headers(self) -> dict[str, str]:
+    def _acao_headers(self) -> dict[str, str]:
         """
         Return the Access-Control-Allows headers
 
@@ -46,7 +46,7 @@ class ProvisioningAPI:
 
         """
         return {
-            **self._access_headers,
+            **self._acao_headers,
             "Content-Type": "application/json",
         }
 
@@ -84,7 +84,7 @@ class ProvisioningAPI:
             or not app_phone_id
         ):
             return web.HTTPBadRequest(
-                text=json.dumps({"detail": {"message": "All fields are mandatories"}}),
+                text=json.dumps({"detail": {"message": "All fields are mandatory"}}),
                 headers=self._headers,
             )
 
@@ -122,8 +122,8 @@ class ProvisioningAPI:
                 headers=self._headers,
             )
 
-        # Check if the ws_phone_id is already registered
-        if await WhatsappApplication.get_by_ws_phone_id(ws_phone_id=app_phone_id):
+        # Check if the wc_phone_id is already registered
+        if await WhatsappApplication.get_by_wc_phone_id(wc_phone_id=app_phone_id):
             return web.HTTPNotAcceptable(
                 text=json.dumps(
                     {"detail": {"message": f"The phone_id {app_phone_id} is already registered"}}
@@ -136,7 +136,7 @@ class ProvisioningAPI:
             name=app_name,
             admin_user=admin_user,
             business_id=app_business_id,
-            ws_phone_id=app_phone_id,
+            wc_phone_id=app_phone_id,
             page_access_token=access_token,
         )
 
@@ -184,7 +184,7 @@ class ProvisioningAPI:
         """
         logger.error(f"KeyError: {err}")
         raise web.HTTPNotAcceptable(
-            text=json.dumps({"message": f"Missing key {err}"}), headers=self._headers
+            text=json.dumps({"detail": {"message": f"Missing key {err}"}}), headers=self._headers
         )
 
     def check_token(self, request: web.Request) -> None:
@@ -234,7 +234,7 @@ class ProvisioningAPI:
                 text=json.dumps(
                     {
                         "detail": {
-                            "message": "The request has not data",
+                            "message": "The request does not have data",
                         }
                     }
                 ),
@@ -282,8 +282,8 @@ class ProvisioningAPI:
                 text=json.dumps(
                     {
                         "detail": {
-                            "message": f"The Whatsapp application with user {admin_user}"
-                            + "is not registered",
+                            "message": f"""The Whatsapp application with user {admin_user}
+                            is not registered""",
                         }
                     }
                 ),

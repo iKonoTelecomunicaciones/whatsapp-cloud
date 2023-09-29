@@ -21,13 +21,13 @@ class WhatsappClient:
         loop: asyncio.AbstractEventLoop,
         page_access_token: Optional[str] = None,
         business_id: Optional[WsBusinessID] = None,
-        ws_phone_id: Optional[WSPhoneID] = None,
+        wc_phone_id: Optional[WSPhoneID] = None,
     ) -> None:
         self.base_url = config["whatsapp.base_url"]
         self.version = config["whatsapp.version"]
         self.page_access_token = page_access_token
         self.business_id = business_id
-        self.ws_phone_id = ws_phone_id
+        self.wc_phone_id = wc_phone_id
         self.http = ClientSession(loop=loop)
 
     async def send_message(
@@ -56,7 +56,7 @@ class WhatsappClient:
             "Authorization": f"Bearer {self.page_access_token}",
         }
         # Set the url to send the message to Wahtsapp API
-        send_message_url = f"{self.base_url}/{self.version}/{self.ws_phone_id}/messages"
+        send_message_url = f"{self.base_url}/{self.version}/{self.wc_phone_id}/messages"
 
         self.log.debug(f"Sending message to {send_message_url}")
 
