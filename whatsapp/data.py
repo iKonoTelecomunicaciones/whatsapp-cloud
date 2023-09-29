@@ -61,7 +61,7 @@ class WhatsappSticker(SerializableAttrs):
     """
     Contain the sticker of the customer.
 
-    - id: Te id of the sticker.
+    - id: The id of the sticker.
 
     - hash: The hash of the sticker.
 
@@ -90,7 +90,7 @@ class WhatsappAudio(SerializableAttrs):
     """
     Contain the audio of the customer.
 
-    - id: Te id of the audio.
+    - id: The id of the audio.
 
     - hash: The hash of the audio.
 
@@ -119,7 +119,7 @@ class WhatsappVideo(SerializableAttrs):
     """
     Contain the video of the customer.
 
-    - id: Te id of the video.
+    - id: The id of the video.
 
     - hash: The hash of the video.
 
@@ -144,7 +144,7 @@ class WhatsappImage(SerializableAttrs):
     """
     Contain the image of the customer.
 
-    - id: Te id of the image.
+    - id: The id of the image.
 
     - hash: The hash of the image.
 
