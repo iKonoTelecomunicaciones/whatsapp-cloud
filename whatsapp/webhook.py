@@ -59,19 +59,19 @@ class WhatsappHandler:
         data = dict(**await request.json())
         self.log.debug(f"The event arrives {data}")
 
-        ws_business_id = data.get("entry")[0].get("id")
-        ws_value = data.get("entry")[0].get("changes")[0].get("value")
-        ws_apps = await DBWhatsappApplication.get_all_ws_apps()
+        wc_business_id = data.get("entry")[0].get("id")
+        wc_value = data.get("entry")[0].get("changes")[0].get("value")
+        wc_apps = await DBWhatsappApplication.get_all_wc_apps()
 
         # Validate if the app is registered
-        if not ws_business_id in ws_apps:
+        if not wc_business_id in wc_apps:
             self.log.warning(
-                f"Ignoring event because the whatsapp_app [{ws_business_id}] is not registered."
+                f"Ignoring event because the whatsapp_app [{wc_business_id}] is not registered."
             )
             return web.Response(status=406)
 
         # Validate if the event is a message
-        if ws_value.get("messages"):
+        if wc_value.get("messages"):
             return await self.message_event(WhatsappMessageEvent.from_dict(data))
         else:
             self.log.debug(f"Integration type not supported.")

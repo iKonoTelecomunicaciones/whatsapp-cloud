@@ -92,7 +92,7 @@ class Portal(DBPortal, BasePortal):
 
         self.whatsapp_client.page_access_token = whatsapp_app.page_access_token
         self.whatsapp_client.business_id = whatsapp_app.business_id
-        self.whatsapp_client.ws_phone_id = whatsapp_app.ws_phone_id
+        self.whatsapp_client.wc_phone_id = whatsapp_app.wc_phone_id
 
     @property
     def is_direct(self) -> bool:
