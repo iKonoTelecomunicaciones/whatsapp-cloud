@@ -45,16 +45,16 @@ class WhatsappClient:
         Parameters
         ----------
         message : str
-            The message that will be send to the user.
+            The message that will be sent to the user.
 
         phone_id : WhatsappPhone
             The number of the user.
 
         message_type: MessageType
-            The type of the message that will be send to the user.
+            The type of the message that will be sent to the user.
 
         url: str
-            The url of the file that will be send to the user.
+            The url of the file that will be sent to the user.
 
         location: tuple
             The location of the user, contains the latitude and longitude.
