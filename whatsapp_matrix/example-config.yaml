@@ -35,7 +35,7 @@ appservice:
     # The unique ID of this appservice.
     id: whatsapp_matrix
     # Username of the appservice bot.
-    bot_username: wsbot
+    bot_username: wcbot
     # Display name and avatar for bot. Set to "remove" to remove display name/avatar, leave empty
     # to leave display name/avatar as-is.
     bot_displayname: Whatsapp cloud bot
@@ -60,14 +60,14 @@ bridge:
         # Displayname template for remote users.
         # {displayname} is replaced with the displayname of the remote user.
         # {userid} is replaced with the number of the Whatsapp user.
-        displayname_template: "{displayname} (WS)"
+        displayname_template: "{displayname} (WC)"
         # How the rooms will be named?
         # {displayname} - displayname set by the Whatsapp user
         # {userid} - number number of the Whatsapp user
         room_name_template: "{displayname} ({userid})"
 
     # The prefix for commands. Only required in non-management rooms.
-    command_prefix: "!ws"
+    command_prefix: "!wc"
 
     # Whether or not Matrix m.notice-type messages should be bridged.
     bridge_notices: false
