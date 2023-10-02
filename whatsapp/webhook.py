@@ -87,8 +87,6 @@ class WhatsappHandler:
         # If the event is an error, we send to the user the message error
         elif wc_value.get("statuses")[0].get("status") == "failed":
             wc_statuses = WhatsappStatusesEvent.from_dict(wc_value.get("statuses")[0])
-        elif wc_value.get("statuses")[0].get("status") == "failed":
-            wc_statuses = WhatsappStatusesEvent.from_dict(wc_value.get("statuses")[0])
             # Get the phone id
             wa_id = wc_statuses.recipient_id
             wa_id = wc_statuses.recipient_id
@@ -96,7 +94,6 @@ class WhatsappHandler:
             message_error = wc_statuses.errors.error_data.details
             message_error = wc_statuses.errors.error_data.details
 
-            self.log.error(f"Whatsapp return an error: {wc_statuses}")
             self.log.error(f"Whatsapp return an error: {wc_statuses}")
             portal: Portal = await Portal.get_by_phone_id(
                 wa_id, app_business_id=wc_business_id, create=False
@@ -118,8 +115,10 @@ class WhatsappHandler:
         business_id = data.entry.id
         user: User = await User.get_by_business_id(business_id)
         portal: Portal = await Portal.get_by_phone_id(sender.wa_id, app_business_id=business_id)
-
-        await portal.handle_whatsapp_message(user, data, sender)
+        if data.entry.changes.value.messages.type == "reaction":
+            await portal.handle_whatsapp_reaction(data, sender.wa_id)
+        else:
+            await portal.handle_whatsapp_message(user, data, sender)
         return web.Response(status=200)
 
     async def read_event(self, data: WhatsappEvent) -> web.Response:

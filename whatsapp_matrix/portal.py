@@ -17,19 +17,21 @@ from mautrix.types import (
     MessageEventContent,
     MessageType,
     PowerLevelStateEventContent,
+    ReactionEventContent,
     RoomID,
     TextMessageEventContent,
     UserID,
 )
 
 from whatsapp.api import WhatsappClient
-from whatsapp.data import WhatsappContacts, WhatsappEvent
+from whatsapp.data import WhatsappContacts, WhatsappEvent, WhatsappReaction
 from whatsapp.types import WhatsappMessageID, WhatsappPhone, WsBusinessID
 from whatsapp_matrix.formatter.from_matrix import matrix_to_whatsapp
 from whatsapp_matrix.formatter.from_whatsapp import whatsapp_reply_to_matrix
 
 from .db import Message as DBMessage
 from .db import Portal as DBPortal
+from .db import Reaction as DBReaction
 from .db import WhatsappApplication as DBWhatsappApplication
 from .formatter import whatsapp_to_matrix
 from .puppet import Puppet
@@ -531,7 +533,7 @@ class Portal(DBPortal, BasePortal):
         Send a read event to Matrix
         """
         if not self.mxid:
-            self.log.critical("No mxid, ignoring read")
+            self.log.error("No mxid, ignoring read")
             return
 
         async with self._send_lock:
@@ -540,6 +542,76 @@ class Portal(DBPortal, BasePortal):
                 await self.main_intent.mark_read(self.mxid, msg.event_mxid)
             else:
                 self.log.debug(f"Ignoring the null message")
+
+    async def handle_whatsapp_reaction(
+        self, reaction_event: WhatsappEvent, sender: WhatsappContacts
+    ) -> None:
+        """
+        When a user of Whatsapp reaction to a message, this function takes it and sends its to Matrix
+
+        Parameters
+        ----------
+        reaction_event : MetaReactionEvent
+            The class that containt the data of the reaction.
+
+        sender: WhatsappMessageSender
+            The class that will be used to specify who send the reaction.
+        """
+        if not self.mxid:
+            return
+
+        async with self._send_lock:
+            data_reaction: WhatsappReaction = reaction_event.entry.changes.value.messages.reaction
+            msg_id = data_reaction.message_id
+            msg = await DBMessage.get_by_whatsapp_message_id(whatsapp_message_id=msg_id)
+
+            if msg:
+                if not data_reaction.emoji:
+                    reaction_to_remove = await DBReaction.get_by_whatsapp_message_id(
+                        msg.whatsapp_message_id, sender
+                    )
+
+                    if reaction_to_remove:
+                        await DBReaction.delete_by_event_mxid(
+                            reaction_to_remove.event_mxid, self.mxid, sender
+                        )
+                        has_been_sent = await self.main_intent.redact(
+                            self.mxid, reaction_to_remove.event_mxid
+                        )
+                    return
+                else:
+                    message_with_reaction = await DBReaction.get_by_whatsapp_message_id(
+                        msg.whatsapp_message_id, sender
+                    )
+
+                    if message_with_reaction:
+                        await DBReaction.delete_by_event_mxid(
+                            message_with_reaction.event_mxid, self.mxid, sender
+                        )
+                        await self.main_intent.redact(self.mxid, message_with_reaction.event_mxid)
+
+                    try:
+                        has_been_sent = await self.main_intent.react(
+                            self.mxid,
+                            msg.event_mxid,
+                            data_reaction.emoji,
+                        )
+                    except Exception as e:
+                        self.log.exception(f"Error sending reaction: {e}")
+                        await self.main_intent.send_notice(self.mxid, "Error sending reaction")
+                        return
+
+            else:
+                self.log.error(f"Message id not found, mid: {msg_id}")
+                return
+
+            await DBReaction(
+                event_mxid=has_been_sent,
+                room_id=self.mxid,
+                sender=sender,
+                whatsapp_message_id=msg.whatsapp_message_id,
+                reaction=data_reaction.emoji,
+            ).insert()
 
     async def handle_matrix_join(self, user: User) -> None:
         if self.is_direct or not await user.is_logged_in():
@@ -691,6 +763,93 @@ class Portal(DBPortal, BasePortal):
             app_business_id=self.app_business_id,
         ).insert()
 
+    async def handle_matrix_reaction(
+        self,
+        message: DBMessage,
+        user: User,
+        reaction: ReactionEventContent,
+        event_id: EventID,
+    ) -> None:
+        """
+        When a user of Matrix react to a message, this function takes it and sends it to Meta
+
+        Parameters
+        ----------
+
+        message : DBMessage
+            The class that containt the data of the message.
+
+        sender: MetaMessageSender
+            The class that will be used to specify who send the message.
+
+        reaction: ReactionEventContent
+            The class that containt the data of the reaction.
+        """
+        if not message.whatsapp_message_id:
+            self.log.error(f"Message id not found, mid: {message.whatsapp_message_id}")
+            return
+
+        reaction_value = reaction.relates_to.key
+        message_with_reaction = await DBReaction.get_by_whatsapp_message_id(
+            message.whatsapp_message_id, user.mxid
+        )
+
+        if message_with_reaction:
+            await DBReaction.delete_by_event_mxid(
+                message_with_reaction.event_mxid, self.mxid, user.mxid
+            )
+            await self.main_intent.redact(self.mxid, message_with_reaction.event_mxid)
+
+        try:
+            await self.whatsapp_client.send_reaction(
+                message_id=message.whatsapp_message_id,
+                phone_id=message.phone_id,
+                emoji=reaction_value,
+            )
+        except Exception as e:
+            self.log.exception(f"Error sending reaction: {e}")
+            self.main_intent.send_notice("Error sending reaction")
+            return
+
+        await DBReaction(
+            event_mxid=event_id,
+            room_id=self.mxid,
+            sender=user.mxid,
+            whatsapp_message_id=message.whatsapp_message_id,
+            reaction=reaction_value,
+        ).insert()
+
+    async def handle_matrix_unreact(
+        self,
+        message: DBMessage,
+        user: User,
+    ) -> None:
+        """
+        When a user of Matrix unreact to a message, this function takes it and sends it to Whatsapp
+
+        Parameters
+        ----------
+        message : DBMessage
+            The class that containt the data of the message.
+
+        reaction: ReactionEventContent
+            The class that containt the data of the reaction.
+        """
+        if not message.whatsapp_message_id:
+            return
+
+        try:
+            await self.whatsapp_client.send_reaction(
+                message_id=message.whatsapp_message_id,
+                phone_id=message.phone_id,
+                emoji="",
+            )
+        except Exception as e:
+            self.log.exception(f"Error sending reaction: {e}")
+            return
+
+        await DBReaction.delete_by_event_mxid(message.event_mxid, self.mxid, user.mxid)
+
     async def handle_matrix_read(self, room_id: RoomID, event_id: EventID) -> None:
         """
         Send a read event to Whatsapp
@@ -701,13 +860,18 @@ class Portal(DBPortal, BasePortal):
             Show and error if the event does not send.
         """
         if not self.mxid:
-            self.log.critical("No mxid, ignoring read")
+            self.log.error("No mxid, ignoring read")
             return
         if not event_id:
-            self.log.critical("No event_id, ignoring read")
+            self.log.error("No event_id, ignoring read")
             return
 
         message: DBMessage = await DBMessage.get_by_mxid(event_id, room_id)
+
+        if not message:
+            self.log.error("No message, ignoring read")
+            return
+
         # We send the location message to the Whatsapp API
         try:
             response = await self.whatsapp_client.mark_read(message_id=message.whatsapp_message_id)

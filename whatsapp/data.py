@@ -5,6 +5,20 @@ from .types import WhatsappMessageID, WhatsappPhone, WsBusinessID, WSPhoneID
 
 
 @dataclass
+class WhatsappReaction(SerializableAttrs):
+    """
+    Contain the information of the reaction.
+
+    - message_id: The id of the message.
+
+    - emoji: The emoji of the reaction.
+    """
+
+    message_id: str = ib(metadata={"json": "message_id"}, default="")
+    emoji: str = ib(metadata={"json": "emoji"}, default="")
+
+
+@dataclass
 class WhatsappLocation(SerializableAttrs):
     """
     Contain the location of the customer.
@@ -318,6 +332,7 @@ class WhatsappMessages(SerializableAttrs):
     sticker: WhatsappSticker = ib(metadata={"json": "sticker"}, default={})
     document: WhatsappDocument = ib(metadata={"json": "document"}, default={})
     location: WhatsappLocation = ib(metadata={"json": "location"}, default={})
+    reaction: WhatsappReaction = ib(metadata={"json": "reaction"}, default={})
 
     @classmethod
     def from_dict(cls, data: dict):
@@ -363,6 +378,7 @@ class WhatsappMessages(SerializableAttrs):
             sticker=sticker_obj,
             document=document_obj,
             location=WhatsappLocation(**data.get("location", {})),
+            reaction=WhatsappReaction(**data.get("reaction", {})),
         )
 
 

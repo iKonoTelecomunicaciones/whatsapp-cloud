@@ -224,3 +224,57 @@ class WhatsappClient:
             raise FileNotFoundError(response_data)
 
         return response_data
+
+    async def send_reaction(
+        self,
+        message_id: WhatsappMessageID,
+        phone_id: WSPhoneID,
+        emoji: Optional[str] = "",
+    ) -> Dict:
+        """
+        Send a reaction to the user.
+
+        Parameters
+        ----------
+        message_id : str
+            The id of the message that will been reacted.
+
+        phone_id : WhatsappPhone
+            The number of the user.
+
+        emoji: str
+            The emoji that will be sent to the user.
+
+        Returns
+        -------
+        Return the response of the Whatsapp API.
+        """
+        # Set the headers for the request to the Whatsapp API
+        headers = {
+            "Content-Type": "application/json",
+            "Authorization": f"Bearer {self.page_access_token}",
+        }
+        # Set the url to send the message to Wahtsapp API
+        send_message_url = f"{self.base_url}/{self.version}/{self.wc_phone_id}/messages"
+
+        self.log.debug(f"Sending message to {send_message_url}")
+
+        data = {
+            "messaging_product": "whatsapp",
+            "recipient_type": "individual",
+            "to": phone_id,
+            "type": "reaction",
+            "reaction": {"message_id": message_id, "emoji": emoji},
+        }
+
+        self.log.debug(f"Sending reaction {data} to {phone_id}")
+
+        # Send the reaction to the Whatsapp API
+        resp = await self.http.post(send_message_url, json=data, headers=headers)
+        response_data = json.loads(await resp.text())
+
+        # If the message was not sent, raise an error
+        if response_data.get("error", {}):
+            raise FileNotFoundError(response_data)
+
+        return response_data

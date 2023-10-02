@@ -57,6 +57,18 @@ async def upgrade_v1(conn: Connection) -> None:
         )"""
     )
 
+    await conn.execute(
+        """CREATE TABLE reaction (
+            event_mxid          VARCHAR(255) PRIMARY KEY,
+            room_id             VARCHAR(255) NOT NULL,
+            sender              VARCHAR(255) NOT NULL,
+            whatsapp_message_id     TEXT NOT NULL,
+            reaction            VARCHAR(255),
+            created_at          TIMESTAMP WITH TIME ZONE NOT NULL,
+            UNIQUE (event_mxid, room_id)
+        )"""
+    )
+
     # The business_id of meta applications are unique to your platform.
     await conn.execute(
         """ALTER TABLE message ADD CONSTRAINT FK_message_wc_application_app_business_id
@@ -81,4 +93,9 @@ async def upgrade_v1(conn: Connection) -> None:
     await conn.execute(
         """ALTER TABLE message ADD CONSTRAINT FK_message_portal_phone_id
         FOREIGN KEY (phone_id) references portal (phone_id)"""
+    )
+
+    await conn.execute(
+        """ALTER TABLE reaction ADD CONSTRAINT FK_message_whatsapp_message_id
+        FOREIGN KEY (whatsapp_message_id) references message (whatsapp_message_id)"""
     )
