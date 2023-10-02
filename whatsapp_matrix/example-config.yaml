@@ -35,7 +35,7 @@ appservice:
     # The unique ID of this appservice.
     id: whatsapp_matrix
     # Username of the appservice bot.
-    bot_username: wcbot
+    bot_username: wc_whatsappbot
     # Display name and avatar for bot. Set to "remove" to remove display name/avatar, leave empty
     # to leave display name/avatar as-is.
     bot_displayname: Whatsapp cloud bot
