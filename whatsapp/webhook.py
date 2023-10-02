@@ -1,3 +1,4 @@
+import json
 from asyncio import AbstractEventLoop, get_event_loop
 from logging import Logger, getLogger
 
@@ -45,11 +46,26 @@ class WhatsappHandler:
                 return web.Response(text=challenge, status=200)
 
             else:
-                raise web.HTTPForbidden(text="The verify token is invalid.")
+                raise web.HTTPForbidden(
+                    json.dumps(
+                        {
+                            "detail": {
+                                "message": "The verify token is invalid.",
+                            }
+                        }
+                    )
+                )
 
         else:
             raise web.HTTPConflict(
-                text="The verify token is invalid. Please check the token and try again.",
+                text=json.dumps(
+                    {
+                        "detail": {
+                            "message": """The verify token is invalid. Please check the token
+                            and try again.""",
+                        }
+                    }
+                ),
             )
 
     async def receive(self, request: web.Request) -> None:
