@@ -115,7 +115,8 @@ class ProvisioningAPI:
                 text=json.dumps(
                     {
                         "detail": {
-                            "message": f"This app_business_id {app_business_id} is already registered"
+                            "data": {"businessID": app_business_id},
+                            "message": "This app_business_id %(businessID)s is already registered",
                         }
                     }
                 ),
@@ -126,7 +127,12 @@ class ProvisioningAPI:
         if await WhatsappApplication.get_by_wc_phone_id(wc_phone_id=app_phone_id):
             return web.HTTPNotAcceptable(
                 text=json.dumps(
-                    {"detail": {"message": f"The phone_id {app_phone_id} is already registered"}}
+                    {
+                        "detail": {
+                            "data": {"phoneID": app_phone_id},
+                            "message": "The phone_id %(phoneID)s is already registered",
+                        }
+                    }
                 ),
                 headers=self._headers,
             )
@@ -184,7 +190,8 @@ class ProvisioningAPI:
         """
         logger.error(f"KeyError: {err}")
         raise web.HTTPNotAcceptable(
-            text=json.dumps({"detail": {"message": f"Missing key {err}"}}), headers=self._headers
+            text=json.dumps({"detail": {"data": {"key": err}, "message": f"Missing key %(key)s"}}),
+            headers=self._headers,
         )
 
     def check_token(self, request: web.Request) -> None:
@@ -265,7 +272,8 @@ class ProvisioningAPI:
                 text=json.dumps(
                     {
                         "detail": {
-                            "message": f"The user {admin_user} is not registered",
+                            "data": {"username": admin_user},
+                            "message": "The user %(username)s is not registered",
                         }
                     }
                 ),
@@ -282,8 +290,11 @@ class ProvisioningAPI:
                 text=json.dumps(
                     {
                         "detail": {
-                            "message": f"""The Whatsapp application with user {admin_user}
-                            is not registered""",
+                            "data": {"username": admin_user},
+                            "message": (
+                                "The Whatsapp application with user %(username)s "
+                                "is not registered"
+                            ),
                         }
                     }
                 ),
@@ -304,7 +315,8 @@ class ProvisioningAPI:
         return web.HTTPOk(
             text=json.dumps(
                 {
-                    "message": f"The whatsapp_app {whatsapp_app.business_id} has been updated",
+                    "data": {"businessID": whatsapp_app.business_id},
+                    "message": "The whatsapp_app %(businessID)s has been updated",
                 }
             ),
             headers=self._headers,
