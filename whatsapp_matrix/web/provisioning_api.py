@@ -291,8 +291,10 @@ class ProvisioningAPI:
                     {
                         "detail": {
                             "data": {"username": admin_user},
-                            "message": """The Whatsapp application with user %(username)s
-                            is not registered""",
+                            "message": (
+                                "The Whatsapp application with user %(username)s "
+                                "is not registered"
+                            ),
                         }
                     }
                 ),

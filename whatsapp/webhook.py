@@ -61,8 +61,10 @@ class WhatsappHandler:
                 text=json.dumps(
                     {
                         "detail": {
-                            "message": """The verify token is invalid. Please check the token
-                            and try again.""",
+                            "message": (
+                                "The verify token is invalid. Please check the token "
+                                "and try again."
+                            )
                         }
                     }
                 ),
