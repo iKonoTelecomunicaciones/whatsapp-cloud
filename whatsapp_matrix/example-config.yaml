@@ -35,7 +35,7 @@ appservice:
     # The unique ID of this appservice.
     id: whatsapp_matrix
     # Username of the appservice bot.
-    bot_username: wc_whatsappbot
+    bot_username: wb_whatsappbot
     # Display name and avatar for bot. Set to "remove" to remove display name/avatar, leave empty
     # to leave display name/avatar as-is.
     bot_displayname: Whatsapp cloud bot
@@ -54,7 +54,7 @@ appservice:
 bridge:
     # Localpart template of MXIDs for remote users.
     # {userid} is replaced with the phone number of the user (plain/E.164 international format).
-    username_template: "wc_{userid}"
+    username_template: "wb_{userid}"
 
     whatsapp_cloud:
         # Displayname template for remote users.
@@ -72,7 +72,7 @@ bridge:
         openstreetmap_url: https://www.openstreetmap.org/#map=15/
 
     # The prefix for commands. Only required in non-management rooms.
-    command_prefix: "!wc"
+    command_prefix: "!wb"
 
     # Whether or not Matrix m.notice-type messages should be bridged.
     bridge_notices: false

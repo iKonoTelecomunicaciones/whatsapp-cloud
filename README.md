@@ -24,7 +24,7 @@ Docker image: `ikonoim/whatsapp-cloud:latest`
 
 - Create a room without encryption
 - Then invite the bridge bot (you must have the user registered in the config section `bridge.permissions` as admin)
-- Send the command `register-app <wc_app_name> <wc_phone_id> <token>`
+- Send the command `register-app <wb_app_name> <wb_phone_id> <token>`
 - you can now start receiving incoming messages on the registered number
 
 

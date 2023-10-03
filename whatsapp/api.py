@@ -22,13 +22,13 @@ class WhatsappClient:
         loop: asyncio.AbstractEventLoop,
         page_access_token: Optional[str] = None,
         business_id: Optional[WsBusinessID] = None,
-        wc_phone_id: Optional[WSPhoneID] = None,
+        wb_phone_id: Optional[WSPhoneID] = None,
     ) -> None:
         self.base_url = config["whatsapp.base_url"]
         self.version = config["whatsapp.version"]
         self.page_access_token = page_access_token
         self.business_id = business_id
-        self.wc_phone_id = wc_phone_id
+        self.wb_phone_id = wb_phone_id
         self.http = ClientSession(loop=loop)
 
     async def send_message(
@@ -70,7 +70,7 @@ class WhatsappClient:
             "Authorization": f"Bearer {self.page_access_token}",
         }
         # Set the url to send the message to Wahtsapp API
-        send_message_url = f"{self.base_url}/{self.version}/{self.wc_phone_id}/messages"
+        send_message_url = f"{self.base_url}/{self.version}/{self.wb_phone_id}/messages"
 
         self.log.debug(f"Sending message to {send_message_url}")
 
@@ -115,7 +115,7 @@ class WhatsappClient:
 
         # If the message is a reply, add the message_id
         if aditional_data.get("reply_to"):
-            data["context"] = {"message_id": aditional_data["reply_to"]["wc_message_id"]}
+            data["context"] = {"message_id": aditional_data["reply_to"]["wb_message_id"]}
         self.log.debug(f"Sending message {data} to {phone_id}")
 
         # Send the message to the Whatsapp API
@@ -203,7 +203,7 @@ class WhatsappClient:
             "Authorization": f"Bearer {self.page_access_token}",
         }
         # Set the url to send the message to Wahtsapp API
-        mark_read_url = f"{self.base_url}/{self.version}/{self.wc_phone_id}/messages"
+        mark_read_url = f"{self.base_url}/{self.version}/{self.wb_phone_id}/messages"
 
         # Set the data to send to Whatsapp API
         data = {"messaging_product": "whatsapp", "status": "read", "message_id": message_id}
@@ -255,7 +255,7 @@ class WhatsappClient:
             "Authorization": f"Bearer {self.page_access_token}",
         }
         # Set the url to send the message to Wahtsapp API
-        send_message_url = f"{self.base_url}/{self.version}/{self.wc_phone_id}/messages"
+        send_message_url = f"{self.base_url}/{self.version}/{self.wb_phone_id}/messages"
 
         self.log.debug(f"Sending message to {send_message_url}")
 

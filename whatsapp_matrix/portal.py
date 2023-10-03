@@ -101,7 +101,7 @@ class Portal(DBPortal, BasePortal):
 
         self.whatsapp_client.page_access_token = whatsapp_app.page_access_token
         self.whatsapp_client.business_id = whatsapp_app.business_id
-        self.whatsapp_client.wc_phone_id = whatsapp_app.wc_phone_id
+        self.whatsapp_client.wb_phone_id = whatsapp_app.wb_phone_id
 
     @property
     def is_direct(self) -> bool:
@@ -660,7 +660,7 @@ class Portal(DBPortal, BasePortal):
                 message.get_reply_to(), self.mxid
             )
             if reply_message:
-                aditional_data["reply_to"] = {"wc_message_id": reply_message.whatsapp_message_id}
+                aditional_data["reply_to"] = {"wb_message_id": reply_message.whatsapp_message_id}
 
         # If the message is a text message, we send the message to the Whatsapp API
         if message.msgtype in (MessageType.TEXT, MessageType.NOTICE):
