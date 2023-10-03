@@ -60,7 +60,7 @@ bridge:
         # Displayname template for remote users.
         # {displayname} is replaced with the displayname of the remote user.
         # {userid} is replaced with the number of the Whatsapp user.
-        displayname_template: "{displayname} (WC)"
+        displayname_template: "{displayname} (WB)"
         # How the rooms will be named?
         # {displayname} - displayname set by the Whatsapp user
         # {userid} - number number of the Whatsapp user
