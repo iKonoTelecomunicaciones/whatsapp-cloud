@@ -97,5 +97,6 @@ async def upgrade_v1(conn: Connection) -> None:
 
     await conn.execute(
         """ALTER TABLE reaction ADD CONSTRAINT FK_message_whatsapp_message_id
-        FOREIGN KEY (whatsapp_message_id) references message (whatsapp_message_id)"""
+        FOREIGN KEY (whatsapp_message_id) references message (whatsapp_message_id)
+        ON DELETE CASCADE"""
     )
