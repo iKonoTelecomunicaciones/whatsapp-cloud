@@ -3,8 +3,17 @@ from __future__ import annotations
 from typing import TYPE_CHECKING
 
 from mautrix.bridge import BaseMatrixHandler, RejectMatrixInvite
-from mautrix.types import EventID, RoomID, SingleReceiptEventContent, UserID
+from mautrix.types import (
+    Event,
+    EventID,
+    EventType,
+    ReactionEventContent,
+    ReceiptEvent,
+    RoomID,
+    UserID,
+)
 
+from .db import Message, Reaction
 from .portal import Portal
 from .user import User
 
@@ -36,6 +45,30 @@ class MatrixHandler(BaseMatrixHandler):
 
         # We out the user from the portal
         await portal.handle_matrix_leave(user)
+
+    async def handle_ephemeral_event(self, evt: ReceiptEvent) -> None:
+        """
+        Handle the ephemeral events, like reads, typing, etc.
+        """
+        self.log.debug(f"Received event: {evt}")
+        # Validate that the event is a read event
+        if evt.type == EventType.RECEIPT:
+            room_id = evt.room_id
+            portal: Portal = await Portal.get_by_mxid(room_id)
+            if not portal:
+                self.log.error("The read event can't be send because the portal does not exist")
+                return
+
+            # We send the read event to Whatsapp Api
+            await portal.handle_matrix_read(room_id=evt.room_id)
+        return
+
+    async def handle_event(self, evt: Event) -> None:
+        if evt.type == EventType.ROOM_REDACTION:
+            await self.handle_unreact(evt.room_id, evt.sender, evt.event_id, evt.redacts)
+
+        elif evt.type == EventType.REACTION:
+            await self.handle_reaction(evt.room_id, evt.sender, evt.content, evt.event_id)
 
     async def handle_invite(
         self, room_id: RoomID, user_id: UserID, inviter: User, event_id: EventID
@@ -82,3 +115,88 @@ class MatrixHandler(BaseMatrixHandler):
 
     async def allow_bridging_message(self, user: User, portal: Portal) -> bool:
         return portal.has_relay or await user.is_logged_in()
+
+    async def handle_reaction(
+        self, room_id: RoomID, user_id: UserID, reaction: ReactionEventContent, event_id: EventID
+    ):
+        """
+        When a user of Matrix react to a message, this function takes the event and obtains with it
+        the message to sends it to Whatsapp.
+
+        Parameters
+        ----------
+        room_id : RoomID
+            The room where the reaction was sent.
+
+        user_id : UserID
+            The user that sent the reaction.
+
+        reaction: ReactionEventContent
+            The class that containt the data of the reaction.
+
+        event_id: EventID
+            The id of the event that contains the reaction.
+        """
+        self.log.debug(f"Received Matrix event {event_id} from {user_id} in {room_id}")
+        self.log.trace("Event %s content: %s", event_id, reaction)
+        message_id = reaction.relates_to.event_id
+        user: User = await User.get_by_mxid(user_id)
+        if not user:
+            return
+
+        portal: Portal = await Portal.get_by_mxid(room_id)
+        if not portal:
+            return
+
+        message = await Message.get_by_mxid(message_id, room_id)
+
+        if not message:
+            self.log.error(f"No message found for {message_id}")
+            return
+
+        return await portal.handle_matrix_reaction(message, user, reaction, event_id)
+
+    async def handle_unreact(
+        self, room_id: RoomID, user_id: UserID, event_id: EventID, react_event_id: EventID
+    ):
+        """
+        When a user of Matrix unreact to a message, this function takes the event and obtains with
+        itthe message to sends the unreact event to Whatsapp.
+
+        Parameters
+        ----------
+        room_id : RoomID
+            The room where the reaction was sent.
+
+        user_id : UserID
+            The user that sent the reaction.
+
+        event_id: EventID
+            The event_id that was generated when the user unreacted.
+
+        react_event_id: EventID
+            The event_id of the message that was reacted.
+        """
+        self.log.debug(f"Received Matrix event {event_id} from {user_id} in {room_id}")
+        self.log.trace("Event %s content: %s", event_id)
+        user = await User.get_by_mxid(user_id)
+        if not user:
+            return
+
+        portal = await Portal.get_by_mxid(room_id)
+        if not portal:
+            return
+
+        reacted_message = await Reaction.get_by_event_mxid(react_event_id, room_id)
+        if not reacted_message:
+            self.log.error(f"No message found for {react_event_id}")
+            return
+
+        message_id = reacted_message.whatsapp_message_id
+        message = await Message.get_by_whatsapp_message_id(message_id)
+
+        if not message:
+            self.log.error(f"No message found for {message_id}")
+            return
+
+        await portal.handle_matrix_unreact(message, user)

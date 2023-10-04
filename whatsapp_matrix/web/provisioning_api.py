@@ -123,8 +123,8 @@ class ProvisioningAPI:
                 headers=self._headers,
             )
 
-        # Check if the wc_phone_id is already registered
-        if await WhatsappApplication.get_by_wc_phone_id(wc_phone_id=app_phone_id):
+        # Check if the wb_phone_id is already registered
+        if await WhatsappApplication.get_by_wb_phone_id(wb_phone_id=app_phone_id):
             return web.HTTPNotAcceptable(
                 text=json.dumps(
                     {
@@ -142,7 +142,7 @@ class ProvisioningAPI:
             name=app_name,
             admin_user=admin_user,
             business_id=app_business_id,
-            wc_phone_id=app_phone_id,
+            wb_phone_id=app_phone_id,
             page_access_token=access_token,
         )
 

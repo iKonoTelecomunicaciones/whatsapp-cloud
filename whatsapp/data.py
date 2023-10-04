@@ -5,6 +5,20 @@ from .types import WhatsappMessageID, WhatsappPhone, WsBusinessID, WSPhoneID
 
 
 @dataclass
+class WhatsappReaction(SerializableAttrs):
+    """
+    Contain the information of the reaction.
+
+    - message_id: The id of the message.
+
+    - emoji: The emoji of the reaction.
+    """
+
+    message_id: str = ib(metadata={"json": "message_id"}, default="")
+    emoji: str = ib(metadata={"json": "emoji"}, default="")
+
+
+@dataclass
 class WhatsappLocation(SerializableAttrs):
     """
     Contain the location of the customer.
@@ -268,6 +282,28 @@ class WhatsappStatusesEvent(SerializableAttrs):
 
 
 @dataclass
+class WhatsappContext(SerializableAttrs):
+    """
+    Contains the information from the reply message.
+
+    - from_number: The number of the user, whatsapp api pass this value as "from", so we need to
+      change it to "from_number".
+
+    - id: The id of the message to which the user is replying.
+    """
+
+    from_number: str = ib(metadata={"json": "from"}, default="")
+    id: WhatsappMessageID = ib(metadata={"json": "id"}, default="")
+
+    @classmethod
+    def from_dict(cls, data: dict):
+        return cls(
+            from_number=data.get("from", ""),
+            id=data.get("id", ""),
+        )
+
+
+@dataclass
 class WhatsappMessages(SerializableAttrs):
     """
     Contain the information of the message.
@@ -287,6 +323,7 @@ class WhatsappMessages(SerializableAttrs):
     from_number: str = ib(metadata={"json": "from"}, default="")
     id: WhatsappMessageID = ib(metadata={"json": "id"}, default="")
     timestamp: str = ib(metadata={"json": "timestamp"}, default="")
+    context: WhatsappContext = ib(metadata={"json": "context"}, default={})
     text: WhatsappText = ib(metadata={"json": "text"}, default={})
     type: str = ib(metadata={"json": "type"}, default="")
     image: WhatsappImage = ib(metadata={"json": "image"}, default={})
@@ -295,15 +332,20 @@ class WhatsappMessages(SerializableAttrs):
     sticker: WhatsappSticker = ib(metadata={"json": "sticker"}, default={})
     document: WhatsappDocument = ib(metadata={"json": "document"}, default={})
     location: WhatsappLocation = ib(metadata={"json": "location"}, default={})
+    reaction: WhatsappReaction = ib(metadata={"json": "reaction"}, default={})
 
     @classmethod
     def from_dict(cls, data: dict):
+        context_obj = None
         text_obj = None
         image_obj = None
         video_obj = None
         audio_obj = None
         sticker_obj = None
         document_obj = None
+
+        if data.get("context", {}):
+            context_obj = WhatsappContext.from_dict(data.get("context", {}))
 
         if data.get("text", ""):
             text_obj = WhatsappText(**data.get("text", {}))
@@ -327,6 +369,7 @@ class WhatsappMessages(SerializableAttrs):
             from_number=data.get("from", ""),
             id=data.get("id", ""),
             timestamp=data.get("timestamp", ""),
+            context=context_obj,
             text=text_obj,
             type=data.get("type", ""),
             image=image_obj,
@@ -335,6 +378,7 @@ class WhatsappMessages(SerializableAttrs):
             sticker=sticker_obj,
             document=document_obj,
             location=WhatsappLocation(**data.get("location", {})),
+            reaction=WhatsappReaction(**data.get("reaction", {})),
         )
 
 
@@ -408,12 +452,14 @@ class WhatsappValue(SerializableAttrs):
     metadata: WhatsappMetaData = ib(metadata={"json": "metadata"}, default={})
     contacts: WhatsappContacts = ib(metadata={"json": "contacts"}, default={})
     messages: WhatsappMessages = ib(metadata={"json": "messages"}, default={})
+    statuses: WhatsappStatusesEvent = ib(metadata={"json": "statuses"}, default={})
 
     @classmethod
     def from_dict(cls, data: dict):
         metadata_obj = None
         contacts_obj = None
         messages_obj = None
+        statuses_obj = None
 
         if data.get("metadata"):
             metadata_obj = WhatsappMetaData(**data.get("metadata", {}))
@@ -428,11 +474,17 @@ class WhatsappValue(SerializableAttrs):
         except IndexError:
             messages_obj = {}
 
+        try:
+            statuses_obj = data.get("statuses", [])[0]
+        except IndexError:
+            statuses_obj = {}
+
         return cls(
             messaging_product=data.get("messaging_product", ""),
             metadata=metadata_obj,
             contacts=WhatsappContacts.from_dict(contacts_obj),
             messages=WhatsappMessages.from_dict(messages_obj),
+            statuses=WhatsappStatusesEvent.from_dict(statuses_obj),
         )
 
 
@@ -486,7 +538,7 @@ class WhatsappEventEntry(SerializableAttrs):
 
 
 @dataclass
-class WhatsappMessageEvent(SerializableAttrs):
+class WhatsappEvent(SerializableAttrs):
     """
     Contain the data of the request.
 

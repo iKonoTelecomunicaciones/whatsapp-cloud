@@ -9,7 +9,7 @@ from mautrix.types import MessageType
 from whatsapp.data import WhatsappMediaData
 from whatsapp_matrix.config import Config
 
-from .types import WhatsappMediaID, WhatsappPhone, WsBusinessID, WSPhoneID
+from .types import WhatsappMediaID, WhatsappMessageID, WhatsappPhone, WsBusinessID, WSPhoneID
 
 
 class WhatsappClient:
@@ -22,13 +22,13 @@ class WhatsappClient:
         loop: asyncio.AbstractEventLoop,
         page_access_token: Optional[str] = None,
         business_id: Optional[WsBusinessID] = None,
-        wc_phone_id: Optional[WSPhoneID] = None,
+        wb_phone_id: Optional[WSPhoneID] = None,
     ) -> None:
         self.base_url = config["whatsapp.base_url"]
         self.version = config["whatsapp.version"]
         self.page_access_token = page_access_token
         self.business_id = business_id
-        self.wc_phone_id = wc_phone_id
+        self.wb_phone_id = wb_phone_id
         self.http = ClientSession(loop=loop)
 
     async def send_message(
@@ -38,6 +38,7 @@ class WhatsappClient:
         message: Optional[str] = None,
         url: Optional[str] = None,
         location: Optional[tuple] = None,
+        aditional_data: Optional[Dict] = None,
     ) -> Dict[str, str]:
         """
         Send a message to the user.
@@ -69,7 +70,7 @@ class WhatsappClient:
             "Authorization": f"Bearer {self.page_access_token}",
         }
         # Set the url to send the message to Wahtsapp API
-        send_message_url = f"{self.base_url}/{self.version}/{self.wc_phone_id}/messages"
+        send_message_url = f"{self.base_url}/{self.version}/{self.wb_phone_id}/messages"
 
         self.log.debug(f"Sending message to {send_message_url}")
 
@@ -112,6 +113,9 @@ class WhatsappClient:
             type_message: message_data,
         }
 
+        # If the message is a reply, add the message_id
+        if aditional_data.get("reply_to"):
+            data["context"] = {"message_id": aditional_data["reply_to"]["wb_message_id"]}
         self.log.debug(f"Sending message {data} to {phone_id}")
 
         # Send the message to the Whatsapp API
@@ -132,6 +136,11 @@ class WhatsappClient:
         ----------
         media_id : str
             The id of the media.
+
+        Exceptions
+        ----------
+        ClientConnectorError:
+            If the connection to the Whatsapp API fails.
 
         Returns
         -------
@@ -167,3 +176,97 @@ class WhatsappClient:
             return None
 
         return media
+
+    async def mark_read(self, message_id: WhatsappMessageID):
+        """
+        Mark the message as read.
+
+        Parameters
+        ----------
+        message_id : str
+            The id of the message.
+
+        Exceptions
+        ----------
+        AttributeError:
+            If the message was not sent.
+
+        Returns
+        -------
+        Return the response of the Whatsapp API.
+        """
+        # Set the headers for the request to the Whatsapp API
+        headers = {
+            "Content-Type": "application/json",
+            "Authorization": f"Bearer {self.page_access_token}",
+        }
+        # Set the url to send the message to Wahtsapp API
+        mark_read_url = f"{self.base_url}/{self.version}/{self.wb_phone_id}/messages"
+
+        # Set the data to send to Whatsapp API
+        data = {"messaging_product": "whatsapp", "status": "read", "message_id": message_id}
+        self.log.debug(f"Marking message as read {data} to {message_id}")
+
+        # Send the message to the Whatsapp API
+        resp = await self.http.post(mark_read_url, data=data, headers=headers)
+        response_data = json.loads(await resp.text())
+
+        # If the message was not sent, raise an error
+        if response_data.get("error", {}):
+            raise AttributeError(response_data)
+
+        return response_data
+
+    async def send_reaction(
+        self,
+        message_id: WhatsappMessageID,
+        phone_id: WSPhoneID,
+        emoji: Optional[str] = "",
+    ) -> Dict:
+        """
+        Send a reaction to the user.
+
+        Parameters
+        ----------
+        message_id : str
+            The id of the message that will been reacted.
+
+        phone_id : WhatsappPhone
+            The number of the user.
+
+        emoji: str
+            The emoji that will be sent to the user.
+
+        Returns
+        -------
+        Return the response of the Whatsapp API.
+        """
+        # Set the headers for the request to the Whatsapp API
+        headers = {
+            "Content-Type": "application/json",
+            "Authorization": f"Bearer {self.page_access_token}",
+        }
+        # Set the url to send the message to Wahtsapp API
+        send_message_url = f"{self.base_url}/{self.version}/{self.wb_phone_id}/messages"
+
+        self.log.debug(f"Sending message to {send_message_url}")
+
+        data = {
+            "messaging_product": "whatsapp",
+            "recipient_type": "individual",
+            "to": phone_id,
+            "type": "reaction",
+            "reaction": {"message_id": message_id, "emoji": emoji},
+        }
+
+        self.log.debug(f"Sending reaction {data} to {phone_id}")
+
+        # Send the reaction to the Whatsapp API
+        resp = await self.http.post(send_message_url, json=data, headers=headers)
+        response_data = json.loads(await resp.text())
+
+        # If the message was not sent, raise an error
+        if response_data.get("error", {}):
+            raise FileNotFoundError(response_data)
+
+        return response_data

@@ -23,7 +23,7 @@ class Message:
     sender: UserID
     whatsapp_message_id: str
     app_business_id: str
-    created_at: float = datetime.now()
+    created_at: float
 
     @property
     def _values(self):
@@ -98,6 +98,17 @@ class Message:
             FROM message WHERE room_id=$1 ORDER BY created_at DESC LIMIT 1
         """
         row = await cls.db.fetchrow(q, room_id)
+        if not row:
+            return None
+        return cls._from_row(row)
+
+    @classmethod
+    async def get_last_message_puppet(cls, room_id: RoomID, sender: UserID) -> "Message":
+        q = """
+            SELECT event_mxid, room_id, phone_id, sender, whatsapp_message_id, app_business_id, created_at
+            FROM message WHERE room_id=$1 AND sender=$2 ORDER BY created_at DESC LIMIT 1
+        """
+        row = await cls.db.fetchrow(q, room_id, sender)
         if not row:
             return None
         return cls._from_row(row)

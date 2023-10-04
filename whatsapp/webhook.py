@@ -9,7 +9,7 @@ from whatsapp_matrix.db import WhatsappApplication as DBWhatsappApplication
 from whatsapp_matrix.portal import Portal
 from whatsapp_matrix.user import User
 
-from .data import WhatsappMessageEvent, WhatsappStatusesEvent
+from .data import WhatsappEvent, WhatsappStatusesEvent, WhatsappValue
 
 
 class WhatsappHandler:
@@ -78,41 +78,48 @@ class WhatsappHandler:
         self.log.debug(f"The event arrives {data}")
 
         # Get the business id and the value of the event
-        wc_business_id = data.get("entry")[0].get("id")
-        wc_value = data.get("entry")[0].get("changes")[0].get("value")
+        wb_business_id = data.get("entry")[0].get("id")
+        wb_value = data.get("entry")[0].get("changes")[0].get("value")
         # Get all the whatsapp apps
-        wc_apps = await DBWhatsappApplication.get_all_wc_apps()
+        wb_apps = await DBWhatsappApplication.get_all_wb_apps()
 
         # Validate if the app is registered
-        if not wc_business_id in wc_apps:
+        if not wb_business_id in wb_apps:
             self.log.warning(
-                f"Ignoring event because the whatsapp_app [{wc_business_id}] is not registered."
+                f"Ignoring event because the whatsapp_app [{wb_business_id}] is not registered."
             )
             return web.Response(status=406)
 
-        # Validate if the event is a message
-        if wc_value.get("messages"):
-            return await self.message_event(WhatsappMessageEvent.from_dict(data))
-        # If the event is an error, we send to the user the message error
-        elif wc_value.get("statuses")[0].get("status") == "failed":
-            wc_statuses = WhatsappStatusesEvent.from_dict(wc_value.get("statuses")[0])
-            # Get the phone id
-            wa_id = wc_statuses.recipient_id
-            # Get the error information
-            message_error = wc_statuses.errors.error_data.details
+        # Validate if the event is a message, read or error
+        # If the event is a message, we send a message event to matrix
+        if wb_value.get("messages"):
+            return await self.message_event(WhatsappEvent.from_dict(data))
 
-            self.log.error(f"Whatsapp return an error: {wc_statuses}")
+        # If the event is a read, we send a read event to matrix
+        elif wb_value.get("statuses")[0].get("status") == "read":
+            return await self.read_event(WhatsappEvent.from_dict(data))
+
+        # If the event is an error, we send to the user the message error
+        elif wb_value.get("statuses")[0].get("status") == "failed":
+            wb_statuses = WhatsappStatusesEvent.from_dict(wb_value.get("statuses")[0])
+            # Get the phone id
+            wa_id = wb_statuses.recipient_id
+            # Get the error information
+            message_error = wb_statuses.errors.error_data.details
+
+            self.log.error(f"Whatsapp return an error: {wb_statuses}")
             portal: Portal = await Portal.get_by_phone_id(
-                wa_id, app_business_id=wc_business_id, create=False
+                wa_id, app_business_id=wb_business_id, create=False
             )
             if portal:
                 await portal.handle_whatsapp_error(message_error=message_error)
             return web.Response(status=400)
+
         else:
             self.log.debug(f"Integration type not supported.")
             return web.Response(status=406)
 
-    async def message_event(self, data: WhatsappMessageEvent) -> web.Response:
+    async def message_event(self, data: WhatsappEvent) -> web.Response:
         """It validates the incoming request, fetches the portal associated with the sender,
         and then passes the message to the portal for handling
         """
@@ -121,6 +128,30 @@ class WhatsappHandler:
         business_id = data.entry.id
         user: User = await User.get_by_business_id(business_id)
         portal: Portal = await Portal.get_by_phone_id(sender.wa_id, app_business_id=business_id)
-
-        await portal.handle_whatsapp_message(user, data, sender)
+        if data.entry.changes.value.messages.type == "reaction":
+            await portal.handle_whatsapp_reaction(data, sender.wa_id)
+        else:
+            await portal.handle_whatsapp_message(user, data, sender)
         return web.Response(status=200)
+
+    async def read_event(self, data: WhatsappEvent) -> web.Response:
+        """
+        It validates the incoming request, fetches the portal associated with the sender,
+        and then passes the event to the portal for handling
+        """
+        self.log.debug(f"Received Whatsapp Cloud read event: {data}")
+        # Get the phone id and the business id
+        wa_id = data.entry.changes.value.statuses.recipient_id
+        business_id = data.entry.id
+        # Get the portal
+        portal: Portal = await Portal.get_by_phone_id(
+            wa_id, app_business_id=business_id, create=False
+        )
+        # Handle the read event
+        if portal:
+            message_id = data.entry.changes.value.statuses.id
+            await portal.handle_whatsapp_read(message_id=message_id)
+            return web.Response(status=200)
+        else:
+            self.log.error(f"Portal not found.")
+            return web.Response(status=406)
