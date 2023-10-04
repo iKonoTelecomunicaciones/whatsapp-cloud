@@ -59,14 +59,8 @@ class MatrixHandler(BaseMatrixHandler):
                 self.log.error("The read event can't be send because the portal does not exist")
                 return
 
-            # We send the read event to Whatsapp Api, for this we need the event id of the read
-            # event, so we get the event id from the content of the read event
-            event_id = ""
-            for content in evt.content:
-                event_id = content
-
-            self.log.debug(f"Send read event: {evt}")
-            await portal.handle_matrix_read(room_id=evt.room_id, event_id=event_id)
+            # We send the read event to Whatsapp Api
+            await portal.handle_matrix_read(room_id=evt.room_id)
         return
 
     async def handle_event(self, evt: Event) -> None:

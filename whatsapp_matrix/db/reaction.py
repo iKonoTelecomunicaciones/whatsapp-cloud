@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import logging
-from datetime import datetime
 from typing import TYPE_CHECKING, ClassVar, Optional
 
 import asyncpg
@@ -25,7 +24,7 @@ class Reaction:
     sender: UserID
     whatsapp_message_id: WhatsappMessageID
     reaction: str
-    created_at: float = datetime.now()
+    created_at: float
 
     @property
     def _values(self):

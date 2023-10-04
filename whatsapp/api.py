@@ -188,9 +188,7 @@ class WhatsappClient:
 
         Exceptions
         ----------
-        ClientConnectorError:
-            If the connection to the Whatsapp API fails.
-        FileNotFoundError:
+        AttributeError:
             If the message was not sent.
 
         Returns
@@ -207,21 +205,15 @@ class WhatsappClient:
 
         # Set the data to send to Whatsapp API
         data = {"messaging_product": "whatsapp", "status": "read", "message_id": message_id}
-
         self.log.debug(f"Marking message as read {data} to {message_id}")
 
-        try:
-            # Send the message to the Whatsapp API
-            resp = await self.http.post(mark_read_url, data=data, headers=headers)
-        except ClientConnectorError as error:
-            self.log.error(error)
-            raise ClientConnectorError(error.args[0])
-
+        # Send the message to the Whatsapp API
+        resp = await self.http.post(mark_read_url, data=data, headers=headers)
         response_data = json.loads(await resp.text())
 
         # If the message was not sent, raise an error
         if response_data.get("error", {}):
-            raise FileNotFoundError(response_data)
+            raise AttributeError(response_data)
 
         return response_data
 

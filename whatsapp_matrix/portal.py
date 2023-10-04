@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from asyncio import Lock
+from datetime import datetime
 from string import Template
 from typing import TYPE_CHECKING, Any, Dict, List, Optional, Union, cast
 
@@ -504,6 +505,7 @@ class Portal(DBPortal, BasePortal):
             sender=puppet.mxid,
             whatsapp_message_id=whatsapp_message_id,
             app_business_id=message.entry.id,
+            created_at=datetime.now(),
         )
         await msg.insert()
 
@@ -761,6 +763,7 @@ class Portal(DBPortal, BasePortal):
             sender=sender.mxid,
             whatsapp_message_id=WhatsappMessageID(message_id),
             app_business_id=self.app_business_id,
+            created_at=datetime.now(),
         ).insert()
 
     async def handle_matrix_reaction(
@@ -817,6 +820,7 @@ class Portal(DBPortal, BasePortal):
             sender=user.mxid,
             whatsapp_message_id=message.whatsapp_message_id,
             reaction=reaction_value,
+            created_at=datetime.now(),
         ).insert()
 
     async def handle_matrix_unreact(
@@ -850,23 +854,27 @@ class Portal(DBPortal, BasePortal):
 
         await DBReaction.delete_by_event_mxid(message.event_mxid, self.mxid, user.mxid)
 
-    async def handle_matrix_read(self, room_id: RoomID, event_id: EventID) -> None:
+    async def handle_matrix_read(self, room_id: RoomID) -> None:
         """
         Send a read event to Whatsapp
+
+        Params
+        ----------
+        room_id : RoomID
+            The id of the room.
 
         Exceptions
         ----------
         Exception:
             Show and error if the event does not send.
         """
-        if not self.mxid:
-            self.log.error("No mxid, ignoring read")
-            return
-        if not event_id:
-            self.log.error("No event_id, ignoring read")
+        puppet: Puppet = await Puppet.get_by_phone_id(self.phone_id, create=False)
+
+        if not puppet:
+            self.log.error("No puppet, ignoring read")
             return
 
-        message: DBMessage = await DBMessage.get_by_mxid(event_id, room_id)
+        message: DBMessage = await DBMessage.get_last_message_puppet(room_id, puppet.custom_mxid)
 
         if not message:
             self.log.error("No message, ignoring read")
@@ -875,8 +883,11 @@ class Portal(DBPortal, BasePortal):
         # We send the location message to the Whatsapp API
         try:
             response = await self.whatsapp_client.mark_read(message_id=message.whatsapp_message_id)
-        except Exception as error:
+        except ClientConnectorError as error:
             self.log.error(f"Error sending the read event: {error}")
+            return
+        except AttributeError as error:
+            self.log.error(f"Error with the message: {error}")
             return
 
         if response:
