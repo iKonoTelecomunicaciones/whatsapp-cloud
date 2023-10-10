@@ -1,12 +1,11 @@
 import re
 from typing import Match, Optional, Tuple
 
+from markdown import markdown
 from mautrix.appservice import IntentAPI
 from mautrix.errors import MatrixRequestError
 from mautrix.types import (
     Format,
-    LocationMessageEventContent,
-    MediaMessageEventContent,
     MessageEvent,
     MessageType,
     RelatesTo,
@@ -14,6 +13,8 @@ from mautrix.types import (
     TextMessageEventContent,
 )
 from mautrix.util.logging import TraceLogger
+
+from whatsapp.interactive_message import InteractiveMessage
 
 from ..db import Message
 from ..puppet import Puppet
@@ -119,6 +120,10 @@ async def _add_reply_header(
 
     try:
         event: MessageEvent = await main_intent.get_event(msg.room_id, msg.event_mxid)
+        # If the message is an interactive message, we need to convert it to a text message
+        if event.content.msgtype == "m.interactive_message":
+            event.content = create_text_body(event)
+
         if isinstance(event.content, TextMessageEventContent):
             event.content.trim_reply_fallback()
         puppet: Puppet = await Puppet.get_by_mxid(event.sender, create=False)
@@ -126,3 +131,28 @@ async def _add_reply_header(
     except MatrixRequestError:
         log.exception("Failed to get event to add reply fallback")
         pass
+
+
+def create_text_body(event: MessageEvent) -> MessageEvent:
+    """
+    Converts an interactive body message to a text body message
+
+    Obtain the body of the interactive message event and convert it to a text body message for send
+    it to Matrix
+
+    Parameters:
+    -----------
+    event: MessageEvent - MessageEvent
+    """
+    message = InteractiveMessage.from_dict(event.content.get("interactive_message", {}))
+
+    body = message.button_message if message.type == "button" else message.list_message
+
+    event.content = TextMessageEventContent(
+        body=body,
+        msgtype=MessageType.TEXT,
+        formatted_body=markdown(body.replace("\n", "<br>")),
+        format=Format.HTML,
+    )
+
+    return event.content
