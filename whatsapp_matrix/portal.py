@@ -6,6 +6,7 @@ from string import Template
 from typing import TYPE_CHECKING, Any, Dict, List, Optional, Union, cast
 
 from aiohttp import ClientConnectorError
+from markdown import markdown
 from mautrix.appservice import AppService, IntentAPI
 from mautrix.bridge import BasePortal
 from mautrix.types import (
@@ -26,6 +27,7 @@ from mautrix.types import (
 
 from whatsapp.api import WhatsappClient
 from whatsapp.data import WhatsappContacts, WhatsappEvent, WhatsappReaction
+from whatsapp.interactive_message import EventInteractiveMessage, InteractiveMessage
 from whatsapp.types import WhatsappMessageID, WhatsappPhone, WsBusinessID
 from whatsapp_matrix.formatter.from_matrix import matrix_to_whatsapp
 from whatsapp_matrix.formatter.from_whatsapp import whatsapp_reply_to_matrix
@@ -386,7 +388,7 @@ class Portal(DBPortal, BasePortal):
         media_id = None
         messasge_reply = {}
 
-        if message_data.context:
+        if message_data.context and not whatsapp_message_type == "interactive":
             reply_message_id = message_data.context.id
             messasge_reply: DBMessage = await DBMessage.get_by_whatsapp_message_id(
                 reply_message_id
@@ -423,8 +425,15 @@ class Portal(DBPortal, BasePortal):
         elif whatsapp_message_type == "location":
             message_type = MessageType.LOCATION
 
+        elif whatsapp_message_type == "interactive":
+            message_type = MessageType.TEXT
+            if message_data.interactive.type == "button_reply":
+                attachment = message_data.interactive.button_reply.title
+            elif message_data.interactive.type == "list_reply":
+                attachment = message_data.interactive.list_reply_message
+
         else:
-            self.log.error("Unsupported message type")
+            self.log.error(f"Unsupported message type: {whatsapp_message_type}")
             await self.az.intent.send_notice(self.mxid, "Error getting the message")
             return
 
@@ -646,6 +655,9 @@ class Portal(DBPortal, BasePortal):
         ClientConnectorError:
             If there is an error with the connection
         """
+        if message.msgtype == "m.interactive_message":
+            await self.handle_interactive_message(sender, message, event_id)
+            return
 
         orig_sender = sender
         response = None
@@ -741,6 +753,12 @@ class Portal(DBPortal, BasePortal):
             except ClientConnectorError as error:
                 self.log.error(f"Error with the connection: {error}")
                 await self.main_intent.send_notice(self.mxid, f"Error with the connection")
+                return
+            except ValueError as error:
+                self.log.error(f"Error sending the location message: {error}")
+                await self.main_intent.send_notice(
+                    self.mxid, f"Error sending the location message"
+                )
                 return
 
         else:
@@ -975,3 +993,151 @@ class Portal(DBPortal, BasePortal):
             The message error that whatsapp return.
         """
         await self.main_intent.send_notice(self.mxid, message_error)
+
+    async def handle_interactive_message(
+        self, sender: User, message: MessageEventContent, event_id: EventID
+    ) -> None:
+        """
+        Handle the type of the interactive message and send it to Matrix
+
+        Parameters
+        ----------
+        sender : User
+            The class that will be used to specify who sends the message.
+        message: MessageEventContent
+            The class that containt the data of the message.
+        event_id: EventID
+            The id of the event.
+
+        Exceptions
+        ----------
+        AttributeError:
+            Show an atribute error if the message has a bad format.
+        FileNotFoundError:
+            Show an error if the message is not in the correct format.
+        """
+        message_body = None
+        # Get the data of the interactive message
+        event_interactive_message: EventInteractiveMessage = EventInteractiveMessage.from_dict(
+            message
+        )
+
+        if not event_interactive_message.interactive_message:
+            self.log.error("Error getting the interactive message")
+            return
+
+        # Whatsapp cloud can send a message with a header or without it
+        header_type = None
+        if event_interactive_message.interactive_message.header:
+            header_type = event_interactive_message.interactive_message.header.type
+
+        if header_type and header_type in ("image", "document", "video"):
+            file_name = ""
+            # Validate the type of the header media of the interactive message to send it to Matrix
+            if header_type == "image":
+                message_type = MessageType.IMAGE
+                url = event_interactive_message.interactive_message.header.image.link
+            elif header_type == "document":
+                message_type = MessageType.FILE
+                url = event_interactive_message.interactive_message.header.document.link
+                file_name = event_interactive_message.interactive_message.header.document.filename
+            elif header_type == "video":
+                message_type = MessageType.VIDEO
+                url = event_interactive_message.interactive_message.header.video.link
+
+            if not url:
+                self.log.error(
+                    f"No url found when processing interactive message header {sender.mxid}"
+                )
+                await self.main_intent.send_notice(self.mxid, "Error getting the media url")
+                return
+
+            # Obtain the data of the message media
+            response = await self.az.http_session.get(url)
+            data = await response.read()
+
+            try:
+                # Upload the message media to Matrix
+                attachment = await self.main_intent.upload_media(data=data)
+            except Exception as e:
+                self.log.exception(
+                    f"Error uploading the media header of the interactive message: {e}"
+                )
+                return
+
+            # Create the content of the message media for send to Matrix
+            content_attachment = MediaMessageEventContent(
+                body=file_name,
+                msgtype=message_type,
+                url=attachment,
+                info=FileInfo(size=len(data)),
+            )
+
+            # Send message in matrix format
+            await self.az.intent.send_message(self.mxid, content_attachment)
+
+        # Obtain the body of the message to send it to matrix
+        if event_interactive_message.interactive_message.type == "button":
+            message_body = event_interactive_message.interactive_message.button_message
+        elif event_interactive_message.interactive_message.type == "list":
+            message_body = event_interactive_message.interactive_message.list_message
+
+        try:
+            msg = TextMessageEventContent(
+                body=message_body,
+                msgtype=MessageType.TEXT,
+                formatted_body=markdown(message_body.replace("\n", "<br>")),
+                format=Format.HTML,
+            )
+        except AttributeError as error:
+            self.log.error(error)
+            await self.main_intent.send_notice(
+                self.mxid, f"Error sending the interactive message: {error}"
+            )
+            return
+
+        msg.trim_reply_fallback()
+
+        # Send message in matrix format
+        await self.az.intent.send_message(self.mxid, msg)
+
+        try:
+            # Send the interactive message in whatsapp format
+            response = await self.whatsapp_client.send_interactive_message(
+                phone_id=self.phone_id,
+                message_type="m.interactive_message",
+                aditional_data=event_interactive_message.interactive_message.serialize(),
+            )
+        except TypeError as error:
+            self.log.error(f"Error with the type of interactive message: {error}")
+            await self.main_intent.send_notice(
+                self.mxid, f"Error with the type of interactive message"
+            )
+            return
+        except AttributeError as error:
+            self.log.error(error)
+            await self.main_intent.send_notice(self.mxid, f"Error getting an atribute: {error}")
+            return
+        except FileNotFoundError as error:
+            self.log.error(error)
+            await self.main_intent.send_notice(self.mxid, f"Error sending content: {error}")
+            return
+        except ClientConnectorError as error:
+            self.log.error(f"Error with the connection: {error}")
+            await self.main_intent.send_notice(self.mxid, f"Error with the connection")
+            return
+        except ValueError as error:
+            self.log.error(f"Error sending the interactive message: {error}")
+            await self.main_intent.send_notice(self.mxid, f"Error sending the interactive message")
+            return
+
+        # Save the message in the database
+        await DBMessage(
+            event_mxid=event_id,
+            room_id=self.mxid,
+            phone_id=self.phone_id,
+            sender=sender.mxid,
+            whatsapp_message_id=WhatsappMessageID(response.get("messages", [])[0].get("id", "")),
+            app_business_id=self.app_business_id,
+            created_at=datetime.now(),
+        ).insert()

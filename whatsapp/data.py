@@ -5,6 +5,68 @@ from .types import WhatsappMessageID, WhatsappPhone, WsBusinessID, WSPhoneID
 
 
 @dataclass
+class ListReply(SerializableAttrs):
+    """
+    Contains the information from the rows of the sections list.
+
+    - id: The id of the option in the row.
+
+    - title: The title of the option in the row.
+
+    - description: The description of the option in the row.
+    """
+
+    id: str = ib(metadata={"json": "id"}, default="")
+    title: str = ib(metadata={"json": "title"}, default="")
+    description: str = ib(metadata={"json": "description"}, default="")
+
+
+@dataclass
+class ButtonReply(SerializableAttrs):
+    """
+    Contains the id and the text of the button
+
+    - id: The id of the button
+
+    - title: The text of the button
+
+    """
+
+    id: str = ib(metadata={"json": "id"}, default="")
+    title: str = ib(metadata={"json": "title"}, default="")
+
+
+@dataclass
+class InteractiveMessage(SerializableAttrs):
+    """
+    Contains the response from the user who interacted with the interactive message.
+
+    - type: The type of the interactive message.
+
+    - button_reply: The infomation of the button.
+    """
+
+    type: str = ib(metadata={"json": "type"}, default="")
+    button_reply: ButtonReply = ib(metadata={"json": "button_reply"}, default={})
+    list_reply: ListReply = ib(metadata={"json": "list_reply"}, default={})
+
+    @classmethod
+    def from_dict(cls, data: dict):
+        return cls(
+            type=data.get("type", ""),
+            button_reply=ButtonReply(**data.get("button_reply", {})),
+            list_reply=ListReply(**data.get("list_reply", {})),
+        )
+
+    @property
+    def list_reply_message(self) -> str:
+        title = self.list_reply.title if self.list_reply else ""
+        msg = f"{title}"
+
+        return msg
+
+
+@dataclass
 class WhatsappReaction(SerializableAttrs):
     """
     Contain the information of the reaction.
@@ -215,7 +277,7 @@ class WhatsappErrors(SerializableAttrs):
     code: str = ib(metadata={"json": "code"}, default="")
     title: str = ib(metadata={"json": "title"}, default="")
     message: str = ib(metadata={"json": "message"}, default="")
-    error_data: WhatsappErrorData = ib(metadata={"json": "error_data"}, default="")
+    error_data: WhatsappErrorData = ib(metadata={"json": "error_data"}, default={})
 
     @classmethod
     def from_dict(cls, data: dict):
@@ -333,6 +395,7 @@ class WhatsappMessages(SerializableAttrs):
     document: WhatsappDocument = ib(metadata={"json": "document"}, default={})
     location: WhatsappLocation = ib(metadata={"json": "location"}, default={})
     reaction: WhatsappReaction = ib(metadata={"json": "reaction"}, default={})
+    interactive: InteractiveMessage = ib(metadata={"json": "interactive"}, default={})
 
     @classmethod
     def from_dict(cls, data: dict):
@@ -343,6 +406,7 @@ class WhatsappMessages(SerializableAttrs):
         audio_obj = None
         sticker_obj = None
         document_obj = None
+        interactive_obj = None
 
         if data.get("context", {}):
             context_obj = WhatsappContext.from_dict(data.get("context", {}))
@@ -365,6 +429,9 @@ class WhatsappMessages(SerializableAttrs):
         elif data.get("document", ""):
             document_obj = WhatsappDocument.from_dict(data.get("document", {}))
 
+        elif data.get("interactive", ""):
+            interactive_obj = InteractiveMessage.from_dict(data.get("interactive", {}))
+
         return cls(
             from_number=data.get("from", ""),
             id=data.get("id", ""),
@@ -379,6 +446,7 @@ class WhatsappMessages(SerializableAttrs):
             document=document_obj,
             location=WhatsappLocation(**data.get("location", {})),
             reaction=WhatsappReaction(**data.get("reaction", {})),
+            interactive=interactive_obj,
         )
 
 

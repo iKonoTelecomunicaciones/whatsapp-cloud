@@ -60,6 +60,18 @@ class WhatsappClient:
         location: tuple
             The location of the user, contains the latitude and longitude.
 
+        aditional_data: dict
+            This is used to send a reply to a message.
+
+        Exceptions
+        ----------
+        TypeError:
+            If the message type is not supported.
+        ValueError:
+            If the message was not sent.
+        ClientConnectorError:
+            If the connection to the Whatsapp API fails.
+
         Returns
         -------
         Return the response of the Whatsapp API.
@@ -124,7 +136,80 @@ class WhatsappClient:
 
         # If the message was not sent, raise an error
         if response_data.get("error", {}):
-            raise FileNotFoundError(response_data)
+            raise ValueError(response_data)
+
+        return response_data
+
+    async def send_interactive_message(
+        self,
+        phone_id: WhatsappPhone,
+        message_type: MessageType,
+        aditional_data: Optional[Dict] = None,
+    ) -> Dict[str, str]:
+        """
+        Send an interactive message to the user.
+
+        Parameters
+        ----------
+        phone_id : WhatsappPhone
+            The number of the user.
+
+        message_type: MessageType
+            The type of the message that will be sent to the user.
+
+        aditional_data:
+            The data of the interactive message that will be sent to the user.
+
+        Exceptions
+        ----------
+        TypeError:
+            If the message type is not supported.
+        ValueError:
+            If the message was not sent.
+        AttributeError:
+            If the atributes of the message are not correct.
+        FileNotFoundError:
+            If the atrributes of the message has not a file required.
+        ClientConnectorError:
+            If the connection to the Whatsapp API fails.
+
+        Returns
+        -------
+        Return the response of the Whatsapp API.
+        """
+        # Set the headers for the request to the Whatsapp API
+        headers = {
+            "Content-Type": "application/json",
+            "Authorization": f"Bearer {self.page_access_token}",
+        }
+        # Set the url to send the message to Wahtsapp API
+        send_message_url = f"{self.base_url}/{self.version}/{self.wb_phone_id}/messages"
+
+        self.log.debug(f"Sending interactive message to {send_message_url}")
+
+        # Set the data to send to Whatsapp API
+        type_message = "interactive" if message_type == "m.interactive_message" else None
+
+        if not type_message:
+            self.log.error("Unsupported message type")
+            raise TypeError("Unsupported message type")
+
+        message_data = aditional_data
+        data = {
+            "messaging_product": "whatsapp",
+            "recipient_type": "individual",
+            "to": phone_id,
+            "type": type_message,
+            type_message: message_data,
+        }
+
+        # Send the message to the Whatsapp API
+        resp = await self.http.post(send_message_url, json=data, headers=headers)
+        response_data = json.loads(await resp.text())
+
+        # If the message was not sent, raise an error
+        if response_data.get("error", {}):
+            raise ValueError(response_data)
 
         return response_data
 
