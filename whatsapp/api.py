@@ -69,7 +69,6 @@ class WhatsappClient:
             If the message type is not supported.
         ValueError:
             If the message was not sent.
-                Exceptions
         ClientConnectorError:
             If the connection to the Whatsapp API fails.
 
@@ -186,7 +185,7 @@ class WhatsappClient:
         # Set the url to send the message to Wahtsapp API
         send_message_url = f"{self.base_url}/{self.version}/{self.wb_phone_id}/messages"
 
-        self.log.debug(f"Sending message to {send_message_url}")
+        self.log.debug(f"Sending interactive message to {send_message_url}")
 
         # Set the data to send to Whatsapp API
         type_message = "interactive" if message_type == "m.interactive_message" else None

@@ -433,7 +433,7 @@ class Portal(DBPortal, BasePortal):
                 attachment = message_data.interactive.list_reply_message
 
         else:
-            self.log.error("Unsupported message type 2")
+            self.log.error(f"Unsupported message type: {whatsapp_message_type}")
             await self.az.intent.send_notice(self.mxid, "Error getting the message")
             return
 
@@ -655,7 +655,6 @@ class Portal(DBPortal, BasePortal):
         ClientConnectorError:
             If there is an error with the connection
         """
-        self.log.critical(f"Message from {sender.mxid}: {message}")
         if message.msgtype == "m.interactive_message":
             await self.handle_interactive_message(sender, message, event_id)
             return
@@ -756,8 +755,10 @@ class Portal(DBPortal, BasePortal):
                 await self.main_intent.send_notice(self.mxid, f"Error with the connection")
                 return
             except ValueError as error:
-                self.log.error(f"Error sending the message: {error}")
-                await self.main_intent.send_notice(self.mxid, f"Error sending the message")
+                self.log.error(f"Error sending the location message: {error}")
+                await self.main_intent.send_notice(
+                    self.mxid, f"Error sending the location message"
+                )
                 return
 
         else:
@@ -1031,7 +1032,6 @@ class Portal(DBPortal, BasePortal):
             header_type = event_interactive_message.interactive_message.header.type
 
         if header_type and header_type in ("image", "document", "video"):
-            self.log.critical(f"Interactive message {message['interactive_message']}")
             file_name = ""
             # Validate the type of the header media of the interactive message to send it to Matrix
             if header_type == "image":
@@ -1046,7 +1046,9 @@ class Portal(DBPortal, BasePortal):
                 url = event_interactive_message.interactive_message.header.video.link
 
             if not url:
-                self.log.error("No url")
+                self.log.error(
+                    f"No url found when processing interactive message header {sender.mxid}"
+                )
                 await self.main_intent.send_notice(self.mxid, "Error getting the media url")
                 return
 
@@ -1058,7 +1060,9 @@ class Portal(DBPortal, BasePortal):
                 # Upload the message media to Matrix
                 attachment = await self.main_intent.upload_media(data=data)
             except Exception as e:
-                self.log.exception(f"Message not receive, error: {e}")
+                self.log.exception(
+                    f"Error uploading the media header of the interactive message: {e}"
+                )
                 return
 
             # Create the content of the message media for send to Matrix
@@ -1105,8 +1109,10 @@ class Portal(DBPortal, BasePortal):
                 aditional_data=event_interactive_message.interactive_message.serialize(),
             )
         except TypeError as error:
-            self.log.error(f"Error sending the file: {error}")
-            await self.main_intent.send_notice(self.mxid, f"Error sending the location")
+            self.log.error(f"Error with the type of interactive message: {error}")
+            await self.main_intent.send_notice(
+                self.mxid, f"Error with the type of interactive message"
+            )
             return
         except AttributeError as error:
             self.log.error(error)
