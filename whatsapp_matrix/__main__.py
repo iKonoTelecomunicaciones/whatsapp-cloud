@@ -47,6 +47,7 @@ class WhatsappBridge(Bridge):
         self.az.app.add_subapp(self.config["whatsapp.webhook_path"], self.meta.app)
         cfg = self.config["bridge.provisioning"]
         self.provisioning_api = ProvisioningAPI(
+            config=self.config,
             shared_secret=cfg["shared_secret"],
         )
         self.az.app.add_subapp(cfg["prefix"], self.provisioning_api.app)

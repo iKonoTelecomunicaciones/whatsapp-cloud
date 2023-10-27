@@ -1,31 +1,50 @@
 from __future__ import annotations
 
 import json
-import logging
 from asyncio import AbstractEventLoop, get_event_loop
+from json import JSONDecodeError
+from logging import Logger, getLogger
 
-from aiohttp import web
+from aiohttp import ClientResponse, ClientSession, web
+from mautrix.types import MessageType, TextMessageEventContent, UserID
 
+from whatsapp.data import WhatsappContacts
+from whatsapp.types import WsBusinessID, WSPhoneID
+from whatsapp_matrix.portal import Portal
+from whatsapp_matrix.puppet import Puppet
+
+from ..config import Config
 from ..db.whatsapp_application import WhatsappApplication
 from ..user import User
-
-logger = logging.getLogger()
+from ..util import normalize_number
 
 
 class ProvisioningAPI:
     app: web.Application
+    http: ClientSession
+    log: Logger = getLogger()
 
     def __init__(
         self,
+        config: Config,
         shared_secret: str,
         loop: AbstractEventLoop = None,
     ) -> None:
         self.loop = loop or get_event_loop()
         self.app = web.Application(loop=self.loop)
         self.shared_secret = shared_secret
+        self.base_url = config["whatsapp.base_url"]
+        self.version = config["whatsapp.version"]
+        self.template_path = config["whatsapp.template_path"]
+        self.http = ClientSession(loop=loop)
 
         self.app.router.add_route("POST", "/v1/register_app", self.register_app)
         self.app.router.add_route("PATCH", "/v1/update_app", self.update_app)
+        self.app.router.add_route("GET", "/v1/templates", self.get_template)
+        self.app.router.add_route("POST", "/v1/approval_template", self.approval_template)
+        self.app.router.add_route("POST", "/v1/pm/{number}", self.start_pm)
+        self.app.router.add_route("POST", "/v1/template", self.template)
+        self.app.router.add_route("DELETE", "/v1/delete_template", self.delete_template)
 
     @property
     def _acao_headers(self) -> dict[str, str]:
@@ -167,17 +186,53 @@ class ProvisioningAPI:
             The request that contains the data of the app and the user.
         """
         self.check_token(request)
-
         try:
             # Convert the data from the request to json
             data = dict(**await request.json())
-        except json.JSONDecodeError:
-            logger.error("Malformed JSON")
+        except JSONDecodeError as error:
+            self.log.error(f"Malformed JSON {error}")
             raise web.HTTPUnprocessableEntity(
-                text=json.dumps({"detail": {"message": "Malformed JSON"}}), headers=self._headers
+                text=json.dumps({"detail": {"message": f"Malformed JSON {error}"}}),
+                headers=self._headers,
             )
 
         return data
+
+    async def _get_user_and_body(
+        self, request: web.Request, read_body: bool = True
+    ) -> tuple[User, dict]:
+        """
+        Get the user and the body of the request
+
+        Parameters
+        ----------
+        request: web.Request
+            The request that contains the data of the app and the user.
+        """
+        # Validate the token
+        self.check_token(request)
+
+        try:
+            # Obtain the user_id from the request
+            user_id = request.query["user_id"]
+        except KeyError:
+            raise web.HTTPBadRequest(
+                text='{"message": "Missing user_id query param"}', headers=self._headers
+            )
+
+        user: User = await User.get_by_mxid(UserID(user_id), create=False)
+
+        if not user:
+            raise web.HTTPBadRequest(
+                text=json.dumps(
+                    {"detail": {"message": f"The user with user_id {user_id} not found"}}
+                ),
+                headers=self._headers,
+            )
+
+        # Obtain the data from the request
+        data = await self._get_body(request) if read_body else None
+        return user, data
 
     def _missing_key_error(self, err: KeyError) -> None:
         """
@@ -188,7 +243,7 @@ class ProvisioningAPI:
         err : KeyError
             The missing key
         """
-        logger.error(f"KeyError: {err}")
+        self.log.error(f"KeyError: {err}")
         raise web.HTTPNotAcceptable(
             text=json.dumps({"detail": {"data": {"key": err}, "message": f"Missing key %(key)s"}}),
             headers=self._headers,
@@ -208,7 +263,7 @@ class ProvisioningAPI:
             token = request.headers["Authorization"]
             token = token[len("Bearer ") :]
         except KeyError:
-            logger.error(f"KeyError: {KeyError}")
+            self.log.error("Error getting the Authorization header")
             raise web.HTTPUnauthorized(
                 text=json.dumps({"detail": {"message": "Missing Authorization header"}}),
                 headers=self._headers,
@@ -307,7 +362,7 @@ class ProvisioningAPI:
             access_token if access_token else whatsapp_app.page_access_token,
         )
 
-        logger.debug(f"Update whatsapp_app {whatsapp_app.business_id}")
+        self.log.debug(f"Update whatsapp_app {whatsapp_app.business_id}")
         await whatsapp_app.update_by_admin_user(
             user=whatsapp_app.admin_user, values=data_to_update
         )
@@ -321,3 +376,403 @@ class ProvisioningAPI:
             ),
             headers=self._headers,
         )
+
+    async def get_template(self, request: web.Request) -> dict:
+        """
+        Get the template from Whatsapp Api Cloud
+
+        Parameters
+        ----------
+        business_id: str
+            The business_id of the app
+        """
+        # Validate the token
+        self.log.debug("Get template")
+        self.check_token(request)
+
+        # Obtain the business_id from the request
+        business_id = request.query.get("business_id", None)
+
+        if not business_id:
+            self.log.error("The business_id was not provided")
+            return web.HTTPBadRequest(
+                text=json.dumps(
+                    {
+                        "detail": {
+                            "message": "The request does not have data",
+                        }
+                    }
+                ),
+                headers=self._headers,
+            )
+
+        # Get the company application and check if the whatsapp_app is registered
+        company: WhatsappApplication = await WhatsappApplication.get_by_business_id(
+            business_id=business_id
+        )
+
+        if not company:
+            self.log.error(f"The company application {business_id} is not registered")
+            return web.HTTPNotFound(
+                text=json.dumps(
+                    {
+                        "detail": {
+                            "data": {"businessID": business_id},
+                            "message": "The business_id %(businessID)s is not registered",
+                        }
+                    }
+                ),
+                headers=self._headers,
+            )
+
+        # Get the url of the Whatsapp Api Cloud
+        url = f"{self.base_url}/{self.version}/{business_id}{self.template_path}"
+        headers = {
+            "Authorization": f"Bearer {company.page_access_token}",
+        }
+
+        self.log.debug(f"Getting the template from Whatsapp Api Cloud: {url}")
+        client_response: ClientResponse = await self.http.get(url=url, headers=headers)
+        response = await client_response.json()
+        if client_response.status == 200:
+            self.log.debug(f"Get the templates {response}")
+            return web.HTTPOk(
+                text=json.dumps(response["data"]),
+                headers=self._headers,
+            )
+        else:
+            self.log.error(f"Error getting the templates: {response}")
+            error = response.get("error", {})
+            message_error = (
+                error.get("error_user_msg", "")
+                if error.get("error_user_msg", "")
+                else error.get("message", "")
+            )
+            self.log.error(f"Error when trying to get the template: {message_error}")
+            web.HTTPException.status_code = client_response.status
+            return web.HTTPException(
+                text=json.dumps(
+                    {
+                        "detail": {
+                            "message": message_error,
+                        }
+                    }
+                ),
+                headers=self._headers,
+            )
+
+    async def approval_template(self, request: web.Request) -> dict:
+        """
+        Send a template to approve to Whatsapp Api Cloud
+
+        Parameters
+        ----------
+        request: web.Request
+            The request that contains the data of the app and the user.
+
+        Returns
+        -------
+        JSON
+            The response of the request with a success message or an error message
+        """
+        self.log.debug("Approval template")
+        # Obtain the data from the request
+        data = await self._get_body(request)
+
+        if not data:
+            return web.HTTPBadRequest(
+                text=json.dumps(
+                    {
+                        "message": "The request does not have data",
+                    }
+                ),
+                headers=self._headers,
+            )
+
+        try:
+            # Separate the data from the request
+            template = json.dumps(data["template"])
+            app_business_id = data["app_business_id"]
+            app_token = data["app_token"]
+        except KeyError as e:
+            raise self._missing_key_error(e)
+
+        # Get the url of the Whatsapp Api Cloud
+        url = f"{self.base_url}/{self.version}/{app_business_id}{self.template_path}"
+
+        headers = {
+            "Content-Type": "application/json",
+            "Authorization": f"Bearer {app_token}",
+        }
+        self.log.debug(f"Sending the approval template to Whatsapp Api Cloud: {url}")
+        client_response: ClientResponse = await self.http.post(
+            url=url, data=template, headers=headers
+        )
+        response = await client_response.json()
+
+        if client_response.status in (200, 2001):
+            self.log.debug("The template has been sent to approved")
+            return web.HTTPOk(
+                text=json.dumps(response),
+                headers=self._headers,
+            )
+        else:
+            error = response.get("error", {})
+            message = (
+                error.get("error_user_msg", "")
+                if error.get("error_user_msg", "")
+                else error.get("message", "")
+            )
+            self.log.error(f"Error when trying to approve a template: {message}")
+            self.log.error(f"Error {response}")
+            web.HTTPException.status_code = client_response.status
+            return web.HTTPException(
+                text=json.dumps(
+                    {
+                        "message": message,
+                    }
+                ),
+                headers=self._headers,
+            )
+
+    async def _get_puppet(self, number: WSPhoneID, app_business_id: WsBusinessID) -> Puppet:
+        """
+        Obtain the puppet from the number of the user
+
+        Parameters
+        ----------
+        number: str
+            The number of the user
+
+        Returns
+        -------
+        Puppet
+            The puppet of the user
+        """
+        try:
+            number = normalize_number(number).replace("+", "")
+        except Exception as e:
+            raise web.HTTPBadRequest(text=json.dumps({"error": str(e)}), headers=self._headers)
+
+        puppet: Puppet = await Puppet.get_by_phone_id(
+            phone_id=number, app_business_id=app_business_id
+        )
+
+        return puppet
+
+    async def start_pm(self, request: web.Request) -> web.Response:
+        """
+        Created a new room with the user and the puppet to start a new conversation
+
+        Parameters
+        ----------
+        request: web.Request
+            The request that contains the data of the company_app and the user.
+
+        Returns
+        -------
+        JSON
+            The response of the request with the room_id and the chat_id
+        """
+        self.log.debug("Start PM")
+        user, _ = await self._get_user_and_body(request, read_body=False)
+
+        puppet: Puppet = await self._get_puppet(
+            number=request.match_info["number"], app_business_id=user.app_business_id
+        )
+        portal: Portal = await Portal.get_by_phone_id(
+            puppet.phone_id, app_business_id=user.app_business_id
+        )
+
+        # If the portal is not created, create it
+        if portal.mxid:
+            await portal.main_intent.invite_user(portal.mxid, user.mxid)
+            just_created = False
+        else:
+            chat_customer = {
+                "wa_id": puppet.phone_id,
+                "profile": {"name": puppet.display_name or puppet.custom_mxid},
+            }
+            sender = WhatsappContacts.from_dict(chat_customer)
+            await portal.create_matrix_room(user, sender)
+            just_created = True
+
+        return web.json_response(
+            {
+                "room_id": portal.mxid,
+            },
+            headers=self._acao_headers,
+            status=201 if just_created else 200,
+        )
+
+    async def template(self, request: web.Request) -> web.Response:
+        """
+        Send a template to a room
+
+        Parameters
+        ----------
+        request: web.Request
+            The request that contains the data of the company_app and the user.
+
+        Returns
+        -------
+        JSON
+            The response of the request
+        """
+        self.log.debug("Sending the template")
+        user, data = await self._get_user_and_body(request)
+
+        try:
+            room_id = data["room_id"]
+            template_message = data["template_message"]
+            name_template = data["name_template"]
+            variables = data["variables"]
+
+        except KeyError as e:
+            raise self._missing_key_error(e)
+        if not room_id:
+            return web.json_response(
+                data={"detail": {"message": "room_id not entered"}},
+                status=400,
+                headers=self._acao_headers,
+            )
+        elif not template_message:
+            return web.json_response(
+                data={"detail": {"message": "template_message not entered"}},
+                status=400,
+                headers=self._acao_headers,
+            )
+        elif not name_template:
+            return web.json_response(
+                data={"detail": {"message": "name_template not entered"}},
+                status=400,
+                headers=self._acao_headers,
+            )
+
+        # Format the message to send to Matrix
+        msg = TextMessageEventContent(body=template_message, msgtype=MessageType.TEXT)
+        msg.trim_reply_fallback()
+
+        portal: Portal = await Portal.get_by_mxid(room_id)
+        if not portal:
+            return web.json_response(
+                data={"detail": {"message": f"Failed to get room {room_id}"}},
+                status=400,
+                headers=self._acao_headers,
+            )
+        try:
+            # Send the message to Matrix
+            msg_event_id = await portal.az.intent.send_message(portal.mxid, msg)
+        except Exception as e:
+            self.log.error(f"Error after send message to Matrix: {e}")
+            return web.json_response(
+                data={"detail": {"message": f"Failed to send message to Matrix: {e}"}},
+                status=400,
+                headers=self._acao_headers,
+            )
+        # Send the template to Whatsapp
+        status, response = await portal.handle_matrix_template(
+            sender=user,
+            message=template_message,
+            event_id=msg_event_id,
+            variables=variables,
+            name_template=name_template,
+        )
+
+        return web.json_response(data=response, headers=self._acao_headers, status=status)
+
+    async def delete_template(self, request: web.Request) -> web.Response:
+        """
+        delete a template in whatsapp cloud api
+
+        Parameters
+        ----------
+        request: web.Request
+            The request that contains the data of the company_app and the user.
+
+        Returns
+        -------
+        JSON
+            The response of the request
+        """
+        self.log.debug("Delete template")
+        data = await self._get_body(request)
+
+        try:
+            app_business_id: WsBusinessID = data["app_business_id"]
+            name_template = data["name_template"]
+            template_id = data["template_id"]
+
+        except KeyError as e:
+            raise self._missing_key_error(e)
+        if not name_template or not app_business_id or not template_id:
+            return web.json_response(
+                data={
+                    "message": "The name_template or app_business_id or template_id was not provided"
+                },
+                status=400,
+                headers=self._acao_headers,
+            )
+
+        # Get the company application and check if the whatsapp_app is registered
+        company: WhatsappApplication = await WhatsappApplication.get_by_business_id(
+            business_id=app_business_id
+        )
+
+        if not company:
+            self.log.error(
+                f"The company application with phone {app_business_id} is not registered"
+            )
+            return web.HTTPNotFound(
+                text=json.dumps(
+                    {
+                        "data": {"app_business_id": app_business_id},
+                        "message": "The business_id %(app_business_id)s is not registered",
+                    }
+                ),
+                headers=self._headers,
+            )
+
+        # Get the url of the Whatsapp Api Cloud and set the headers
+        url = f"{self.base_url}/{self.version}/{app_business_id}{self.template_path}"
+        headers = {
+            "Content-Type": "application/json",
+            "Authorization": f"Bearer {company.page_access_token}",
+        }
+
+        # Set the params of the request
+        params = {
+            "hsm_id": template_id,
+            "name": name_template,
+        }
+
+        self.log.debug(f"Sending the delete template to Whatsapp Api Cloud: {url}")
+        client_response: ClientResponse = await self.http.delete(
+            url=url, params=params, headers=headers
+        )
+        response = await client_response.json()
+
+        if client_response.status in (200, 2001):
+            self.log.debug("The template has been deleted")
+            return web.HTTPOk(
+                text=json.dumps(response),
+                headers=self._headers,
+            )
+        else:
+            error = response.get("error", {})
+            message = (
+                error.get("error_user_msg", "")
+                if error.get("error_user_msg", "")
+                else error.get("message", "")
+            )
+            self.log.error(f"Error when trying to approve a template: {message}")
+            self.log.error(f"Error: {response}")
+            web.HTTPException.status_code = client_response.status
+            return web.HTTPException(
+                text=json.dumps(
+                    {
+                        "message": message,
+                    }
+                ),
+                headers=self._headers,
+            )
