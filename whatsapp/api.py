@@ -361,7 +361,7 @@ class WhatsappClient:
         message: str,
         phone_id: WSPhoneID,
         variables=Optional[list],
-        name_template=str,
+        template_name=str,
     ) -> Dict:
         """
         It sends a template message to a user.
@@ -374,7 +374,7 @@ class WhatsappClient:
             The id of the whatsapp business phone.
         variables:
             The variables of the template.
-        name_template:
+        template_name:
             The name of the template.
 
         Returns
@@ -400,7 +400,7 @@ class WhatsappClient:
             "to": phone_id,
             "type": "template",
             "template": {
-                "name": name_template,
+                "name": template_name,
                 "language": {"code": "es"},
                 "components": [{"type": "body", "parameters": parameters}],
             },

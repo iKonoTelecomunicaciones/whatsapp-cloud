@@ -41,7 +41,7 @@ class ProvisioningAPI:
         self.app.router.add_route("POST", "/v1/register_app", self.register_app)
         self.app.router.add_route("PATCH", "/v1/update_app", self.update_app)
         self.app.router.add_route("GET", "/v1/templates", self.get_template)
-        self.app.router.add_route("POST", "/v1/approval_template", self.approval_template)
+        self.app.router.add_route("POST", "/v1/template_approval", self.template_approval)
         self.app.router.add_route("POST", "/v1/pm/{number}", self.start_pm)
         self.app.router.add_route("POST", "/v1/template", self.template)
         self.app.router.add_route("DELETE", "/v1/delete_template", self.delete_template)
@@ -461,7 +461,7 @@ class ProvisioningAPI:
                 headers=self._headers,
             )
 
-    async def approval_template(self, request: web.Request) -> dict:
+    async def template_approval(self, request: web.Request) -> dict:
         """
         Send a template to approve to Whatsapp Api Cloud
 
@@ -625,7 +625,7 @@ class ProvisioningAPI:
         try:
             room_id = data["room_id"]
             template_message = data["template_message"]
-            name_template = data["name_template"]
+            template_name = data["template_name"]
             variables = data["variables"]
 
         except KeyError as e:
@@ -642,9 +642,9 @@ class ProvisioningAPI:
                 status=400,
                 headers=self._acao_headers,
             )
-        elif not name_template:
+        elif not template_name:
             return web.json_response(
-                data={"detail": {"message": "name_template not entered"}},
+                data={"detail": {"message": "template_name not entered"}},
                 status=400,
                 headers=self._acao_headers,
             )
@@ -676,7 +676,7 @@ class ProvisioningAPI:
             message=template_message,
             event_id=msg_event_id,
             variables=variables,
-            name_template=name_template,
+            template_name=template_name,
         )
 
         return web.json_response(data=response, headers=self._acao_headers, status=status)
@@ -700,15 +700,15 @@ class ProvisioningAPI:
 
         try:
             app_business_id: WsBusinessID = data["app_business_id"]
-            name_template = data["name_template"]
+            template_name = data["template_name"]
             template_id = data["template_id"]
 
         except KeyError as e:
             raise self._missing_key_error(e)
-        if not name_template or not app_business_id or not template_id:
+        if not template_name or not app_business_id or not template_id:
             return web.json_response(
                 data={
-                    "message": "The name_template or app_business_id or template_id was not provided"
+                    "message": "The template_name or app_business_id or template_id was not provided"
                 },
                 status=400,
                 headers=self._acao_headers,
@@ -743,7 +743,7 @@ class ProvisioningAPI:
         # Set the params of the request
         params = {
             "hsm_id": template_id,
-            "name": name_template,
+            "name": template_name,
         }
 
         self.log.debug(f"Sending the delete template to Whatsapp Api Cloud: {url}")

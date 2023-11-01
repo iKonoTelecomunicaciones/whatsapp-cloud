@@ -27,7 +27,7 @@ from mautrix.types import (
 
 from whatsapp.api import WhatsappClient
 from whatsapp.data import WhatsappContacts, WhatsappEvent, WhatsappReaction
-from whatsapp.interactive_message import EventInteractiveMessage, InteractiveMessage
+from whatsapp.interactive_message import EventInteractiveMessage
 from whatsapp.types import WhatsappMessageID, WhatsappPhone, WsBusinessID
 from whatsapp_matrix.formatter.from_matrix import matrix_to_whatsapp
 from whatsapp_matrix.formatter.from_whatsapp import whatsapp_reply_to_matrix
@@ -919,7 +919,7 @@ class Portal(DBPortal, BasePortal):
         message: MessageEventContent,
         event_id: EventID,
         variables: Optional[list],
-        name_template: str,
+        template_name: str,
     ):
         """
         It sends the template to Whatsapp and save it in the database.
@@ -934,7 +934,7 @@ class Portal(DBPortal, BasePortal):
             The id of the event.
         variables:
             The variables of the template.
-        name_template:
+        template_name:
             The name of the template.
 
         Returns
@@ -948,7 +948,7 @@ class Portal(DBPortal, BasePortal):
                 message=message,
                 phone_id=self.phone_id,
                 variables=variables,
-                name_template=name_template,
+                template_name=template_name,
             )
         except TypeError as error:
             self.log.error(f"Error sending the template: {error}")
