@@ -81,7 +81,7 @@ class WhatsappClient:
             "Content-Type": "application/json",
             "Authorization": f"Bearer {self.page_access_token}",
         }
-        # Set the url to send the message to Wahtsapp API
+        # Set the url to send the message to Whatsapp API
         send_message_url = f"{self.base_url}/{self.version}/{self.wb_phone_id}/messages"
 
         self.log.debug(f"Sending message to {send_message_url}")
@@ -182,7 +182,7 @@ class WhatsappClient:
             "Content-Type": "application/json",
             "Authorization": f"Bearer {self.page_access_token}",
         }
-        # Set the url to send the message to Wahtsapp API
+        # Set the url to send the interactive message to Whatsapp API
         send_message_url = f"{self.base_url}/{self.version}/{self.wb_phone_id}/messages"
 
         self.log.debug(f"Sending interactive message to {send_message_url}")
@@ -285,18 +285,18 @@ class WhatsappClient:
             "Content-Type": "application/json",
             "Authorization": f"Bearer {self.page_access_token}",
         }
-        # Set the url to send the message to Wahtsapp API
+        # Set the url to send the read event to Whatsapp API
         mark_read_url = f"{self.base_url}/{self.version}/{self.wb_phone_id}/messages"
 
         # Set the data to send to Whatsapp API
         data = {"messaging_product": "whatsapp", "status": "read", "message_id": message_id}
         self.log.debug(f"Marking message as read {data} to {message_id}")
 
-        # Send the message to the Whatsapp API
+        # Send the read event to the Whatsapp API
         resp = await self.http.post(mark_read_url, data=data, headers=headers)
         response_data = json.loads(await resp.text())
 
-        # If the message was not sent, raise an error
+        # If the read event was not sent, raise an error
         if response_data.get("error", {}):
             raise AttributeError(response_data)
 
@@ -331,7 +331,7 @@ class WhatsappClient:
             "Content-Type": "application/json",
             "Authorization": f"Bearer {self.page_access_token}",
         }
-        # Set the url to send the message to Wahtsapp API
+        # Set the url to send the reaction to Whatsapp API
         send_message_url = f"{self.base_url}/{self.version}/{self.wb_phone_id}/messages"
 
         self.log.debug(f"Sending message to {send_message_url}")
@@ -360,8 +360,8 @@ class WhatsappClient:
         self,
         message: str,
         phone_id: WSPhoneID,
-        variables=Optional[list],
-        template_name=str,
+        variables: Optional[list] = None,
+        template_name: Optional[str] = None,
     ) -> Dict:
         """
         It sends a template message to a user.
@@ -387,7 +387,7 @@ class WhatsappClient:
             "Content-Type": "application/json",
             "Authorization": f"Bearer {self.page_access_token}",
         }
-        # Set the url to send the message to Wahtsapp API
+        # Set the url to send the template to Whatsapp API
         send_template_url = f"{self.base_url}/{self.version}/{self.wb_phone_id}/messages"
 
         self.log.debug(f"Sending template to {send_template_url}")
@@ -415,4 +415,4 @@ class WhatsappClient:
             message = await resp.json()
             raise Exception(message.get("error", {}).get("message", ""))
 
-        return json.loads(await resp.text())
+        return await resp.json()
