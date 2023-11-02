@@ -48,7 +48,7 @@ class WhatsappApplication:
         page_access_token: str,
     ) -> None:
         q = f"INSERT INTO wb_application ({cls._columns}) VALUES ($1, $2, $3, $4, $5)"
-        await cls.db.execute(q, name, admin_user, business_id, wb_phone_id, page_access_token)
+        await cls.db.execute(q, business_id, wb_phone_id, name, admin_user, page_access_token)
 
     @classmethod
     async def update(

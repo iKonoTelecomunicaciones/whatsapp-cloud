@@ -27,7 +27,7 @@ from mautrix.types import (
 
 from whatsapp.api import WhatsappClient
 from whatsapp.data import WhatsappContacts, WhatsappEvent, WhatsappReaction
-from whatsapp.interactive_message import EventInteractiveMessage, InteractiveMessage
+from whatsapp.interactive_message import EventInteractiveMessage
 from whatsapp.types import WhatsappMessageID, WhatsappPhone, WsBusinessID
 from whatsapp_matrix.formatter.from_matrix import matrix_to_whatsapp
 from whatsapp_matrix.formatter.from_whatsapp import whatsapp_reply_to_matrix
@@ -622,6 +622,7 @@ class Portal(DBPortal, BasePortal):
                 sender=sender,
                 whatsapp_message_id=msg.whatsapp_message_id,
                 reaction=data_reaction.emoji,
+                created_at=datetime.now(),
             ).insert()
 
     async def handle_matrix_join(self, user: User) -> None:
@@ -911,6 +912,73 @@ class Portal(DBPortal, BasePortal):
         if response:
             self.log.debug(f"Whatsapp send response: {response}")
             return
+
+    async def handle_matrix_template(
+        self,
+        sender: User,
+        message: MessageEventContent,
+        event_id: EventID,
+        variables: Optional[list],
+        template_name: str,
+    ):
+        """
+        It sends the template to Whatsapp and save it in the database.
+
+        Parameters
+        ----------
+        sender : User
+            The class that will be used to specify who sends the message.
+        message: str
+            The message of the template.
+        event_id: EventID
+            The id of the event.
+        variables:
+            The variables of the template.
+        template_name:
+            The name of the template.
+
+        Returns
+        -------
+            A dict with the response of the Whatsapp API.
+
+        """
+        try:
+            # Send the message to Whatsapp
+            response = await self.whatsapp_client.send_template(
+                message=message,
+                phone_id=self.phone_id,
+                variables=variables,
+                template_name=template_name,
+            )
+        except TypeError as error:
+            self.log.error(f"Error sending the template: {error}")
+            await self.main_intent.send_notice(self.mxid, f"Error sending the template: {error}")
+            return 400, {"detail": {"message": f"Error sending the template: {error}"}}
+        except ClientConnectorError as error:
+            self.log.error(f"Error with the connection: {error}")
+            await self.main_intent.send_notice(
+                self.mxid, f"Error trying to connect with Meta: {error}"
+            )
+            return 409, {"detail": {"message": f"Error sending the template: {error}"}}
+        except Exception as error:
+            self.log.error(f"Error with the connection: {error}")
+            await self.main_intent.send_notice(
+                self.mxid, f"Error when try to send the template: {error}"
+            )
+            return 400, {"detail": {"message": f"Error sending the template: {error}"}}
+
+        # Save the template in the database
+        await DBMessage(
+            event_mxid=event_id,
+            room_id=self.mxid,
+            phone_id=self.phone_id,
+            sender=sender.mxid,
+            whatsapp_message_id=WhatsappMessageID(response.get("messages", [])[0].get("id", "")),
+            app_business_id=self.app_business_id,
+            created_at=datetime.now(),
+        ).insert()
+
+        return 200, {"detail": {"message": "The template has been sent successfully"}}
 
     async def postinit(self) -> None:
         await self.init_whatsapp_client

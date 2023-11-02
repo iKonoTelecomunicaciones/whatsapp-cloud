@@ -143,6 +143,9 @@ whatsapp:
     # Path prefix for webhook endpoints. Subpaths are /status and /receive.
     # Note that the webhook must be put behind a reverse proxy with https.
     webhook_path: /cloud
+    # Endpoint for sending to approve template
+    template_path: /message_templates
+
     # Dict of error codes and and their reasons
     error_codes:
         1000:

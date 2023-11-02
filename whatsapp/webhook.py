@@ -9,7 +9,7 @@ from whatsapp_matrix.db import WhatsappApplication as DBWhatsappApplication
 from whatsapp_matrix.portal import Portal
 from whatsapp_matrix.user import User
 
-from .data import WhatsappEvent, WhatsappStatusesEvent, WhatsappValue
+from .data import WhatsappEvent, WhatsappStatusesEvent
 
 
 class WhatsappHandler:
