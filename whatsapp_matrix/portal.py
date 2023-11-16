@@ -873,19 +873,15 @@ class Portal(DBPortal, BasePortal):
 
         await DBReaction.delete_by_event_mxid(message.event_mxid, self.mxid, user.mxid)
 
-    async def handle_matrix_read(self, room_id: RoomID) -> None:
+    async def handle_matrix_read(self) -> None:
         """
         Send a read event to Whatsapp
 
-        Params
-        ----------
-        room_id : RoomID
-            The id of the room.
-
         Exceptions
-        ----------
-        Exception:
-            Show and error if the event does not send.
+        ClientConnectorError:
+            Show and error if there is an error with the connection.
+        AttributeError:
+            Show and error if the message has an error.
         """
         puppet: Puppet = await Puppet.get_by_phone_id(self.phone_id, create=False)
 
@@ -893,7 +889,7 @@ class Portal(DBPortal, BasePortal):
             self.log.error("No puppet, ignoring read")
             return
 
-        message: DBMessage = await DBMessage.get_last_message_puppet(room_id, puppet.custom_mxid)
+        message: DBMessage = await DBMessage.get_last_message_puppet(self.mxid, puppet.custom_mxid)
 
         if not message:
             self.log.error("No message, ignoring read")
