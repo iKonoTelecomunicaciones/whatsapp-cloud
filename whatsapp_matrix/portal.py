@@ -949,19 +949,19 @@ class Portal(DBPortal, BasePortal):
         except TypeError as error:
             self.log.error(f"Error sending the template: {error}")
             await self.main_intent.send_notice(self.mxid, f"Error sending the template: {error}")
-            return 400, {"detail": {"message": f"Error sending the template: {error}"}}
+            return 400, {"detail": f"Error sending the template: {error}"}
         except ClientConnectorError as error:
             self.log.error(f"Error with the connection: {error}")
             await self.main_intent.send_notice(
                 self.mxid, f"Error trying to connect with Meta: {error}"
             )
-            return 409, {"detail": {"message": f"Error sending the template: {error}"}}
+            return 409, {"detail": f"Error sending the template: {error}"}
         except Exception as error:
             self.log.error(f"Error with the connection: {error}")
             await self.main_intent.send_notice(
                 self.mxid, f"Error when try to send the template: {error}"
             )
-            return 400, {"detail": {"message": f"Error sending the template: {error}"}}
+            return 400, {"detail": f"Error sending the template: {error}"}
 
         # Save the template in the database
         await DBMessage(
@@ -974,7 +974,7 @@ class Portal(DBPortal, BasePortal):
             created_at=datetime.now(),
         ).insert()
 
-        return 200, {"detail": {"message": "The template has been sent successfully"}}
+        return 200, {"detail": "The template has been sent successfully"}
 
     async def postinit(self) -> None:
         await self.init_whatsapp_client
