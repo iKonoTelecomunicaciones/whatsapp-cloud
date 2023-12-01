@@ -632,19 +632,19 @@ class ProvisioningAPI:
             raise self._missing_key_error(e)
         if not room_id:
             return web.json_response(
-                data={"detail": {"message": "room_id not entered"}},
+                data={"detail": "room_id not entered"},
                 status=400,
                 headers=self._acao_headers,
             )
         elif not template_message:
             return web.json_response(
-                data={"detail": {"message": "template_message not entered"}},
+                data={"detail": "template_message not entered"},
                 status=400,
                 headers=self._acao_headers,
             )
         elif not template_name:
             return web.json_response(
-                data={"detail": {"message": "template_name not entered"}},
+                data={"detail": "template_name not entered"},
                 status=400,
                 headers=self._acao_headers,
             )
@@ -656,7 +656,7 @@ class ProvisioningAPI:
         portal: Portal = await Portal.get_by_mxid(room_id)
         if not portal:
             return web.json_response(
-                data={"detail": {"message": f"Failed to get room {room_id}"}},
+                data={"detail": f"Failed to get room {room_id}"},
                 status=400,
                 headers=self._acao_headers,
             )
@@ -666,7 +666,7 @@ class ProvisioningAPI:
         except Exception as e:
             self.log.error(f"Error after send message to Matrix: {e}")
             return web.json_response(
-                data={"detail": {"message": f"Failed to send message to Matrix: {e}"}},
+                data={"detail": f"Failed to send message to Matrix: {e}"},
                 status=400,
                 headers=self._acao_headers,
             )
