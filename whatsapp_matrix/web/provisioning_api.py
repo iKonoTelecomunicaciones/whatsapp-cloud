@@ -624,7 +624,6 @@ class ProvisioningAPI:
 
         try:
             room_id = data["room_id"]
-            template_message = data["template_message"]
             template_name = data["template_name"]
             variables = data["variables"]
 
@@ -636,22 +635,13 @@ class ProvisioningAPI:
                 status=400,
                 headers=self._acao_headers,
             )
-        elif not template_message:
-            return web.json_response(
-                data={"detail": "template_message not entered"},
-                status=400,
-                headers=self._acao_headers,
-            )
+
         elif not template_name:
             return web.json_response(
                 data={"detail": "template_name not entered"},
                 status=400,
                 headers=self._acao_headers,
             )
-
-        # Format the message to send to Matrix
-        msg = TextMessageEventContent(body=template_message, msgtype=MessageType.TEXT)
-        msg.trim_reply_fallback()
 
         portal: Portal = await Portal.get_by_mxid(room_id)
         if not portal:
@@ -660,6 +650,30 @@ class ProvisioningAPI:
                 status=400,
                 headers=self._acao_headers,
             )
+
+        try:
+            template_message, template_status = await portal.whatsapp_client.get_template_message(
+                template_name=template_name, variables=variables
+            )
+        except Exception as e:
+            self.log.error(f"Error getting the template message: {e}")
+            return web.json_response(
+                data={"detail": f"Failed to get template {template_name}: {e}"},
+                status=400,
+                headers=self._acao_headers,
+            )
+
+        if not template_message:
+            return web.json_response(
+                data={"detail": f"The template {template_name} does not exist"},
+                status=400,
+                headers=self._acao_headers,
+            )
+
+        # Format the message to send to Matrix
+        msg = TextMessageEventContent(body=template_message, msgtype=MessageType.TEXT)
+        msg.trim_reply_fallback()
+
         try:
             # Send the message to Matrix
             msg_event_id = await portal.az.intent.send_message(portal.mxid, msg)
@@ -670,16 +684,25 @@ class ProvisioningAPI:
                 status=400,
                 headers=self._acao_headers,
             )
-        # Send the template to Whatsapp
-        status, response = await portal.handle_matrix_template(
-            sender=user,
-            message=template_message,
-            event_id=msg_event_id,
-            variables=variables,
-            template_name=template_name,
-        )
 
-        return web.json_response(data=response, headers=self._acao_headers, status=status)
+        if template_status == "APPROVED":
+            # Send the template to Whatsapp
+            status, response = await portal.handle_matrix_template(
+                sender=user,
+                message=template_message,
+                event_id=msg_event_id,
+                variables=variables,
+                template_name=template_name,
+            )
+            return web.json_response(data=response, headers=self._acao_headers, status=status)
+
+        else:
+            await portal.handle_matrix_message(sender=user, message=msg, event_id=msg_event_id)
+            return web.json_response(
+                data={"detail": f"The template has been sent successfully"},
+                status=200,
+                headers=self._acao_headers,
+            )
 
     async def delete_template(self, request: web.Request) -> web.Response:
         """

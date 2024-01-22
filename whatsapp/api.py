@@ -1,4 +1,5 @@
 import asyncio
+import re
 import json
 import logging
 from typing import Dict, Optional
@@ -26,6 +27,7 @@ class WhatsappClient:
     ) -> None:
         self.base_url = config["whatsapp.base_url"]
         self.version = config["whatsapp.version"]
+        self.template_path = config["whatsapp.template_path"]
         self.page_access_token = page_access_token
         self.business_id = business_id
         self.wb_phone_id = wb_phone_id
@@ -416,3 +418,53 @@ class WhatsappClient:
             raise Exception(message.get("error", {}).get("message", ""))
 
         return await resp.json()
+
+    async def get_template_message(self, template_name: str, variables: Optional[list]) -> tuple:
+        """
+        Get a template message.
+
+        Parameters
+        ----------
+        template_name: str
+            The name of the template.
+        variables: Optional[list]
+            The variables of the template.
+
+        Returns
+        -------
+            A tuple with the message of the template and the status of the template
+            (APPROVED, REJECTED, PENDING).
+        """
+        # Getting the message of the template using the template_name
+        # Get the url of the Whatsapp Api Cloud
+        url = f"{self.base_url}/{self.version}/{self.business_id}{self.template_path}"
+
+        headers = {
+            "Content-Type": "application/json",
+            "Authorization": f"Bearer {self.page_access_token}",
+        }
+
+        params = {
+            "name": template_name,
+        }
+
+        self.log.debug(f"Sending the approval template to Whatsapp Api Cloud: {url}")
+        response: ClientSession = await self.http.get(url=url, headers=headers, params=params)
+        data = await response.json()
+        templates = data.get("data", [])
+        self.log.debug(f"template: {templates}")
+        template_message = ""
+
+        for template in templates:
+            if template.get("name") == template_name:
+                template_message = template.get("components", [])[0].get("text")
+                template_status = template.get("status", "")
+                self.log.debug(f"Getting the message of the template: {template_name}")
+                self.log.debug(f"Message: {template_message}")
+                self.log.debug(f"Status: {template_status}")
+
+        if template_message and variables:
+            template_message = re.sub(r"\{\{\d+\}\}", "{}", template_message)
+            template_message = template_message.format(*variables)
+
+        return template_message, template_status
