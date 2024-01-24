@@ -452,7 +452,6 @@ class WhatsappClient:
         response: ClientSession = await self.http.get(url=url, headers=headers, params=params)
         data = await response.json()
         templates = data.get("data", [])
-        self.log.debug(f"template: {templates}")
         template_message = ""
 
         for template in templates:
