@@ -974,7 +974,7 @@ class Portal(DBPortal, BasePortal):
             created_at=datetime.now(),
         ).insert()
 
-        return 200, {"detail": "The template has been sent successfully"}
+        return 200, {"detail": "The template has been sent successfully", "event_id": event_id}
 
     async def postinit(self) -> None:
         await self.init_whatsapp_client
