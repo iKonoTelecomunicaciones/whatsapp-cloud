@@ -458,9 +458,9 @@ class WhatsappClient:
             if template.get("name") == template_name:
                 template_message = template.get("components", [])[0].get("text")
                 template_status = template.get("status", "")
-                self.log.debug(f"Getting the message of the template: {template_name}")
-                self.log.debug(f"Message: {template_message}")
-                self.log.debug(f"Status: {template_status}")
+                self.log.debug(
+                    f"Getting the message of the template: {template_name}, status: {template_status}, message: {template_message}"
+                )
 
         if template_message and variables:
             template_message = re.sub(r"\{\{\d+\}\}", "{}", template_message)
