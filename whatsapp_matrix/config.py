@@ -40,7 +40,7 @@ class Config(BaseBridgeConfig):
         if base["bridge.provisioning.shared_secret"] == "generate":
             base["bridge.provisioning.shared_secret"] = self._new_token()
 
-        copy("bridge.default_user_levels")
+        copy("bridge.default_user_level")
         copy_dict("bridge.default_power_levels")
         copy_dict("bridge.default_events_levels")
         copy_dict("bridge.permissions")
