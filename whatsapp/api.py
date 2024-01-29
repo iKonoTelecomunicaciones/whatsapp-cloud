@@ -461,6 +461,7 @@ class WhatsappClient:
                 self.log.debug(
                     f"Getting the message of the template: {template_name}, status: {template_status}, message: {template_message}"
                 )
+                break
 
         if template_message and variables:
             template_message = re.sub(r"\{\{\d+\}\}", "{}", template_message)
