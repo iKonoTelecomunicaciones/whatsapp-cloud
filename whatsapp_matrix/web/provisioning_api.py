@@ -626,6 +626,7 @@ class ProvisioningAPI:
             room_id = data["room_id"]
             template_name = data["template_name"]
             variables = data["variables"]
+            language = data.get("language")
 
         except KeyError as e:
             raise self._missing_key_error(e)
@@ -693,6 +694,7 @@ class ProvisioningAPI:
                 event_id=msg_event_id,
                 variables=variables,
                 template_name=template_name,
+                language=language,
             )
             return web.json_response(data=response, headers=self._acao_headers, status=status)
 

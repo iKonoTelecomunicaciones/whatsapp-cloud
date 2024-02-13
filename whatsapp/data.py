@@ -37,6 +37,25 @@ class ButtonReply(SerializableAttrs):
 
 
 @dataclass
+class ButtonMessage(SerializableAttrs):
+    """
+    Contains the information of the button message.
+
+    - payload: The value of the button.
+
+    - text: The text of the button.
+    """
+    payload: str = ib(metadata={"json": "payload"}, default="")
+    text: str = ib(metadata={"json": "text"}, default="")
+
+    @classmethod
+    def from_dict(cls, data: dict):
+        return cls(
+            payload=data.get("payload", ""),
+            text=data.get("text", ""),
+        )
+
+@dataclass
 class InteractiveMessage(SerializableAttrs):
     """
     Contains the response from the user who interacted with the interactive message.
@@ -380,6 +399,24 @@ class WhatsappMessages(SerializableAttrs):
     - text: Containt message of the user.
 
     - type: The type of the message.
+
+    - image: Image object that contains the information of the image that the user sent.
+
+    - video: Video object that contains the information of the video that the user sent.
+
+    - audio: Audio object that contains the information of the audio that the user sent.
+
+    - sticker: Sticker object that contains the information of the sticker that the user sent.
+
+    - document: Document object that contains the information of the document that the user sent.
+
+    - location: Location object that contains the information of the location that the user sent.
+
+    - reaction: Reaction object that contains the information of the reaction that the user sent.
+
+    - interactive: Interactive object that contains the information of the interactive message that the user sent.
+
+    - button: Button object that contains the information of the button message that the user sent.
     """
 
     from_number: str = ib(metadata={"json": "from"}, default="")
@@ -396,6 +433,7 @@ class WhatsappMessages(SerializableAttrs):
     location: WhatsappLocation = ib(metadata={"json": "location"}, default={})
     reaction: WhatsappReaction = ib(metadata={"json": "reaction"}, default={})
     interactive: InteractiveMessage = ib(metadata={"json": "interactive"}, default={})
+    button: ButtonMessage = ib(metadata={"json": "button"}, default={})
 
     @classmethod
     def from_dict(cls, data: dict):
@@ -407,6 +445,7 @@ class WhatsappMessages(SerializableAttrs):
         sticker_obj = None
         document_obj = None
         interactive_obj = None
+        button_obj = None
 
         if data.get("context", {}):
             context_obj = WhatsappContext.from_dict(data.get("context", {}))
@@ -432,6 +471,9 @@ class WhatsappMessages(SerializableAttrs):
         elif data.get("interactive", ""):
             interactive_obj = InteractiveMessage.from_dict(data.get("interactive", {}))
 
+        elif data.get("button", ""):
+            button_obj = ButtonMessage.from_dict(data.get("button", {}))
+
         return cls(
             from_number=data.get("from", ""),
             id=data.get("id", ""),
@@ -447,6 +489,7 @@ class WhatsappMessages(SerializableAttrs):
             location=WhatsappLocation(**data.get("location", {})),
             reaction=WhatsappReaction(**data.get("reaction", {})),
             interactive=interactive_obj,
+            button=button_obj,
         )
 
 
