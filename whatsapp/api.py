@@ -364,6 +364,7 @@ class WhatsappClient:
         phone_id: WSPhoneID,
         variables: Optional[list] = None,
         template_name: Optional[str] = None,
+        language: Optional[str] = "es",
     ) -> Dict:
         """
         It sends a template message to a user.
@@ -378,6 +379,8 @@ class WhatsappClient:
             The variables of the template.
         template_name:
             The name of the template.
+        language:
+            The language of the template.
 
         Returns
         -------
@@ -403,7 +406,7 @@ class WhatsappClient:
             "type": "template",
             "template": {
                 "name": template_name,
-                "language": {"code": "es"},
+                "language": {"code": language },
                 "components": [{"type": "body", "parameters": parameters}],
             },
         }
@@ -448,18 +451,39 @@ class WhatsappClient:
             "name": template_name,
         }
 
-        self.log.debug(f"Sending the approval template to Whatsapp Api Cloud: {url}")
+        self.log.debug(f"Getting the approved template from Whatsapp Api Cloud: {url}")
         response: ClientSession = await self.http.get(url=url, headers=headers, params=params)
+
+        if response.status != 200:
+            error = await response.json()
+            raise Exception(error.get("error", {}).get("message"))
+
         data = await response.json()
         templates = data.get("data", [])
         template_message = ""
-
         for template in templates:
+            # Search the template with the name of the template_name to save it in a text message
             if template.get("name") == template_name:
-                template_message = template.get("components", [])[0].get("text")
+                for component in template.get("components", []):
+                    #If the template has a text, add it to the message, like header, body, footer
+                    if component.get("text"):
+                        template_message += f"{component.get('text')}\n"
+                    #If the template has a button, add it to the message
+                    elif component.get("type") == "BUTTONS":
+                        for button in component.get("buttons", []):
+                            if  button.get("type") == "URL":
+                                template_message += f"{button.get('text')}: {button.get('url')}\n"
+                            elif button.get("type") == "PHONE_NUMBER":
+                                template_message += (
+                                    f"{button.get('text')}: {button.get('phone_number').replace('+', '')}\n"
+                                )
+                            else:
+                                template_message += f"{button.get('text')}\n"
+
                 template_status = template.get("status", "")
                 self.log.debug(
-                    f"Getting the message of the template: {template_name}, status: {template_status}, message: {template_message}"
+                    f"""Getting the message of the template: {template_name},
+                    status: {template_status}, message: {template_message}"""
                 )
                 break
 

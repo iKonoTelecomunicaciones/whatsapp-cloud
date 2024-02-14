@@ -428,6 +428,10 @@ class Portal(DBPortal, BasePortal):
             elif message_data.interactive.type == "list_reply":
                 attachment = message_data.interactive.list_reply_message
 
+        elif whatsapp_message_type == "button":
+            message_type = MessageType.TEXT
+            attachment = message_data.button.text
+
         else:
             self.log.error(f"Unsupported message type: {whatsapp_message_type}")
             await self.az.intent.send_notice(self.mxid, "Error getting the message")
@@ -912,6 +916,7 @@ class Portal(DBPortal, BasePortal):
         event_id: EventID,
         variables: Optional[list],
         template_name: str,
+        language: Optional[str] = None,
     ):
         """
         It sends the template to Whatsapp and save it in the database.
@@ -928,6 +933,8 @@ class Portal(DBPortal, BasePortal):
             The variables of the template.
         template_name:
             The name of the template.
+        language:
+            The language of the template.
 
         Returns
         -------
@@ -941,6 +948,7 @@ class Portal(DBPortal, BasePortal):
                 phone_id=self.phone_id,
                 variables=variables,
                 template_name=template_name,
+                language=language,
             )
         except TypeError as error:
             self.log.error(f"Error sending the template: {error}")
