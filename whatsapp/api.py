@@ -364,7 +364,7 @@ class WhatsappClient:
         phone_id: WSPhoneID,
         variables: Optional[list] = None,
         template_name: Optional[str] = None,
-        language: Optional[str] = None,
+        language: Optional[str] = "es",
     ) -> Dict:
         """
         It sends a template message to a user.
