@@ -626,7 +626,7 @@ class ProvisioningAPI:
             room_id = data["room_id"]
             template_name = data["template_name"]
             variables = data["variables"]
-            language = data.get("language")
+            language = data.get("language", "es")
 
         except KeyError as e:
             raise self._missing_key_error(e)

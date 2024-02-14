@@ -406,7 +406,7 @@ class WhatsappClient:
             "type": "template",
             "template": {
                 "name": template_name,
-                "language": {"code": language if language else "es"},
+                "language": {"code": language },
                 "components": [{"type": "body", "parameters": parameters}],
             },
         }
@@ -451,7 +451,7 @@ class WhatsappClient:
             "name": template_name,
         }
 
-        self.log.debug(f"Get the approval template to Whatsapp Api Cloud: {url}")
+        self.log.debug(f"Getting the approved template from Whatsapp Api Cloud: {url}")
         response: ClientSession = await self.http.get(url=url, headers=headers, params=params)
 
         if response.status != 200:
@@ -478,7 +478,7 @@ class WhatsappClient:
                                     f"{button.get('text')}: {button.get('phone_number').replace('+', '')}\n"
                                 )
                             else:
-                             template_message += f"{button.get('text')}\n"
+                                template_message += f"{button.get('text')}\n"
 
                 template_status = template.get("status", "")
                 self.log.debug(
