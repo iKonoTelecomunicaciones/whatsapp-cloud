@@ -1,10 +1,10 @@
 import asyncio
-import re
 import json
 import logging
+import re
 from typing import Dict, Optional
 
-from aiohttp import ClientConnectorError, ClientSession
+from aiohttp import ClientConnectorError, ClientSession, FormData
 from mautrix.types import MessageType
 
 from whatsapp.data import WhatsappMediaData
@@ -364,6 +364,7 @@ class WhatsappClient:
         phone_id: WSPhoneID,
         variables: Optional[list] = None,
         template_name: Optional[str] = None,
+        media_data: Optional[list] = None,
         language: Optional[str] = "es",
     ) -> Dict:
         """
@@ -379,6 +380,8 @@ class WhatsappClient:
             The variables of the template.
         template_name:
             The name of the template.
+        media_data: list
+            The type and the ids of the media that will be sent to the user.
         language:
             The language of the template.
 
@@ -398,6 +401,16 @@ class WhatsappClient:
         self.log.debug(f"Sending template to {send_template_url}")
 
         parameters = [{"type": "text", "text": value} for value in variables]
+        header_parameters = []
+
+        # If the template has a media, add it to the template
+        if media_data[0]:
+            media_type = media_data[0]
+            media_ids = media_data[1]
+
+            header_parameters = [
+                {"type": media_type, media_type: {"id": media_id}} for media_id in media_ids
+            ]
 
         data = {
             "messaging_product": "whatsapp",
@@ -406,8 +419,11 @@ class WhatsappClient:
             "type": "template",
             "template": {
                 "name": template_name,
-                "language": {"code": language },
-                "components": [{"type": "body", "parameters": parameters}],
+                "language": {"code": language},
+                "components": [
+                    {"type": "header", "parameters": header_parameters},
+                    {"type": "body", "parameters": parameters},
+                ],
             },
         }
 
@@ -461,24 +477,30 @@ class WhatsappClient:
         data = await response.json()
         templates = data.get("data", [])
         template_message = ""
+        template_status = ""
+        media_data = None
+        media_type = ""
         for template in templates:
             # Search the template with the name of the template_name to save it in a text message
             if template.get("name") == template_name:
                 for component in template.get("components", []):
-                    #If the template has a text, add it to the message, like header, body, footer
+                    # If the template has a text, add it to the message, like header, body, footer
                     if component.get("text"):
                         template_message += f"{component.get('text')}\n"
-                    #If the template has a button, add it to the message
+                    # If the template has a button, add it to the message
                     elif component.get("type") == "BUTTONS":
                         for button in component.get("buttons", []):
-                            if  button.get("type") == "URL":
+                            if button.get("type") == "URL":
                                 template_message += f"{button.get('text')}: {button.get('url')}\n"
                             elif button.get("type") == "PHONE_NUMBER":
-                                template_message += (
-                                    f"{button.get('text')}: {button.get('phone_number').replace('+', '')}\n"
-                                )
+                                template_message += f"{button.get('text')}: {button.get('phone_number').replace('+', '')}\n"
                             else:
                                 template_message += f"{button.get('text')}\n"
+                    elif component.get("format") in ("IMAGE", "VIDEO", "DOCUMENT"):
+                        media_type = component.get("format", "").lower()
+                        media_data = [
+                            url for url in component.get("example", {}).get("header_handle")
+                        ]
 
                 template_status = template.get("status", "")
                 self.log.debug(
@@ -490,5 +512,56 @@ class WhatsappClient:
         if template_message and variables:
             template_message = re.sub(r"\{\{\d+\}\}", "{}", template_message)
             template_message = template_message.format(*variables)
+        return template_message, media_type, media_data, template_status
 
-        return template_message, template_status
+    async def upload_media(
+        self, data_file, messaging_product: str, file_name: str, file_type: str
+    ):
+        """
+        Upload a media to the Whatsap Cloud API.
+
+        Parameters
+        ----------
+        data_file: File
+            The file that will be uploaded.
+        messaging_product: str
+            The messaging product of the media that whatsapp api will receive.
+        file_name: str
+            The name of the file.
+        file_type: str
+            The type of the file.
+
+        Returns
+        -------
+            The id generated when the media was uploaded.
+        """
+        form_data = FormData()
+        self.log.debug(f"Uploading media to Whatsapp API")
+        # Set the headers for the request to the Whatsapp API
+        headers = {
+            "Authorization": f"Bearer {self.page_access_token}",
+        }
+
+        # Set the url to upload the media to Whatsapp API
+        upload_media_url = f"{self.base_url}/{self.version}/{self.wb_phone_id}/media"
+
+        # Set the data to send to Whatsapp API
+        form_data.add_field("file", data_file, filename=file_name, content_type=file_type)
+        form_data.add_field("messaging_product", messaging_product)
+        form_data.add_field("type", file_type)
+
+        self.log.debug(f"Uploading media to {upload_media_url}")
+
+        # Send the media to the Whatsapp API
+        response: ClientSession = await self.http.post(
+            upload_media_url, data=form_data, headers=headers
+        )
+
+        # If the media was not sent, return an error
+        if response.status not in (200, 201):
+            message = await response.json()
+            return message
+
+        # Get the id of the media and return it
+        data = await response.json()
+        return data

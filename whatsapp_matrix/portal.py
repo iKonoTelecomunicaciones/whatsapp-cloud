@@ -916,6 +916,7 @@ class Portal(DBPortal, BasePortal):
         event_id: EventID,
         variables: Optional[list],
         template_name: str,
+        media: Optional[list] = None,
         language: Optional[str] = None,
     ):
         """
@@ -933,6 +934,8 @@ class Portal(DBPortal, BasePortal):
             The variables of the template.
         template_name:
             The name of the template.
+        media: list
+            A list with the type of the media and the ids of the media.
         language:
             The language of the template.
 
@@ -948,6 +951,7 @@ class Portal(DBPortal, BasePortal):
                 phone_id=self.phone_id,
                 variables=variables,
                 template_name=template_name,
+                media_data=media,
                 language=language,
             )
         except TypeError as error:
