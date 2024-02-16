@@ -404,7 +404,7 @@ class WhatsappClient:
         header_parameters = []
 
         # If the template has a media, add it to the template
-        if media_data[0]:
+        if media_data and media_data[0] and media_data[1]:
             media_type = media_data[0]
             media_ids = media_data[1]
 
@@ -504,7 +504,9 @@ class WhatsappClient:
                         ]
                     # Validate if the template has variables and if the variables are provided
                     if component.get("example", {}).get("body_text") and not variables:
-                        raise ValueError("The template has variables, but the variables are not provided")
+                        raise ValueError(
+                            "The template has variables, but the variables are not provided"
+                        )
 
                 template_status = template.get("status", "")
                 self.log.debug(
@@ -522,7 +524,7 @@ class WhatsappClient:
         self, data_file, messaging_product: str, file_name: str, file_type: str
     ):
         """
-        Upload a media to the Whatsap Cloud API.
+        Upload a media to the Whatsapp Cloud API.
 
         Parameters
         ----------
@@ -561,11 +563,5 @@ class WhatsappClient:
             upload_media_url, data=form_data, headers=headers
         )
 
-        # If the media was not sent, return an error
-        if response.status not in (200, 201):
-            message = await response.json()
-            return message
-
-        # Get the id of the media and return it
         data = await response.json()
         return data
