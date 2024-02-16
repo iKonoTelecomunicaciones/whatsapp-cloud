@@ -732,7 +732,10 @@ class ProvisioningAPI:
             # Send the message to Whatsapp
             await portal.handle_matrix_message(sender=user, message=msg, event_id=msg_event_id)
             return web.json_response(
-                data={"detail": f"The template has been sent successfully", 'event_id': msg_event_id},
+                data={
+                    "detail": f"The template has been sent successfully",
+                    "event_id": msg_event_id,
+                },
                 status=200,
                 headers=self._acao_headers,
             )
