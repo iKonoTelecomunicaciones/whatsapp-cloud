@@ -633,7 +633,7 @@ class ProvisioningAPI:
         try:
             room_id = data["room_id"]
             template_name = data["template_name"]
-            variables = data["variables"]
+            variables = data["variables"] or []
             language = data.get("language", "es")
 
         except KeyError as e:
@@ -726,14 +726,13 @@ class ProvisioningAPI:
                 media=[media_type, media_ids],
                 language=language,
             )
-
             return web.json_response(data=response, headers=self._acao_headers, status=status)
 
         else:
             # Send the message to Whatsapp
             await portal.handle_matrix_message(sender=user, message=msg, event_id=msg_event_id)
             return web.json_response(
-                data={"detail": f"The template has been sent successfully"},
+                data={"detail": f"The template has been sent successfully", 'event_id': msg_event_id},
                 status=200,
                 headers=self._acao_headers,
             )

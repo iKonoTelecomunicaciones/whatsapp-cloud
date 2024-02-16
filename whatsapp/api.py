@@ -362,7 +362,7 @@ class WhatsappClient:
         self,
         message: str,
         phone_id: WSPhoneID,
-        variables: Optional[list] = None,
+        variables: Optional[list] = [],
         template_name: Optional[str] = None,
         media_data: Optional[list] = None,
         language: Optional[str] = "es",
@@ -480,6 +480,7 @@ class WhatsappClient:
         template_status = ""
         media_data = None
         media_type = ""
+
         for template in templates:
             # Search the template with the name of the template_name to save it in a text message
             if template.get("name") == template_name:
@@ -501,6 +502,9 @@ class WhatsappClient:
                         media_data = [
                             url for url in component.get("example", {}).get("header_handle")
                         ]
+                    # Validate if the template has variables and if the variables are provided
+                    if component.get("example", {}).get("body_text") and not variables:
+                        raise ValueError("The template has variables, but the variables are not provided")
 
                 template_status = template.get("status", "")
                 self.log.debug(
