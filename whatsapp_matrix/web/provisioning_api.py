@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import json
-from asyncio import AbstractEventLoop, get_event_loop
+from asyncio import AbstractEventLoop, get_event_loop, sleep
 from json import JSONDecodeError
 from logging import Logger, getLogger
 from urllib.parse import unquote
@@ -703,14 +703,21 @@ class ProvisioningAPI:
             # Format the message to send to Matrix
             msg = TextMessageEventContent(body=template_message, msgtype=MessageType.TEXT)
             msg.trim_reply_fallback()
+            msg_event_id = None
+            for i in range(10):
+                try:
+                    # Send the message to Matrix
+                    self.log.debug(f"Trying to send a message to Matrix, attempt: {i + 1}")
+                    msg_event_id = await portal.az.intent.send_message(portal.mxid, msg)
+                    break
 
-            try:
-                # Send the message to Matrix
-                msg_event_id = await portal.az.intent.send_message(portal.mxid, msg)
-            except Exception as e:
-                self.log.error(f"Error after send message to Matrix: {e}")
+                except Exception as e:
+                    self.log.error(f"Error after trying to send the message to Matrix: {e}")
+                    await sleep(1)
+
+            if not msg_event_id:
                 return web.json_response(
-                    data={"detail": f"Failed to send message to Matrix: {e}"},
+                    data={"detail": f"Failed to send the message to Matrix, please try again later"},
                     status=400,
                     headers=self._acao_headers,
                 )
