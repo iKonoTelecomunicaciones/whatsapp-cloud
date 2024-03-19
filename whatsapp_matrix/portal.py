@@ -701,6 +701,12 @@ class Portal(DBPortal, BasePortal):
                 self.log.error(f"Error with the connection: {error}")
                 await self.main_intent.send_notice(self.mxid, f"Error with the connection")
                 return
+            except ValueError as error:
+                self.log.error(f"Error sending the message: {error}")
+                await self.main_intent.send_notice(
+                    self.mxid, "Error sending the message, verify that the token is correct"
+                )
+                return
 
         elif message.msgtype in (
             MessageType.IMAGE,
@@ -730,6 +736,12 @@ class Portal(DBPortal, BasePortal):
             except ClientConnectorError as error:
                 self.log.error(f"Error with the connection: {error}")
                 await self.main_intent.send_notice(self.mxid, f"Error with the connection")
+                return
+            except ValueError as error:
+                self.log.error(f"Error sending the message: {error}")
+                await self.main_intent.send_notice(
+                    self.mxid, "Error sending the message, verify that the token is correct"
+                )
                 return
 
         elif message.msgtype == MessageType.LOCATION:
