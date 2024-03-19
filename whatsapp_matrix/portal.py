@@ -703,7 +703,9 @@ class Portal(DBPortal, BasePortal):
                 return
             except ValueError as error:
                 self.log.error(f"Error sending the message: {error}")
-                await self.main_intent.send_notice(self.mxid, "Error sending the message, verify that the token is correct")
+                await self.main_intent.send_notice(
+                    self.mxid, "Error sending the message, verify that the token is correct"
+                )
                 return
 
         elif message.msgtype in (
@@ -737,7 +739,9 @@ class Portal(DBPortal, BasePortal):
                 return
             except ValueError as error:
                 self.log.error(f"Error sending the message: {error}")
-                await self.main_intent.send_notice(self.mxid, "Error sending the message, verify that the token is correct")
+                await self.main_intent.send_notice(
+                    self.mxid, "Error sending the message, verify that the token is correct"
+                )
                 return
 
         elif message.msgtype == MessageType.LOCATION:

@@ -717,7 +717,9 @@ class ProvisioningAPI:
 
             if not msg_event_id:
                 return web.json_response(
-                    data={"detail": f"Failed to send the message to Matrix, please try again later"},
+                    data={
+                        "detail": f"Failed to send the message to Matrix, please try again later"
+                    },
                     status=400,
                     headers=self._acao_headers,
                 )
@@ -768,9 +770,7 @@ class ProvisioningAPI:
         message_type = (
             MessageType.IMAGE
             if media_type == "image"
-            else MessageType.VIDEO
-            if media_type == "video"
-            else MessageType.FILE
+            else MessageType.VIDEO if media_type == "video" else MessageType.FILE
         )
 
         for url in media_url:
