@@ -5,7 +5,6 @@ from logging import Logger, getLogger
 from aiohttp import web
 
 from whatsapp_matrix.config import Config
-from whatsapp_matrix.db import Message as DBMessage
 from whatsapp_matrix.db import WhatsappApplication as DBWhatsappApplication
 from whatsapp_matrix.portal import Portal
 from whatsapp_matrix.user import User
