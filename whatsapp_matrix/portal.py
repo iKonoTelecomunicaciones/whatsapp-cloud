@@ -927,6 +927,8 @@ class Portal(DBPortal, BasePortal):
         message: MessageEventContent,
         event_id: EventID,
         variables: Optional[list],
+        header_variable: Optional[str],
+        button_variables: Optional[list],
         template_name: str,
         media: Optional[list] = None,
         language: Optional[str] = None,
@@ -944,6 +946,10 @@ class Portal(DBPortal, BasePortal):
             The id of the event.
         variables:
             The variables of the template.
+        header_variable: str
+            The variable of the header of the template.
+        button_variables: list
+            The variables of the buttons of the template.
         template_name:
             The name of the template.
         media: list
@@ -962,6 +968,8 @@ class Portal(DBPortal, BasePortal):
                 message=message,
                 phone_id=self.phone_id,
                 variables=variables,
+                header_variable=header_variable,
+                button_variables=button_variables,
                 template_name=template_name,
                 media_data=media,
                 language=language,

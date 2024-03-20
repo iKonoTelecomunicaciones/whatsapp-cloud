@@ -1,4 +1,5 @@
 import asyncio
+from copy import copy
 import json
 import logging
 import re
@@ -92,17 +93,23 @@ class WhatsappClient:
         type_message = (
             "text"
             if message_type == MessageType.TEXT
-            else "image"
-            if message_type == MessageType.IMAGE
-            else "video"
-            if message_type == MessageType.VIDEO
-            else "audio"
-            if message_type == MessageType.AUDIO
-            else "document"
-            if message_type == MessageType.FILE
-            else "location"
-            if message_type == MessageType.LOCATION
-            else None
+            else (
+                "image"
+                if message_type == MessageType.IMAGE
+                else (
+                    "video"
+                    if message_type == MessageType.VIDEO
+                    else (
+                        "audio"
+                        if message_type == MessageType.AUDIO
+                        else (
+                            "document"
+                            if message_type == MessageType.FILE
+                            else "location" if message_type == MessageType.LOCATION else None
+                        )
+                    )
+                )
+            )
         )
 
         if not type_message:
@@ -112,11 +119,15 @@ class WhatsappClient:
         message_data = (
             {"preview_url": False, "body": message}
             if message_type == MessageType.TEXT
-            else {"link": url, "filename": "File"}
-            if message_type == MessageType.FILE
-            else {"latitude": location[0], "longitude": location[1]}
-            if message_type == MessageType.LOCATION
-            else {"link": url}
+            else (
+                {"link": url, "filename": "File"}
+                if message_type == MessageType.FILE
+                else (
+                    {"latitude": location[0], "longitude": location[1]}
+                    if message_type == MessageType.LOCATION
+                    else {"link": url}
+                )
+            )
         )
 
         data = {
@@ -363,6 +374,8 @@ class WhatsappClient:
         message: str,
         phone_id: WSPhoneID,
         variables: Optional[list] = [],
+        header_variable: Optional[str] = None,
+        button_variables: Optional[list] = None,
         template_name: Optional[str] = None,
         media_data: Optional[list] = None,
         language: Optional[str] = "es",
@@ -378,6 +391,10 @@ class WhatsappClient:
             The id of the whatsapp business phone.
         variables:
             The variables of the template.
+        header_variable: str
+            The variable of the header of the template.
+        button_variables: list
+            The variables of the buttons of the template.
         template_name:
             The name of the template.
         media_data: list
@@ -400,8 +417,8 @@ class WhatsappClient:
 
         self.log.debug(f"Sending template to {send_template_url}")
 
-        parameters = [{"type": "text", "text": value} for value in variables]
         header_parameters = []
+        body_parameters = [{"type": "text", "text": value} for value in variables]
 
         # If the template has a media, add it to the template
         if media_data and media_data[0] and media_data[1]:
@@ -411,6 +428,22 @@ class WhatsappClient:
             header_parameters = [
                 {"type": media_type, media_type: {"id": media_id}} for media_id in media_ids
             ]
+        elif header_variable:
+            header_parameters = [{"type": "text", "text": header_variable}]
+
+        components = [
+            {"type": "header", "parameters": header_parameters},
+            {"type": "body", "parameters": body_parameters},
+        ]
+
+        if button_variables:
+            for i in range(len(button_variables)):
+                components.append({
+                    "type": "button",
+                    "sub_type": "url",
+                    "index": i + 1,
+                    "parameters": [{"type": "text", "text": button_variables[i]}],
+                })
 
         data = {
             "messaging_product": "whatsapp",
@@ -420,10 +453,7 @@ class WhatsappClient:
             "template": {
                 "name": template_name,
                 "language": {"code": language},
-                "components": [
-                    {"type": "header", "parameters": header_parameters},
-                    {"type": "body", "parameters": parameters},
-                ],
+                "components": components
             },
         }
 
@@ -438,7 +468,13 @@ class WhatsappClient:
 
         return await resp.json()
 
-    async def get_template_message(self, template_name: str, variables: Optional[list]) -> tuple:
+    async def get_template_message(
+        self,
+        template_name: str,
+        variables: Optional[list],
+        header_variable: Optional[str],
+        button_variables: Optional[list],
+    ) -> tuple:
         """
         Get a template message.
 
@@ -448,6 +484,10 @@ class WhatsappClient:
             The name of the template.
         variables: Optional[list]
             The variables of the template.
+        header_variable: Optional[str]
+            The variable of the header of the template.
+        button_variables: Optional[list]
+            The variables of the buttons of the template.
 
         Returns
         -------
@@ -487,12 +527,33 @@ class WhatsappClient:
                 for component in template.get("components", []):
                     # If the template has a text, add it to the message, like header, body, footer
                     if component.get("text"):
-                        template_message += f"{component.get('text')}\n"
+                        # If the template has a header with a variable, add it to the message
+                        if (
+                            header_variable
+                            and component.get("type") == "HEADER"
+                            and component.get("example")
+                        ):
+                            header = re.sub(r"\{\{\d+\}\}", "{}", component.get("text"))
+                            template_message += f"{header.format(header_variable)}\n"
+                        else:
+                            template_message += f"{component.get('text')}\n"
                     # If the template has a button, add it to the message
                     elif component.get("type") == "BUTTONS":
+                        variables = []
+                        if button_variables:
+                            variables = copy(button_variables)
                         for button in component.get("buttons", []):
                             if button.get("type") == "URL":
-                                template_message += f"{button.get('text')}: {button.get('url')}\n"
+                                # If the template has a button with a variable, add it to the message
+                                if variables and button.get("example"):
+                                    url = re.sub(r"\{\{\d+\}\}", "{}", button.get("url"))
+                                    template_message += (
+                                        f"{button.get('text')}: {url.format(variables.pop(0))}\n"
+                                    )
+                                else:
+                                    template_message += (
+                                        f"{button.get('text')}: {button.get('url')}\n"
+                                    )
                             elif button.get("type") == "PHONE_NUMBER":
                                 template_message += f"{button.get('text')}: {button.get('phone_number').replace('+', '')}\n"
                             else:

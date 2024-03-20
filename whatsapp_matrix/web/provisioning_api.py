@@ -633,11 +633,30 @@ class ProvisioningAPI:
         try:
             room_id = data["room_id"]
             template_name = data["template_name"]
-            variables = data["variables"] or []
+            variables = data.get("variables") or []
             language = data.get("language", "es")
+            header_variable = data.get("header_variable") or None
+            button_variables = data.get("button_variables") or None
 
         except KeyError as e:
             raise self._missing_key_error(e)
+
+        if variables:
+            if type(variables) != list:
+                return web.json_response(
+                    data={"detail": "variables must be a list"},
+                    status=400,
+                    headers=self._acao_headers,
+                )
+
+        if button_variables:
+            if type(button_variables) != list:
+                return web.json_response(
+                    data={"detail": "button_variables must be a list"},
+                    status=400,
+                    headers=self._acao_headers,
+                )
+
         if not room_id:
             return web.json_response(
                 data={"detail": "room_id not entered"},
@@ -667,7 +686,10 @@ class ProvisioningAPI:
                 media_url,
                 template_status,
             ) = await portal.whatsapp_client.get_template_message(
-                template_name=template_name, variables=variables
+                template_name=template_name,
+                variables=variables,
+                header_variable=header_variable,
+                button_variables=button_variables,
             )
 
         except Exception as e:
@@ -731,6 +753,8 @@ class ProvisioningAPI:
                 message=template_message,
                 event_id=msg_event_id,
                 variables=variables,
+                header_variable=header_variable,
+                button_variables=button_variables,
                 template_name=template_name,
                 media=[media_type, media_ids],
                 language=language,
@@ -770,9 +794,7 @@ class ProvisioningAPI:
         message_type = (
             MessageType.IMAGE
             if media_type == "image"
-            else MessageType.VIDEO
-            if media_type == "video"
-            else MessageType.FILE
+            else MessageType.VIDEO if media_type == "video" else MessageType.FILE
         )
 
         for url in media_url:
@@ -810,7 +832,7 @@ class ProvisioningAPI:
             except Exception as e:
                 self.log.exception(f"Message not receive, error: {e}")
                 return web.json_response(
-                    data={"detail": f"Error trying to upload the media message"},
+                    data={"detail": "Error trying to upload the media message"},
                     status=400,
                     headers=self._acao_headers,
                 )
