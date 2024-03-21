@@ -931,6 +931,7 @@ class Portal(DBPortal, BasePortal):
         button_variables: Optional[list],
         template_name: str,
         media: Optional[list] = None,
+        indexs: Optional[list] = None,
         language: Optional[str] = None,
     ):
         """
@@ -954,6 +955,8 @@ class Portal(DBPortal, BasePortal):
             The name of the template.
         media: list
             A list with the type of the media and the ids of the media.
+        indexs: list
+            Indexs of the buttons that contains dynamic urls.
         language:
             The language of the template.
 
@@ -972,6 +975,7 @@ class Portal(DBPortal, BasePortal):
                 button_variables=button_variables,
                 template_name=template_name,
                 media_data=media,
+                indexs=indexs,
                 language=language,
             )
         except TypeError as error:

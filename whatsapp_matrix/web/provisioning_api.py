@@ -628,6 +628,7 @@ class ProvisioningAPI:
         """
         self.log.debug("Sending the template")
         media_ids = []
+        indexs = []
         user, data = await self._get_user_and_body(request)
 
         try:
@@ -685,9 +686,10 @@ class ProvisioningAPI:
                 media_type,
                 media_url,
                 template_status,
+                indexs
             ) = await portal.whatsapp_client.get_template_message(
                 template_name=template_name,
-                variables=variables,
+                body_variables=variables,
                 header_variable=header_variable,
                 button_variables=button_variables,
             )
@@ -757,6 +759,7 @@ class ProvisioningAPI:
                 button_variables=button_variables,
                 template_name=template_name,
                 media=[media_type, media_ids],
+                indexs=indexs,
                 language=language,
             )
             return web.json_response(data=response, headers=self._acao_headers, status=status)
