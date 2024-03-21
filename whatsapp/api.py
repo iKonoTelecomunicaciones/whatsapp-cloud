@@ -1,8 +1,8 @@
 import asyncio
-from copy import copy
 import json
 import logging
 import re
+from copy import copy
 from typing import Dict, Optional
 
 from aiohttp import ClientConnectorError, ClientSession, FormData

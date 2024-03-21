@@ -681,17 +681,13 @@ class ProvisioningAPI:
             )
 
         try:
-            (
-                template_message,
-                media_type,
-                media_url,
-                template_status,
-                indexs
-            ) = await portal.whatsapp_client.get_template_message(
-                template_name=template_name,
-                body_variables=variables,
-                header_variable=header_variable,
-                button_variables=button_variables,
+            (template_message, media_type, media_url, template_status, indexs) = (
+                await portal.whatsapp_client.get_template_message(
+                    template_name=template_name,
+                    body_variables=variables,
+                    header_variable=header_variable,
+                    button_variables=button_variables,
+                )
             )
 
         except Exception as e:
@@ -797,7 +793,9 @@ class ProvisioningAPI:
         message_type = (
             MessageType.IMAGE
             if media_type == "image"
-            else MessageType.VIDEO if media_type == "video" else MessageType.FILE
+            else MessageType.VIDEO
+            if media_type == "video"
+            else MessageType.FILE
         )
 
         for url in media_url:
