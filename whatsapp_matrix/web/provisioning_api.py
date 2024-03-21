@@ -681,13 +681,17 @@ class ProvisioningAPI:
             )
 
         try:
-            (template_message, media_type, media_url, template_status, indexs) = (
-                await portal.whatsapp_client.get_template_message(
-                    template_name=template_name,
-                    body_variables=variables,
-                    header_variable=header_variable,
-                    button_variables=button_variables,
-                )
+            (
+                template_message,
+                media_type,
+                media_url,
+                template_status,
+                indexs
+            ) = await portal.whatsapp_client.get_template_message(
+                template_name=template_name,
+                body_variables=variables,
+                header_variable=header_variable,
+                button_variables=button_variables,
             )
 
         except Exception as e:
