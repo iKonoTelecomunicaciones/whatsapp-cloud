@@ -686,7 +686,7 @@ class ProvisioningAPI:
                 media_type,
                 media_url,
                 template_status,
-                indexs
+                indexs,
             ) = await portal.whatsapp_client.get_template_message(
                 template_name=template_name,
                 body_variables=variables,
