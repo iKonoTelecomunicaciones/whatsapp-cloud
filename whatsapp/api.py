@@ -363,7 +363,7 @@ class WhatsappClient:
         message: str,
         phone_id: WSPhoneID,
         variables: Optional[list] = [],
-        header_variable: Optional[str] = None,
+        header_variables: Optional[list] = None,
         button_variables: Optional[list] = None,
         template_name: Optional[str] = None,
         media_data: Optional[list] = None,
@@ -381,8 +381,8 @@ class WhatsappClient:
             The id of the whatsapp business phone.
         variables:
             The variables of the template.
-        header_variable: str
-            The variable of the header of the template.
+        header_variables: str
+            The variables of the header of the template.
         button_variables: list
             The variables of the buttons of the template.
         template_name:
@@ -420,8 +420,8 @@ class WhatsappClient:
             header_parameters = [
                 {"type": media_type, media_type: {"id": media_id}} for media_id in media_ids
             ]
-        elif header_variable:
-            header_parameters = [{"type": "text", "text": header_variable}]
+        elif header_variables:
+            header_parameters = [{"type": "text", "text": value} for value in header_variables]
 
         components = []
 
@@ -469,7 +469,7 @@ class WhatsappClient:
         self,
         template_name: str,
         body_variables: Optional[list],
-        header_variable: Optional[str],
+        header_variables: Optional[list],
         button_variables: Optional[list],
     ) -> tuple:
         """
@@ -481,7 +481,7 @@ class WhatsappClient:
             The name of the template.
         body_variables: Optional[list]
             The variables of the body of the template.
-        header_variable: Optional[str]
+        header_variables: Optional[list]
             The variable of the header of the template.
         button_variables: Optional[list]
             The variables of the buttons of the template.
@@ -521,7 +521,7 @@ class WhatsappClient:
 
         template_message, template_status, media_data, media_type, indexs = (
             self.search_and_get_the_template_message(
-                templates, template_name, body_variables, header_variable, button_variables
+                templates, template_name, body_variables, header_variables, button_variables
             )
         )
 
@@ -574,7 +574,7 @@ class WhatsappClient:
         return data
 
     def search_and_get_the_template_message(
-        self, templates, template_name, body_variables, header_variable, button_variables
+        self, templates, template_name, body_variables, header_variables, button_variables
     ) -> tuple:
         """
         Search the template in a list of templates and return a list with the template_message,
@@ -588,8 +588,8 @@ class WhatsappClient:
             The name of the template that will be search.
         body_variables: Optional[list]
             The variables of the body of the template.
-        header_variable: Optional[str]
-            The variable of the header of the template.
+        header_variables: Optional[list]
+            The variables of the header of the template.
         button_variables: Optional[list]
             The variables of the buttons of the template.
 
@@ -612,9 +612,9 @@ class WhatsappClient:
                 for component in template.get("components", []):
                     if component.get("type") == "HEADER":
                         # If the template has a header with a variable, add it to the message
-                        if header_variable and component.get("example"):
+                        if header_variables and component.get("example"):
                             header = re.sub(r"\{\{\d+\}\}", "{}", component.get("text"))
-                            template_message += f"{header.format(header_variable)}\n"
+                            template_message += f"{header.format(*header_variables)}\n"
 
                         # If the header has a media, get the type and the url of the media
                         elif component.get("format") in ("IMAGE", "VIDEO", "DOCUMENT"):
@@ -623,7 +623,7 @@ class WhatsappClient:
                                 url for url in component.get("example", {}).get("header_handle")
                             ]
 
-                        elif not header_variable and component.get("example"):
+                        elif not header_variables and component.get("example"):
                             raise ValueError(
                                 "The template has header with variable, but the variable are not provided"
                             )

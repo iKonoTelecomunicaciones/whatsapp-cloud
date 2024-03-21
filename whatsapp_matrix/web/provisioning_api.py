@@ -636,7 +636,7 @@ class ProvisioningAPI:
             template_name = data["template_name"]
             variables = data.get("variables") or []
             language = data.get("language", "es")
-            header_variable = data.get("header_variable") or None
+            header_variables = data.get("header_variables") or None
             button_variables = data.get("button_variables") or None
 
         except KeyError as e:
@@ -654,6 +654,14 @@ class ProvisioningAPI:
             if type(button_variables) != list:
                 return web.json_response(
                     data={"detail": "button_variables must be a list"},
+                    status=400,
+                    headers=self._acao_headers,
+                )
+
+        if header_variables:
+            if type(header_variables) != list:
+                return web.json_response(
+                    data={"detail": "header_variables must be a list"},
                     status=400,
                     headers=self._acao_headers,
                 )
@@ -690,7 +698,7 @@ class ProvisioningAPI:
             ) = await portal.whatsapp_client.get_template_message(
                 template_name=template_name,
                 body_variables=variables,
-                header_variable=header_variable,
+                header_variables=header_variables,
                 button_variables=button_variables,
             )
 
@@ -755,7 +763,7 @@ class ProvisioningAPI:
                 message=template_message,
                 event_id=msg_event_id,
                 variables=variables,
-                header_variable=header_variable,
+                header_variables=header_variables,
                 button_variables=button_variables,
                 template_name=template_name,
                 media=[media_type, media_ids],
