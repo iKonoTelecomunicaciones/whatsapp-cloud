@@ -252,7 +252,9 @@ class ProvisioningAPI:
         """
         self.log.error(f"KeyError: {err}")
         raise web.HTTPNotAcceptable(
-            text=json.dumps({"detail": {"data": {"key": str(err)}, "message": f"Missing key %(key)s"}}),
+            text=json.dumps(
+                {"detail": {"data": {"key": str(err)}, "message": f"Missing key %(key)s"}}
+            ),
             headers=self._headers,
         )
 
