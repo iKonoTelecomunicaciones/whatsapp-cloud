@@ -252,7 +252,9 @@ class ProvisioningAPI:
         """
         self.log.error(f"KeyError: {err}")
         raise web.HTTPNotAcceptable(
-            text=json.dumps({"detail": {"data": {"key": err}, "message": f"Missing key %(key)s"}}),
+            text=json.dumps(
+                {"detail": {"data": {"key": str(err)}, "message": f"Missing key %(key)s"}}
+            ),
             headers=self._headers,
         )
 
@@ -628,16 +630,44 @@ class ProvisioningAPI:
         """
         self.log.debug("Sending the template")
         media_ids = []
+        indexes = []
         user, data = await self._get_user_and_body(request)
 
         try:
             room_id = data["room_id"]
             template_name = data["template_name"]
-            variables = data["variables"] or []
+            variables = data.get("variables") or []
             language = data.get("language", "es")
+            header_variables = data.get("header_variables") or None
+            button_variables = data.get("button_variables") or None
 
         except KeyError as e:
             raise self._missing_key_error(e)
+
+        if variables:
+            if type(variables) != list:
+                return web.json_response(
+                    data={"detail": "variables must be a list"},
+                    status=400,
+                    headers=self._acao_headers,
+                )
+
+        if button_variables:
+            if type(button_variables) != list:
+                return web.json_response(
+                    data={"detail": "button_variables must be a list"},
+                    status=400,
+                    headers=self._acao_headers,
+                )
+
+        if header_variables:
+            if type(header_variables) != list:
+                return web.json_response(
+                    data={"detail": "header_variables must be a list"},
+                    status=400,
+                    headers=self._acao_headers,
+                )
+
         if not room_id:
             return web.json_response(
                 data={"detail": "room_id not entered"},
@@ -666,8 +696,12 @@ class ProvisioningAPI:
                 media_type,
                 media_url,
                 template_status,
+                indexes,
             ) = await portal.whatsapp_client.get_template_message(
-                template_name=template_name, variables=variables
+                template_name=template_name,
+                body_variables=variables,
+                header_variables=header_variables,
+                button_variables=button_variables,
             )
 
         except Exception as e:
@@ -731,8 +765,11 @@ class ProvisioningAPI:
                 message=template_message,
                 event_id=msg_event_id,
                 variables=variables,
+                header_variables=header_variables,
+                button_variables=button_variables,
                 template_name=template_name,
                 media=[media_type, media_ids],
+                indexes=indexes,
                 language=language,
             )
             return web.json_response(data=response, headers=self._acao_headers, status=status)
@@ -810,7 +847,7 @@ class ProvisioningAPI:
             except Exception as e:
                 self.log.exception(f"Message not receive, error: {e}")
                 return web.json_response(
-                    data={"detail": f"Error trying to upload the media message"},
+                    data={"detail": "Error trying to upload the media message"},
                     status=400,
                     headers=self._acao_headers,
                 )
