@@ -657,7 +657,7 @@ class WhatsappClient:
                                 # If the template has a button with a variable, add it to the message, else add the text
                                 # When the template is rejected, the component example does not exist
                                 if variables and (
-                                    component.get("example")
+                                    button.get("example")
                                     or template.get("status") == "REJECTED"
                                 ):
                                     indexes.append(i)
