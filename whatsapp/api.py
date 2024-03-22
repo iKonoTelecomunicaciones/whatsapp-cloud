@@ -367,7 +367,7 @@ class WhatsappClient:
         button_variables: Optional[list] = None,
         template_name: Optional[str] = None,
         media_data: Optional[list] = None,
-        indexs: Optional[list] = None,
+        indexes: Optional[list] = None,
         language: Optional[str] = "es",
     ) -> Dict:
         """
@@ -389,8 +389,8 @@ class WhatsappClient:
             The name of the template.
         media_data: list
             The type and the ids of the media that will be sent to the user.
-        indexs: list
-            Indexs of the buttons that contains dynamic urls.
+        indexes: list
+            indexes of the buttons that contains dynamic urls.
         language:
             The language of the template.
 
@@ -431,13 +431,13 @@ class WhatsappClient:
         if body_parameters:
             components.append({"type": "body", "parameters": body_parameters})
 
-        if button_variables and indexs:
+        if button_variables and indexes:
             for button in button_variables:
                 components.append(
                     {
                         "type": "button",
                         "sub_type": "url",
-                        "index": indexs.pop(0),
+                        "index": indexes.pop(0),
                         "parameters": [{"type": "text", "text": button}],
                     }
                 )
@@ -517,15 +517,15 @@ class WhatsappClient:
         template_status = ""
         media_data = None
         media_type = ""
-        indexs = []
+        indexes = []
 
-        template_message, template_status, media_data, media_type, indexs = (
+        template_message, template_status, media_data, media_type, indexes = (
             self.search_and_get_the_template_message(
                 templates, template_name, body_variables, header_variables, button_variables
             )
         )
 
-        return template_message, media_type, media_data, template_status, indexs
+        return template_message, media_type, media_data, template_status, indexes
 
     async def upload_media(
         self, data_file, messaging_product: str, file_name: str, file_type: str
@@ -573,7 +573,7 @@ class WhatsappClient:
         data = await response.json()
         return data
 
-    def search_and_get_the_template_message(
+    def search_and_get_template_message(
         self, templates, template_name, body_variables, header_variables, button_variables
     ) -> tuple:
         """
@@ -603,16 +603,16 @@ class WhatsappClient:
         template_status = ""
         media_data = ""
         media_type = ""
-        indexs = []
+        indexes = []
 
         for template in templates:
             # Search the template with the name of the template_name to save it in a text message
             if template.get("name") == template_name:
-                self.log.critical(f"Template found: {template}")
                 for component in template.get("components", []):
                     if component.get("type") == "HEADER":
                         # If the template has a header with a variable, add it to the message
-                        if header_variables and component.get("example"):
+                        # When the template is rejected, the component example does not exist
+                        if header_variables and ( component.get("example") or template.get("status") == "REJECTED" ):
                             header = re.sub(r"\{\{\d+\}\}", "{}", component.get("text"))
                             template_message += f"{header.format(*header_variables)}\n"
 
@@ -633,7 +633,8 @@ class WhatsappClient:
 
                     # If the template has a body wit variables, add it to the message, else add the text
                     elif component.get("type") == "BODY":
-                        if component.get("example") and body_variables:
+                        # When the template is rejected, the component example does not exist
+                        if ( component.get("example") or template.get("status") == "REJECTED" ) and body_variables:
                             body = re.sub(r"\{\{\d+\}\}", "{}", component.get("text"))
                             template_message += f"{body.format(*body_variables)}\n"
 
@@ -659,8 +660,9 @@ class WhatsappClient:
                             # If the template has a url button, validate if the button has a variable or not
                             if button.get("type") == "URL":
                                 # If the template has a button with a variable, add it to the message, else add the text
-                                if variables and button.get("example"):
-                                    indexs.append(i)
+                                # When the template is rejected, the component example does not exist
+                                if variables and ( component.get("example") or template.get("status") == "REJECTED" ):
+                                    indexes.append(i)
                                     url = re.sub(r"\{\{\d+\}\}", "{}", button.get("url"))
                                     template_message += (
                                         f"{button.get('text')}: {url.format(variables.pop(0))}\n"
@@ -691,4 +693,4 @@ class WhatsappClient:
                 )
                 break
 
-        return template_message, template_status, media_data, media_type, indexs
+        return template_message, template_status, media_data, media_type, indexes
