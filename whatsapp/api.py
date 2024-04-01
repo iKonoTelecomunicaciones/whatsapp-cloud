@@ -90,34 +90,28 @@ class WhatsappClient:
         self.log.debug(f"Sending message to {send_message_url}")
 
         # Set the data to send to Whatsapp API
-        type_message = (
-            "text"
-            if message_type == MessageType.TEXT
-            else "image"
-            if message_type == MessageType.IMAGE
-            else "video"
-            if message_type == MessageType.VIDEO
-            else "audio"
-            if message_type == MessageType.AUDIO
-            else "document"
-            if message_type == MessageType.FILE
-            else "location" if message_type == MessageType.LOCATION
-            else None
-        )
-
-        if not type_message:
-            self.log.error("Unsupported message type")
-            raise TypeError("Unsupported message type")
-
-        message_data = (
-            {"preview_url": False, "body": message}
-            if message_type == MessageType.TEXT
-            else {"link": url, "filename": "File"}
-            if message_type == MessageType.FILE
-            else {"latitude": location[0], "longitude": location[1]}
-            if message_type == MessageType.LOCATION
-            else {"link": url}
-        )
+        match message_type:
+            case MessageType.TEXT:
+                type_message = "text"
+                message_data = {"preview_url": False, "body": message}
+            case MessageType.IMAGE:
+                type_message = "image"
+                message_data = {"link": url}
+            case MessageType.FILE:
+                type_message = "document"
+                message_data = {"link": url, "filename": "File"}
+            case MessageType.VIDEO:
+                type_message = "video"
+                message_data = {"link": url}
+            case MessageType.AUDIO:
+                type_message = "audio"
+                message_data = {"link": url}
+            case MessageType.LOCATION:
+                type_message = "location"
+                message_data = {"latitude": location[0], "longitude": location[1]}
+            case _:
+                self.log.error("Unsupported message type")
+                raise TypeError("Unsupported message type")
 
         data = {
             "messaging_product": "whatsapp",
@@ -131,7 +125,6 @@ class WhatsappClient:
         if aditional_data.get("reply_to"):
             data["context"] = {"message_id": aditional_data["reply_to"]["wb_message_id"]}
         self.log.debug(f"Sending message {data} to {phone_id}")
-
         # Send the message to the Whatsapp API
         resp = await self.http.post(send_message_url, json=data, headers=headers)
         response_data = json.loads(await resp.text())
@@ -600,12 +593,15 @@ class WhatsappClient:
             # Search the template with the name of the template_name to save it in a text message
             if template.get("name") == template_name:
                 for component in template.get("components", []):
+                    has_variables = re.findall(r'\{\{\d+\}\}', component.get("text", ""))
                     if component.get("type") == "HEADER":
                         # If the template has a header with a variable, add it to the message
                         # When the template is rejected, the component example does not exist
-                        if header_variables and (
-                            component.get("example") or template.get("status") == "REJECTED"
-                        ):
+                        if header_variables and has_variables:
+                            if len(header_variables) != len(has_variables):
+                                raise ValueError(
+                                    f"the template has header with {len(has_variables)} variables,but {len(header_variables)} variables are provided."
+                                )
                             header = re.sub(r"\{\{\d+\}\}", "{}", component.get("text"))
                             template_message += f"{header.format(*header_variables)}\n"
 
@@ -616,9 +612,9 @@ class WhatsappClient:
                                 url for url in component.get("example", {}).get("header_handle")
                             ]
 
-                        elif not header_variables and component.get("example"):
+                        elif not header_variables and has_variables:
                             raise ValueError(
-                                "The template has header with variable, but the variable are not provided"
+                                "the template has header with variable, but the variable are not provided"
                             )
                         # If the template has a header without a variable, add it to the message
                         else:
@@ -627,15 +623,17 @@ class WhatsappClient:
                     # If the template has a body wit variables, add it to the message, else add the text
                     elif component.get("type") == "BODY":
                         # When the template is rejected, the component example does not exist
-                        if (
-                            component.get("example") or template.get("status") == "REJECTED"
-                        ) and body_variables:
+                        if has_variables and body_variables:
+                            if len(body_variables) != len(has_variables):
+                                raise ValueError(
+                                    f"the template has body with {len(has_variables)} variables, but {len(body_variables)} variables are provided."
+                                )
                             body = re.sub(r"\{\{\d+\}\}", "{}", component.get("text"))
                             template_message += f"{body.format(*body_variables)}\n"
 
-                        elif not body_variables and component.get("example"):
+                        elif not body_variables and has_variables:
                             raise ValueError(
-                                "The template has body with variables, but the variables are not provided"
+                                "the template has body with variables, but the variables are not provided"
                             )
 
                         else:
@@ -652,23 +650,21 @@ class WhatsappClient:
                             variables = copy(button_variables)
                         for i in range(len(component.get("buttons", []))):
                             button = component.get("buttons", [])[i]
+                            has_button_variables = re.findall(r'\{\{\d+\}\}', button.get("url", ""))
                             # If the template has a url button, validate if the button has a variable or not
                             if button.get("type") == "URL":
                                 # If the template has a button with a variable, add it to the message, else add the text
                                 # When the template is rejected, the component example does not exist
-                                if variables and (
-                                    button.get("example")
-                                    or template.get("status") == "REJECTED"
-                                ):
+                                if variables and has_button_variables:
                                     indexes.append(i)
                                     url = re.sub(r"\{\{\d+\}\}", "{}", button.get("url"))
                                     template_message += (
                                         f"{button.get('text')}: {url.format(variables.pop(0))}\n"
                                     )
 
-                                elif not variables and button.get("example"):
+                                elif not variables and has_button_variables:
                                     raise ValueError(
-                                        "The template has button with variables, but the variables are not provided"
+                                        "the template has button with variables, but the variables are not provided"
                                     )
 
                                 else:
