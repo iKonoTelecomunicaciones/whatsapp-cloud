@@ -595,8 +595,11 @@ class WhatsappClient:
                 for component in template.get("components", []):
                     has_variables = re.findall(r'\{\{\d+\}\}', component.get("text", ""))
                     if component.get("type") == "HEADER":
+                        if not header_variables and has_variables:
+                            raise ValueError(
+                                "the template has header with variable, but the variable are not provided"
+                            )
                         # If the template has a header with a variable, add it to the message
-                        # When the template is rejected, the component example does not exist
                         if header_variables and has_variables:
                             if len(header_variables) != len(has_variables):
                                 raise ValueError(
@@ -612,17 +615,16 @@ class WhatsappClient:
                                 url for url in component.get("example", {}).get("header_handle")
                             ]
 
-                        elif not header_variables and has_variables:
-                            raise ValueError(
-                                "the template has header with variable, but the variable are not provided"
-                            )
                         # If the template has a header without a variable, add it to the message
                         else:
                             template_message += f"{component.get('text')}\n"
 
                     # If the template has a body wit variables, add it to the message, else add the text
                     elif component.get("type") == "BODY":
-                        # When the template is rejected, the component example does not exist
+                        if not body_variables and has_variables:
+                            raise ValueError(
+                                "the template has body with variables, but the variables are not provided"
+                            )
                         if has_variables and body_variables:
                             if len(body_variables) != len(has_variables):
                                 raise ValueError(
@@ -630,11 +632,6 @@ class WhatsappClient:
                                 )
                             body = re.sub(r"\{\{\d+\}\}", "{}", component.get("text"))
                             template_message += f"{body.format(*body_variables)}\n"
-
-                        elif not body_variables and has_variables:
-                            raise ValueError(
-                                "the template has body with variables, but the variables are not provided"
-                            )
 
                         else:
                             template_message += f"{component.get('text')}\n"
@@ -653,18 +650,16 @@ class WhatsappClient:
                             has_button_variables = re.findall(r'\{\{\d+\}\}', button.get("url", ""))
                             # If the template has a url button, validate if the button has a variable or not
                             if button.get("type") == "URL":
+                                if not variables and has_button_variables:
+                                    raise ValueError(
+                                        "the template has button with variables, but the variables are not provided"
+                                    )
                                 # If the template has a button with a variable, add it to the message, else add the text
-                                # When the template is rejected, the component example does not exist
                                 if variables and has_button_variables:
                                     indexes.append(i)
                                     url = re.sub(r"\{\{\d+\}\}", "{}", button.get("url"))
                                     template_message += (
                                         f"{button.get('text')}: {url.format(variables.pop(0))}\n"
-                                    )
-
-                                elif not variables and has_button_variables:
-                                    raise ValueError(
-                                        "the template has button with variables, but the variables are not provided"
                                     )
 
                                 else:
