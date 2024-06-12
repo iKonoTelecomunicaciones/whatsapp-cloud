@@ -726,8 +726,9 @@ class Portal(DBPortal, BasePortal):
                 response = await self.whatsapp_client.send_message(
                     phone_id=self.phone_id,
                     message_type=message.msgtype,
+                    message=message.body,
                     url=url,
-                    file_name=self.config["whatsapp_cloud.file_name"],
+                    file_name=self.config["whatsapp.file_name"],
                     aditional_data=aditional_data,
                 )
             except TypeError as error:
