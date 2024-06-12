@@ -48,10 +48,11 @@ class Config(BaseBridgeConfig):
         copy("bridge.relay.enabled")
         copy_dict("bridge.relay.message_formats")
 
-        copy("whatsapp_cloud.base_url")
-        copy("whatsapp_cloud.version")
-        copy("whatsapp_cloud.webhook_path")
-        copy("whatsapp_cloud.error_codes")
+        copy("whatsapp.base_url")
+        copy("whatsapp.version")
+        copy("whatsapp.webhook_path")
+        copy("whatsapp.error_codes")
+        copy("whatsapp.file_name")
 
     def _get_permissions(self, key: str) -> Permissions:
         level = self["bridge.permissions"].get(key, "")

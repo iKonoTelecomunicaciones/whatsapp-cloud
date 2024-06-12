@@ -41,6 +41,7 @@ class WhatsappClient:
         message: Optional[str] = None,
         url: Optional[str] = None,
         location: Optional[tuple] = None,
+        file_name: Optional[str] = None,
         aditional_data: Optional[Dict] = None,
     ) -> Dict[str, str]:
         """
@@ -86,7 +87,6 @@ class WhatsappClient:
         }
         # Set the url to send the message to Whatsapp API
         send_message_url = f"{self.base_url}/{self.version}/{self.wb_phone_id}/messages"
-
         self.log.debug(f"Sending message to {send_message_url}")
 
         # Set the data to send to Whatsapp API
@@ -96,13 +96,13 @@ class WhatsappClient:
                 message_data = {"preview_url": False, "body": message}
             case MessageType.IMAGE:
                 type_message = "image"
-                message_data = {"link": url}
+                message_data = {"link": url, "caption": message}
             case MessageType.FILE:
                 type_message = "document"
-                message_data = {"link": url, "filename": "File"}
+                message_data = {"link": url, "filename": file_name, "caption": message}
             case MessageType.VIDEO:
                 type_message = "video"
-                message_data = {"link": url}
+                message_data = {"link": url, "caption": message}
             case MessageType.AUDIO:
                 type_message = "audio"
                 message_data = {"link": url}

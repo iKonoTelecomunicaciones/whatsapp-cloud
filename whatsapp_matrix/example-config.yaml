@@ -165,6 +165,7 @@ whatsapp:
     webhook_path: /cloud
     # Endpoint for sending to approve template
     template_path: /message_templates
+    file_name: Archivo
 
     # Dict of error codes and and their reasons
     error_codes:
