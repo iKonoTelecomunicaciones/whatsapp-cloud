@@ -727,6 +727,7 @@ class Portal(DBPortal, BasePortal):
                     phone_id=self.phone_id,
                     message_type=message.msgtype,
                     url=url,
+                    file_name=self.config["whatsapp_cloud.file_name"],
                     aditional_data=aditional_data,
                 )
             except TypeError as error:
