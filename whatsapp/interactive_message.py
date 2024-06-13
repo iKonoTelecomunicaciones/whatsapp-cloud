@@ -265,13 +265,12 @@ class InteractiveMessage(SerializableAttrs):
         """
         Obtain a message text with the information of the interactive quick reply message.
         """
-        msg = f"""
-            {self.header.text if self.header else ''}\n
-            {self.body.text  if self.body else ''}\n
+        msg = f"""{self.header.text if self.header else ''}
+            {self.body.text  if self.body else ''}
             {self.footer.text  if self.footer else ''}
         """
-        for button in self.action.buttons:
-            msg = f"{msg}\n{button.reply.id}. {button.reply.title}"
+        for index, button in enumerate(self.action.buttons, start=1):
+            msg += f"{index}. {button.reply.title}\n"
 
         return msg
 
@@ -280,14 +279,13 @@ class InteractiveMessage(SerializableAttrs):
         """
         Obtain a message text with the information of the interactive list message.
         """
-        msg = f"""
-            {self.header.text if self.header else ''}\n
-            {self.body.text  if self.body else ''}\n
+        msg = f"""{self.header.text if self.header else ''}
+            {self.body.text  if self.body else ''}
             {self.footer.text  if self.footer else ''}
         """
-        for section in self.action.sections:
+        for index, section in enumerate(self.action.sections, start=1):
             for row in section.rows:
-                msg = f"{msg}\n{section.title}.\n {row.id}. {row.title}\n   {row.description}"
+                msg += f"{index}. {row.title}.\n"
 
         return msg
 

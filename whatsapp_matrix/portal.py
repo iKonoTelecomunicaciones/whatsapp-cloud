@@ -424,7 +424,7 @@ class Portal(DBPortal, BasePortal):
         elif whatsapp_message_type == "interactive":
             message_type = MessageType.TEXT
             if message_data.interactive.type == "button_reply":
-                attachment = message_data.interactive.button_reply.title
+                attachment = message_data.interactive.button_reply.id
             elif message_data.interactive.type == "list_reply":
                 attachment = message_data.interactive.list_reply_message
 
