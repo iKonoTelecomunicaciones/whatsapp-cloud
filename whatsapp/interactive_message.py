@@ -2,6 +2,7 @@ from typing import List
 
 from attr import dataclass, ib
 from mautrix.types import SerializableAttrs
+from whatsapp_matrix.config import Config
 
 
 @dataclass
@@ -227,6 +228,7 @@ class InteractiveMessage(SerializableAttrs):
 
     """
 
+    config: Config
     type: str = ib(metadata={"json": "type"}, default="")
     header: HeaderQuickReply = ib(metadata={"json": "header"}, default={})
     body: TextReply = ib(metadata={"json": "body"}, default={})
@@ -234,7 +236,7 @@ class InteractiveMessage(SerializableAttrs):
     action: ActionQuickReply = ib(metadata={"json": "action"}, default={})
 
     @classmethod
-    def from_dict(cls, data: dict):
+    def from_dict(cls, data: dict, config: Config):
         header_obj = None
         action_obj = None
         body_obj = None
@@ -253,6 +255,7 @@ class InteractiveMessage(SerializableAttrs):
             footer_obj = TextReply.from_dict(data.get("footer", {}))
 
         return cls(
+            config=config,
             type=data.get("type", ""),
             header=header_obj,
             body=body_obj,
@@ -270,8 +273,11 @@ class InteractiveMessage(SerializableAttrs):
             {self.footer.text  if self.footer else ''}
         """
         for index, button in enumerate(self.action.buttons, start=1):
-            msg += f"{index}. {button.reply.title}\n"
+            message: str = self.config["bridge.interactive_messages.button_message"] or ""
 
+            msg += message.format(index=index, title=button.reply.title, id=button.reply.id)
+
+        self.config = None
         return msg
 
     @property
@@ -283,10 +289,19 @@ class InteractiveMessage(SerializableAttrs):
             {self.body.text  if self.body else ''}
             {self.footer.text  if self.footer else ''}
         """
-        for index, section in enumerate(self.action.sections, start=1):
-            for row in section.rows:
-                msg += f"{index}. {row.title}.\n"
+        for section_index, section in enumerate(self.action.sections, start=1):
+            for row_index, row in enumerate(section.rows, start=1):
+                message: str = self.config["bridge.interactive_messages.list_message"] or ""
+                msg += message.format(
+                    section_title=section.title,
+                    section_index=section_index,
+                    row_title=row.title,
+                    row_description=row.description,
+                    row_id=row.id,
+                    row_index=row_index,
+                )
 
+        self.config = None
         return msg
 
 
@@ -309,12 +324,13 @@ class EventInteractiveMessage(SerializableAttrs):
     msgtype: str = ib(metadata={"json": "msgtype"}, default="")
 
     @classmethod
-    def from_dict(cls, data: dict):
+    def from_dict(cls, data: dict, config: Config):
         interactive_message_obj = None
+        intereactive_message = InteractiveMessage(config=config)
 
         if data.get("interactive_message", {}):
-            interactive_message_obj = InteractiveMessage.from_dict(
-                data.get("interactive_message", {})
+            interactive_message_obj = intereactive_message.from_dict(
+                data.get("interactive_message", {}), config
             )
 
         return cls(

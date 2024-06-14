@@ -47,6 +47,8 @@ class Config(BaseBridgeConfig):
 
         copy("bridge.relay.enabled")
         copy_dict("bridge.relay.message_formats")
+        copy("bridge.interactive_messages.button_message")
+        copy("bridge.interactive_messages.list_message")
 
         copy("whatsapp.base_url")
         copy("whatsapp.version")
