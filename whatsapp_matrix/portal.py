@@ -1042,9 +1042,8 @@ class Portal(DBPortal, BasePortal):
     async def get_by_phone_id(
         cls,
         phone_id: WhatsappPhone,
-        *,
         app_business_id: WsBusinessID,
-        create: bool = True,
+        create: Optional[bool] = True,
     ) -> Optional["Portal"]:
         """
         Get a portal by its phone_id and save it in the cache
@@ -1060,14 +1059,10 @@ class Portal(DBPortal, BasePortal):
         create: bool
             Variable that indicates if the portal it will be create if not exist.
         """
-        try:
-            # Search if the phone_id is in the cache
-            return cls.by_phone_id[phone_id]
-        except KeyError:
-            pass
-
         # Search if the phone_id is in the database
-        portal = cast(cls, await super().get_by_phone_id(phone_id))
+        portal = cast(
+            cls, await super().get_by_phone_id(phone_id=phone_id, app_business_id=app_business_id)
+        )
         if portal:
             await portal.postinit()
             return portal

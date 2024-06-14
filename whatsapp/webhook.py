@@ -88,7 +88,7 @@ class WhatsappHandler:
             self.log.warning(
                 f"Ignoring event because the whatsapp_app [{wb_business_id}] is not registered."
             )
-            return web.Response(status=406)
+            return web.Response(status=200)
 
         # Validate if the event is a message, read or error
         # If the event is a message, we send a message event to matrix
@@ -108,7 +108,7 @@ class WhatsappHandler:
             message_error = wb_statuses.errors.error_data.details
 
             portal: Portal = await Portal.get_by_phone_id(
-                customer_phone, app_business_id=wb_business_id, create=False
+                phone_id=customer_phone, app_business_id=wb_business_id, create=False
             )
             if portal:
                 await portal.handle_whatsapp_error(message_error=message_error)
@@ -116,7 +116,7 @@ class WhatsappHandler:
 
         else:
             self.log.debug(f"Integration type not supported.")
-            return web.Response(status=406)
+            return web.Response(status=200)
 
     async def message_event(self, data: WhatsappEvent) -> web.Response:
         """It validates the incoming request, fetches the portal associated with the sender,
@@ -126,7 +126,9 @@ class WhatsappHandler:
         sender = data.entry.changes.value.contacts
         business_id = data.entry.id
         user: User = await User.get_by_business_id(business_id)
-        portal: Portal = await Portal.get_by_phone_id(sender.wa_id, app_business_id=business_id)
+        portal: Portal = await Portal.get_by_phone_id(
+            phone_id=sender.wa_id, app_business_id=business_id
+        )
         if data.entry.changes.value.messages.type == "reaction":
             await portal.handle_whatsapp_reaction(data, sender.wa_id)
         else:
@@ -144,7 +146,7 @@ class WhatsappHandler:
         business_id = data.entry.id
         # Get the portal
         portal: Portal = await Portal.get_by_phone_id(
-            wa_id, app_business_id=business_id, create=False
+           phone_id=wa_id, app_business_id=business_id, create=False
         )
         # Handle the read event
         if portal:

@@ -41,14 +41,15 @@ class Portal:
     async def update(self) -> None:
         q = """
             UPDATE portal
-            SET phone_id=$1, app_business_id= $2, mxid=$3, relay_user_id=$4 WHERE phone_id=$1
+            SET phone_id=$1, app_business_id= $2, mxid=$3, relay_user_id=$4
+            WHERE phone_id=$1 AND app_business_id=$2
         """
         await self.db.execute(q, *self._values)
 
     @classmethod
-    async def get_by_phone_id(cls, phone_id: str) -> Optional["Portal"]:
-        q = f"SELECT {cls._columns} FROM portal WHERE phone_id=$1"
-        row = await cls.db.fetchrow(q, phone_id)
+    async def get_by_phone_id(cls, phone_id: str, app_business_id: str) -> Optional["Portal"]:
+        q = f"SELECT {cls._columns} FROM portal WHERE phone_id=$1 AND app_business_id=$2"
+        row = await cls.db.fetchrow(q, phone_id, app_business_id)
         if not row:
             return None
         return cls._from_row(row)
