@@ -326,10 +326,10 @@ class EventInteractiveMessage(SerializableAttrs):
     @classmethod
     def from_dict(cls, data: dict, config: Config):
         interactive_message_obj = None
-        intereactive_message = InteractiveMessage(config=config)
+        interactive_message = InteractiveMessage(config=config)
 
         if data.get("interactive_message", {}):
-            interactive_message_obj = intereactive_message.from_dict(
+            interactive_message_obj = interactive_message.from_dict(
                 data.get("interactive_message", {}), config
             )
 
