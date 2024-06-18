@@ -107,7 +107,7 @@ class WhatsappHandler:
             # Get the error information
             message_error = wb_statuses.errors.error_data.details
 
-            portal: Portal = await Portal.get_by_phone_id(
+            portal: Portal = await Portal.get_by_app_and_phone_id(
                 phone_id=customer_phone, app_business_id=wb_business_id, create=False
             )
             if portal:
@@ -126,7 +126,7 @@ class WhatsappHandler:
         sender = data.entry.changes.value.contacts
         business_id = data.entry.id
         user: User = await User.get_by_business_id(business_id)
-        portal: Portal = await Portal.get_by_phone_id(
+        portal: Portal = await Portal.get_by_app_and_phone_id(
             phone_id=sender.wa_id, app_business_id=business_id
         )
         if data.entry.changes.value.messages.type == "reaction":
@@ -145,7 +145,7 @@ class WhatsappHandler:
         wa_id = data.entry.changes.value.statuses.recipient_id
         business_id = data.entry.id
         # Get the portal
-        portal: Portal = await Portal.get_by_phone_id(
+        portal: Portal = await Portal.get_by_app_and_phone_id(
            phone_id=wa_id, app_business_id=business_id, create=False
         )
         # Handle the read event

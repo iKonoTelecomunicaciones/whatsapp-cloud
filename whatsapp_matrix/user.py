@@ -57,7 +57,7 @@ class User(DBUser, BaseUser):
         cls.loop = bridge.loop
 
     async def get_portal_with(self, puppet: pu.Puppet, create: bool = True) -> po.Portal | None:
-        return await po.Portal.get_by_phone_id(
+        return await po.Portal.get_by_app_and_phone_id(
             phone_id=puppet.phone_id, app_business_id=puppet.app_business_id, create=create
         )
 

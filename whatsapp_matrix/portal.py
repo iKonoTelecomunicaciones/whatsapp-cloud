@@ -51,7 +51,7 @@ InviteList = Union[UserID, List[UserID]]
 
 class Portal(DBPortal, BasePortal):
     by_mxid: Dict[RoomID, "Portal"] = {}
-    by_phone_id: Dict[WhatsappPhone, "Portal"] = {}
+    by_app_and_phone_id: Dict[WhatsappPhone, "Portal"] = {}
 
     message_template: Template
     federate_rooms: bool
@@ -1015,8 +1015,8 @@ class Portal(DBPortal, BasePortal):
         if self.mxid:
             self.by_mxid[self.mxid] = self
 
-        if self.phone_id:
-            self.by_phone_id[self.phone_id] = self
+        if self.phone_id and self.app_business_id:
+            self.by_app_and_phone_id[(self.phone_id, self.app_business_id)] = self
 
         if self.is_direct:
             puppet = await self.get_dm_puppet()
@@ -1039,7 +1039,7 @@ class Portal(DBPortal, BasePortal):
         return None
 
     @classmethod
-    async def get_by_phone_id(
+    async def get_by_app_and_phone_id(
         cls,
         phone_id: WhatsappPhone,
         app_business_id: WsBusinessID,
@@ -1059,6 +1059,11 @@ class Portal(DBPortal, BasePortal):
         create: bool
             Variable that indicates if the portal it will be create if not exist.
         """
+        try:
+            # Search if the phone_id is in the cache
+            return cls.by_app_and_phone_id[(phone_id, app_business_id)]
+        except KeyError:
+            pass
         # Search if the phone_id is in the database
         portal = cast(
             cls, await super().get_by_phone_id(phone_id=phone_id, app_business_id=app_business_id)
