@@ -100,3 +100,21 @@ async def upgrade_v1(conn: Connection) -> None:
         FOREIGN KEY (whatsapp_message_id) references message (whatsapp_message_id)
         ON DELETE CASCADE"""
     )
+
+
+@upgrade_table.register(
+    description="Change primary key of portal table and reference it to message table"
+)
+async def upgrade_v2(conn: Connection) -> None:
+    await conn.execute("""ALTER TABLE message DROP CONSTRAINT FK_message_portal_phone_id""")
+
+    await conn.execute(
+        """ALTER TABLE portal
+        DROP CONSTRAINT portal_pkey,
+        ADD PRIMARY KEY (phone_id, app_business_id)"""
+    )
+
+    await conn.execute(
+        """ALTER TABLE message ADD CONSTRAINT FK_message_portal_phone_id_business_id
+        FOREIGN KEY (phone_id, app_business_id) references portal (phone_id, app_business_id)"""
+    )

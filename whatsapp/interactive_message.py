@@ -260,35 +260,38 @@ class InteractiveMessage(SerializableAttrs):
             action=action_obj,
         )
 
-    @property
-    def button_message(self) -> str:
+    def button_message(self, button_item_format: str) -> str:
         """
         Obtain a message text with the information of the interactive quick reply message.
         """
-        msg = f"""
-            {self.header.text if self.header else ''}\n
-            {self.body.text  if self.body else ''}\n
+        msg = f"""{self.header.text if self.header else ''}
+            {self.body.text  if self.body else ''}
             {self.footer.text  if self.footer else ''}
         """
-        for button in self.action.buttons:
-            msg = f"{msg}\n{button.reply.id}. {button.reply.title}"
-
+        message: str = button_item_format or ""
+        for index, button in enumerate(self.action.buttons, start=1):
+            msg += message.format(index=index, title=button.reply.title, id=button.reply.id)
         return msg
 
-    @property
-    def list_message(self) -> str:
+    def list_message(self, list_item_format: str) -> str:
         """
         Obtain a message text with the information of the interactive list message.
         """
-        msg = f"""
-            {self.header.text if self.header else ''}\n
-            {self.body.text  if self.body else ''}\n
+        msg = f"""{self.header.text if self.header else ''}
+            {self.body.text  if self.body else ''}
             {self.footer.text  if self.footer else ''}
         """
-        for section in self.action.sections:
-            for row in section.rows:
-                msg = f"{msg}\n{section.title}.\n {row.id}. {row.title}\n   {row.description}"
-
+        message: str = list_item_format or ""
+        for section_index, section in enumerate(self.action.sections, start=1):
+            for row_index, row in enumerate(section.rows, start=1):
+                msg += message.format(
+                    section_title=section.title,
+                    section_index=section_index,
+                    row_title=row.title,
+                    row_description=row.description,
+                    row_id=row.id,
+                    row_index=row_index,
+                )
         return msg
 
 
@@ -313,9 +316,10 @@ class EventInteractiveMessage(SerializableAttrs):
     @classmethod
     def from_dict(cls, data: dict):
         interactive_message_obj = None
+        interactive_message = InteractiveMessage
 
         if data.get("interactive_message", {}):
-            interactive_message_obj = InteractiveMessage.from_dict(
+            interactive_message_obj = interactive_message.from_dict(
                 data.get("interactive_message", {})
             )
 

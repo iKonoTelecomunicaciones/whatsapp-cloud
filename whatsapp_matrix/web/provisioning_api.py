@@ -589,8 +589,8 @@ class ProvisioningAPI:
         puppet: Puppet = await self._get_puppet(
             number=request.match_info["number"], app_business_id=user.app_business_id
         )
-        portal: Portal = await Portal.get_by_phone_id(
-            puppet.phone_id, app_business_id=user.app_business_id
+        portal: Portal = await Portal.get_by_app_and_phone_id(
+            phone_id=puppet.phone_id, app_business_id=user.app_business_id
         )
 
         # If the portal is not created, create it
