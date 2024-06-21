@@ -51,7 +51,7 @@ InviteList = Union[UserID, List[UserID]]
 
 class Portal(DBPortal, BasePortal):
     by_mxid: Dict[RoomID, "Portal"] = {}
-    by_app_and_phone_id: Dict[WhatsappPhone, "Portal"] = {}
+    by_app_and_phone_id: Dict[(WhatsappPhone, WsBusinessID), "Portal"] = {}
 
     message_template: Template
     federate_rooms: bool

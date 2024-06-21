@@ -268,11 +268,9 @@ class InteractiveMessage(SerializableAttrs):
             {self.body.text  if self.body else ''}
             {self.footer.text  if self.footer else ''}
         """
+        message: str = button_item_format or ""
         for index, button in enumerate(self.action.buttons, start=1):
-            message: str = button_item_format or ""
-
             msg += message.format(index=index, title=button.reply.title, id=button.reply.id)
-
         return msg
 
     def list_message(self, list_item_format: str) -> str:
@@ -283,9 +281,9 @@ class InteractiveMessage(SerializableAttrs):
             {self.body.text  if self.body else ''}
             {self.footer.text  if self.footer else ''}
         """
+        message: str = list_item_format or ""
         for section_index, section in enumerate(self.action.sections, start=1):
             for row_index, row in enumerate(section.rows, start=1):
-                message: str = list_item_format or ""
                 msg += message.format(
                     section_title=section.title,
                     section_index=section_index,
@@ -294,7 +292,6 @@ class InteractiveMessage(SerializableAttrs):
                     row_id=row.id,
                     row_index=row_index,
                 )
-
         return msg
 
 
