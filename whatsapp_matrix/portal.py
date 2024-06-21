@@ -51,7 +51,7 @@ InviteList = Union[UserID, List[UserID]]
 
 class Portal(DBPortal, BasePortal):
     by_mxid: Dict[RoomID, "Portal"] = {}
-    by_phone_id: Dict[WhatsappPhone, "Portal"] = {}
+    by_app_and_phone_id: Dict[(WhatsappPhone, WsBusinessID), "Portal"] = {}
 
     message_template: Template
     federate_rooms: bool
@@ -424,7 +424,7 @@ class Portal(DBPortal, BasePortal):
         elif whatsapp_message_type == "interactive":
             message_type = MessageType.TEXT
             if message_data.interactive.type == "button_reply":
-                attachment = message_data.interactive.button_reply.title
+                attachment = message_data.interactive.button_reply.id
             elif message_data.interactive.type == "list_reply":
                 attachment = message_data.interactive.list_reply_message
 
@@ -1015,8 +1015,8 @@ class Portal(DBPortal, BasePortal):
         if self.mxid:
             self.by_mxid[self.mxid] = self
 
-        if self.phone_id:
-            self.by_phone_id[self.phone_id] = self
+        if self.phone_id and self.app_business_id:
+            self.by_app_and_phone_id[(self.phone_id, self.app_business_id)] = self
 
         if self.is_direct:
             puppet = await self.get_dm_puppet()
@@ -1039,12 +1039,11 @@ class Portal(DBPortal, BasePortal):
         return None
 
     @classmethod
-    async def get_by_phone_id(
+    async def get_by_app_and_phone_id(
         cls,
         phone_id: WhatsappPhone,
-        *,
         app_business_id: WsBusinessID,
-        create: bool = True,
+        create: Optional[bool] = True,
     ) -> Optional["Portal"]:
         """
         Get a portal by its phone_id and save it in the cache
@@ -1062,12 +1061,13 @@ class Portal(DBPortal, BasePortal):
         """
         try:
             # Search if the phone_id is in the cache
-            return cls.by_phone_id[phone_id]
+            return cls.by_app_and_phone_id[(phone_id, app_business_id)]
         except KeyError:
             pass
-
         # Search if the phone_id is in the database
-        portal = cast(cls, await super().get_by_phone_id(phone_id))
+        portal = cast(
+            cls, await super().get_by_phone_id(phone_id=phone_id, app_business_id=app_business_id)
+        )
         if portal:
             await portal.postinit()
             return portal
@@ -1176,9 +1176,23 @@ class Portal(DBPortal, BasePortal):
 
         # Obtain the body of the message to send it to matrix
         if event_interactive_message.interactive_message.type == "button":
-            message_body = event_interactive_message.interactive_message.button_message
+            try:
+                message_body = event_interactive_message.interactive_message.button_message(
+                    button_item_format=self.config["bridge.interactive_messages.button_message"]
+                )
+            except KeyError as error:
+                self.log.error(f"Error, the key {error} does not exist in the button message")
+                await self.main_intent.send_notice(self.mxid, "Error getting the button message")
+                return
         elif event_interactive_message.interactive_message.type == "list":
-            message_body = event_interactive_message.interactive_message.list_message
+            try:
+                message_body = event_interactive_message.interactive_message.list_message(
+                    list_item_format=self.config["bridge.interactive_messages.list_message"]
+                )
+            except KeyError as error:
+                self.log.error(f"Error, the key {error} does not exist in the list message")
+                await self.main_intent.send_notice(self.mxid, "Error setting the list message")
+                return
 
         try:
             msg = TextMessageEventContent(
