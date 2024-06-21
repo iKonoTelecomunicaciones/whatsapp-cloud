@@ -5,7 +5,7 @@ from datetime import datetime
 from string import Template
 from typing import TYPE_CHECKING, Any, Dict, List, Optional, Union, cast
 
-from aiohttp import ClientConnectorError
+from aiohttp import ClientSession, ClientConnectorError
 from markdown import markdown
 from mautrix.appservice import AppService, IntentAPI
 from mautrix.bridge import BasePortal
@@ -61,7 +61,7 @@ class Portal(DBPortal, BasePortal):
 
     az: AppService
     private_chat_portal_whatsapp: bool
-    whatsapp_client: WhatsappClient
+    session: ClientSession
 
     _main_intent: Optional[IntentAPI] | None
     _create_room_lock: Lock
@@ -85,6 +85,9 @@ class Portal(DBPortal, BasePortal):
         self.homeserver_address = self.config["homeserver.public_address"]
         self.google_maps_url = self.config["bridge.whatsapp_cloud.google_maps_url"]
         self.openstreetmap_url = self.config["bridge.whatsapp_cloud.openstreetmap_url"]
+        self.whatsapp_client: WhatsappClient = WhatsappClient(
+            config=self.config, session=self.session
+        )
 
     @property
     def main_intent(self) -> IntentAPI:
@@ -118,7 +121,7 @@ class Portal(DBPortal, BasePortal):
         cls.loop = bridge.loop
         BasePortal.bridge = bridge
         cls.private_chat_portal_whatsapp = cls.config["bridge.private_chat_portal_whatsapp"]
-        cls.whatsapp_client = bridge.whatsapp_client
+        cls.session = bridge.session
 
     def send_text_message(self, message: str) -> Optional[EventID]:
         """

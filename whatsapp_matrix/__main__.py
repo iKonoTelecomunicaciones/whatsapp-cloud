@@ -1,7 +1,8 @@
+from aiohttp import ClientSession
 from mautrix.bridge import Bridge
 from mautrix.types import RoomID, UserID
 
-from whatsapp import WhatsappClient, WhatsappHandler
+from whatsapp import WhatsappHandler
 
 from . import commands
 from .config import Config
@@ -29,7 +30,7 @@ class WhatsappBridge(Bridge):
 
     config: Config
     meta: WhatsappHandler
-    whatsapp_client: WhatsappClient
+    session: ClientSession
 
     provisioning_api: ProvisioningAPI
 
@@ -42,8 +43,8 @@ class WhatsappBridge(Bridge):
 
     def prepare_bridge(self) -> None:
         self.meta = WhatsappHandler(loop=self.loop, config=self.config)
+        self.session = ClientSession(loop=self.loop)
         super().prepare_bridge()
-        self.whatsapp_client = WhatsappClient(config=self.config, loop=self.loop)
         self.az.app.add_subapp(self.config["whatsapp.webhook_path"], self.meta.app)
         cfg = self.config["bridge.provisioning"]
         self.provisioning_api = ProvisioningAPI(

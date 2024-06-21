@@ -16,12 +16,11 @@ from .types import WhatsappMediaID, WhatsappMessageID, WhatsappPhone, WsBusiness
 
 class WhatsappClient:
     log: logging.Logger = logging.getLogger("whatsapp.out")
-    http: ClientSession
 
     def __init__(
         self,
         config: Config,
-        loop: asyncio.AbstractEventLoop,
+        session: ClientSession,
         page_access_token: Optional[str] = None,
         business_id: Optional[WsBusinessID] = None,
         wb_phone_id: Optional[WSPhoneID] = None,
@@ -32,7 +31,7 @@ class WhatsappClient:
         self.page_access_token = page_access_token
         self.business_id = business_id
         self.wb_phone_id = wb_phone_id
-        self.http = ClientSession(loop=loop)
+        self.http: ClientSession = session
 
     async def send_message(
         self,
