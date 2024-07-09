@@ -125,6 +125,11 @@ class Puppet(DBPuppet, BasePuppet):
         info : Dict
             The name of the user and his phone id.
         """
+        # If the puppet already exists, validate if the name is the same as the one in the database,
+        # like user_name (WB), because the _get_displayname function will return user_name (WB) (WB)
+        # and the display_name will be updated.
+        if info.profile.name == self.display_name:
+            return False
         name = self._get_displayname(info)
         if name != self.display_name:
             self.display_name = name
