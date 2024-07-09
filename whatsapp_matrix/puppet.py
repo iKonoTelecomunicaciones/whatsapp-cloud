@@ -125,6 +125,8 @@ class Puppet(DBPuppet, BasePuppet):
         info : Dict
             The name of the user and his phone id.
         """
+        if info.profile.name == self.display_name:
+            return False
         name = self._get_displayname(info)
         if name != self.display_name:
             self.display_name = name

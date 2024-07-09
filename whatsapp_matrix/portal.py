@@ -329,7 +329,7 @@ class Portal(DBPortal, BasePortal):
         await DBMessage.delete_all(self.mxid)
         self.log.warning(f"Deleting portal {self.mxid}")
         self.by_mxid.pop(self.mxid, None)
-        self.by_phone_id.pop(self.phone_id, None)
+        self.by_app_and_phone_id.pop(self.phone_id, None)
         self.mxid = None
         await self.update()
 
@@ -508,6 +508,7 @@ class Portal(DBPortal, BasePortal):
         )
 
         puppet: Puppet = await self.get_dm_puppet()
+        await puppet.update_info(sender)
 
         # Save the message in the database
         msg = DBMessage(
