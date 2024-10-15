@@ -24,6 +24,7 @@ from mautrix.types import (
     TextMessageEventContent,
     UserID,
 )
+from asyncpg.exceptions import UniqueViolationError
 
 from whatsapp.api import WhatsappClient
 from whatsapp.data import WhatsappContacts, WhatsappEvent, WhatsappReaction
@@ -520,7 +521,18 @@ class Portal(DBPortal, BasePortal):
             app_business_id=message.entry.id,
             created_at=datetime.now(),
         )
-        await msg.insert()
+
+        try:
+            await msg.insert()
+            raise ValueError("Error saving message")
+        except UniqueViolationError as e:
+            self.log.error(
+                f"Duplicated message {whatsapp_message_id} in app business id {message.entry.id} with phone {self.phone_id} in room {self.mxid}: {e}"
+            )
+        except Exception as e:
+            self.log.error(
+                f"Error saving message {whatsapp_message_id} in room {self.mxid} in app business id {message.entry.id} with phone {self.phone_id} : {e}"
+            )
 
     async def send_data_message(
         self, content_attachment: Any, messasge_reply: DBMessage, message_type: str
