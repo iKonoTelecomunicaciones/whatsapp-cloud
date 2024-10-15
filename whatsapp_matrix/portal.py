@@ -524,7 +524,6 @@ class Portal(DBPortal, BasePortal):
 
         try:
             await msg.insert()
-            raise ValueError("Error saving message")
         except UniqueViolationError as e:
             self.log.error(
                 f"Duplicated message {whatsapp_message_id} in app business id {message.entry.id} with phone {self.phone_id} in room {self.mxid}: {e}"
