@@ -6,6 +6,7 @@ from string import Template
 from typing import TYPE_CHECKING, Any, Dict, List, Optional, Union, cast
 
 from aiohttp import ClientConnectorError, ClientSession
+from asyncpg.exceptions import UniqueViolationError
 from markdown import markdown
 from mautrix.appservice import AppService, IntentAPI
 from mautrix.bridge import BasePortal
@@ -24,7 +25,6 @@ from mautrix.types import (
     TextMessageEventContent,
     UserID,
 )
-from asyncpg.exceptions import UniqueViolationError
 
 from whatsapp.api import WhatsappClient
 from whatsapp.data import WhatsappContacts, WhatsappEvent, WhatsappReaction
