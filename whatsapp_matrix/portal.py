@@ -6,6 +6,7 @@ from string import Template
 from typing import TYPE_CHECKING, Any, Dict, List, Optional, Union, cast
 
 from aiohttp import ClientConnectorError, ClientSession
+from asyncpg.exceptions import UniqueViolationError
 from markdown import markdown
 from mautrix.appservice import AppService, IntentAPI
 from mautrix.bridge import BasePortal
@@ -520,7 +521,17 @@ class Portal(DBPortal, BasePortal):
             app_business_id=message.entry.id,
             created_at=datetime.now(),
         )
-        await msg.insert()
+
+        try:
+            await msg.insert()
+        except UniqueViolationError as e:
+            self.log.error(
+                f"Duplicated message {whatsapp_message_id} in app business id {message.entry.id} with phone {self.phone_id} in room {self.mxid}: {e}"
+            )
+        except Exception as e:
+            self.log.error(
+                f"Error saving message {whatsapp_message_id} in room {self.mxid} in app business id {message.entry.id} with phone {self.phone_id} : {e}"
+            )
 
     async def send_data_message(
         self, content_attachment: Any, messasge_reply: DBMessage, message_type: str
