@@ -18,12 +18,12 @@ from mautrix.types import (
     LocationMessageEventContent,
     MediaMessageEventContent,
     MessageEventContent,
-    MessageType,
     PowerLevelStateEventContent,
     ReactionEventContent,
     RoomID,
     TextMessageEventContent,
     UserID,
+    MessageType,
 )
 
 from whatsapp.api import WhatsappClient
@@ -40,6 +40,7 @@ from .db import WhatsappApplication as DBWhatsappApplication
 from .formatter import whatsapp_to_matrix
 from .puppet import Puppet
 from .user import User
+from .custom_msg_evt import FormMessage
 
 if TYPE_CHECKING:
     from .__main__ import WhatsappBridge
@@ -394,6 +395,7 @@ class Portal(DBPortal, BasePortal):
                 reply_message_id
             )
 
+        message_type: MessageType = None
         # Validate what kind of message is and obtain the id of the message
         if whatsapp_message_type == "text":
             message_type = MessageType.TEXT
@@ -431,6 +433,12 @@ class Portal(DBPortal, BasePortal):
                 attachment = message_data.interactive.button_reply.id
             elif message_data.interactive.type == "list_reply":
                 attachment = message_data.interactive.list_reply_message
+            elif message_data.interactive.type == "nfm_reply":
+                message_type = "m.form"
+                content_attachment = FormMessage(
+                    msgtype=message_type,
+                    form_data=message_data.interactive.nfm_reply.response_json,
+                )
 
         elif whatsapp_message_type == "button":
             message_type = MessageType.TEXT
@@ -444,7 +452,7 @@ class Portal(DBPortal, BasePortal):
         if message_type == MessageType.TEXT:
             content_attachment = TextMessageEventContent(msgtype=message_type, body=attachment)
 
-        elif message_type != MessageType.LOCATION:
+        elif isinstance(message_type, MessageType) and message_type.is_media:
             if media_id:
                 # Obtain the url of the file from Whatsapp API
                 media_data = await self.whatsapp_client.get_media(media_id=media_id)
@@ -474,7 +482,7 @@ class Portal(DBPortal, BasePortal):
                 info=FileInfo(size=len(data)),
             )
 
-        else:
+        elif message_type == MessageType.LOCATION:
             # Obtain the dat of the location
             location = message_data.location
             longitude = location.longitude
