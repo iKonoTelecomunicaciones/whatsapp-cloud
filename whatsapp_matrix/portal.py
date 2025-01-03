@@ -434,7 +434,7 @@ class Portal(DBPortal, BasePortal):
             elif message_data.interactive.type == "list_reply":
                 attachment = message_data.interactive.list_reply_message
             elif message_data.interactive.type == "nfm_reply":
-                message_type = "m.form"
+                message_type = "m.form_response"
                 content_attachment = FormMessage(
                     msgtype=message_type,
                     form_data=message_data.interactive.nfm_reply.response_json,
