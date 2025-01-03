@@ -18,12 +18,12 @@ from mautrix.types import (
     LocationMessageEventContent,
     MediaMessageEventContent,
     MessageEventContent,
+    MessageType,
     PowerLevelStateEventContent,
     ReactionEventContent,
     RoomID,
     TextMessageEventContent,
     UserID,
-    MessageType,
 )
 
 from whatsapp.api import WhatsappClient
@@ -33,6 +33,7 @@ from whatsapp.types import WhatsappMessageID, WhatsappPhone, WsBusinessID
 from whatsapp_matrix.formatter.from_matrix import matrix_to_whatsapp
 from whatsapp_matrix.formatter.from_whatsapp import whatsapp_reply_to_matrix
 
+from .custom_msg_evt import FormMessage
 from .db import Message as DBMessage
 from .db import Portal as DBPortal
 from .db import Reaction as DBReaction
@@ -40,7 +41,6 @@ from .db import WhatsappApplication as DBWhatsappApplication
 from .formatter import whatsapp_to_matrix
 from .puppet import Puppet
 from .user import User
-from .custom_msg_evt import FormMessage
 
 if TYPE_CHECKING:
     from .__main__ import WhatsappBridge

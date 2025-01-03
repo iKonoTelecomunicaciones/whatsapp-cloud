@@ -1,4 +1,5 @@
 import json
+
 from attr import dataclass, ib
 from mautrix.types import SerializableAttrs
 
