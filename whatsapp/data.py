@@ -1,3 +1,5 @@
+import json
+
 from attr import dataclass, ib
 from mautrix.types import SerializableAttrs
 
@@ -37,6 +39,29 @@ class ButtonReply(SerializableAttrs):
 
 
 @dataclass
+class NFMReply(SerializableAttrs):
+    """
+    Contains the information of the NFM reply.
+
+    - response_json: The json of the response.
+    - body: The body of the response.
+    - name: The name of the response.
+    """
+
+    response_json: dict = ib(metadata={"json": "response_json"}, default="")
+    body: str = ib(metadata={"json": "body"}, default="")
+    name: str = ib(metadata={"json": "name"}, default="")
+
+    @classmethod
+    def from_dict(cls, data: dict):
+        return cls(
+            response_json=json.loads(data.get("response_json", {})),
+            body=data.get("body", ""),
+            name=data.get("name", ""),
+        )
+
+
+@dataclass
 class ButtonMessage(SerializableAttrs):
     """
     Contains the information of the button message.
@@ -45,6 +70,7 @@ class ButtonMessage(SerializableAttrs):
 
     - text: The text of the button.
     """
+
     payload: str = ib(metadata={"json": "payload"}, default="")
     text: str = ib(metadata={"json": "text"}, default="")
 
@@ -54,6 +80,7 @@ class ButtonMessage(SerializableAttrs):
             payload=data.get("payload", ""),
             text=data.get("text", ""),
         )
+
 
 @dataclass
 class InteractiveMessage(SerializableAttrs):
@@ -68,6 +95,7 @@ class InteractiveMessage(SerializableAttrs):
     type: str = ib(metadata={"json": "type"}, default="")
     button_reply: ButtonReply = ib(metadata={"json": "button_reply"}, default={})
     list_reply: ListReply = ib(metadata={"json": "list_reply"}, default={})
+    nfm_reply: NFMReply = ib(metadata={"json": "nfm_reply"}, default={})
 
     @classmethod
     def from_dict(cls, data: dict):
@@ -75,6 +103,7 @@ class InteractiveMessage(SerializableAttrs):
             type=data.get("type", ""),
             button_reply=ButtonReply(**data.get("button_reply", {})),
             list_reply=ListReply(**data.get("list_reply", {})),
+            nfm_reply=NFMReply.from_dict(data.get("nfm_reply", {})),
         )
 
     @property

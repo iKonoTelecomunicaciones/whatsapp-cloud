@@ -762,7 +762,6 @@ class ProvisioningAPI:
             # Send the template to Whatsapp
             status, response = await portal.handle_matrix_template(
                 sender=user,
-                message=template_message,
                 event_id=msg_event_id,
                 variables=variables,
                 header_variables=header_variables,

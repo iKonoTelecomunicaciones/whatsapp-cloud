@@ -1,7 +1,7 @@
-from typing import List
+from typing import Dict, List
 
 from attr import dataclass, ib
-from mautrix.types import SerializableAttrs
+from mautrix.types import BaseMessageEventContent, SerializableAttrs
 
 
 @dataclass
@@ -327,4 +327,47 @@ class EventInteractiveMessage(SerializableAttrs):
             body=data.get("body", ""),
             interactive_message=interactive_message_obj,
             msgtype=data.get("msgtype", ""),
+        )
+
+
+@dataclass
+class FormResponseMessage(SerializableAttrs, BaseMessageEventContent):
+    msgtype: str = ib(default=None, metadata={"json": "msgtype"})
+    body: str = ib(default="", metadata={"json": "body"})
+    form_data: Dict = ib(factory=Dict, metadata={"json": "form_data"})
+
+
+@dataclass
+class FormMessageContent(SerializableAttrs):
+    template_name: str = ib(factory=str, metadata={"json": "template_name"})
+    language: str = ib(factory=str, metadata={"json": "language"})
+    body_variables: Dict[str, str] = ib(default=None, metadata={"json": "body_variables"})
+    header_variables: Dict[str, str] = ib(default=None, metadata={"json": "header_variables"})
+    button_variables: Dict[str, str] = ib(default=None, metadata={"json": "button_variables"})
+
+    @classmethod
+    def from_dict(cls, data: dict):
+        return cls(
+            template_name=data.get("template_name", ""),
+            language=data.get("language", ""),
+            body_variables=data.get("body_variables", {}),
+            header_variables=data.get("header_variables", {}),
+            button_variables=data.get("button_variables", {}),
+        )
+
+
+@dataclass
+class FormMessage(SerializableAttrs):
+    msgtype: str = ib(default=None, metadata={"json": "msgtype"})
+    body: str = ib(default="", metadata={"json": "body"})
+    form_message: FormMessageContent = ib(
+        factory=FormMessageContent, metadata={"json": "form_message"}
+    )
+
+    @classmethod
+    def from_dict(cls, data: dict):
+        return cls(
+            msgtype=data.get("msgtype", ""),
+            body=data.get("body", ""),
+            form_message=FormMessageContent.from_dict(data.get("form_message", {})),
         )

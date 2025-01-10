@@ -1,4 +1,3 @@
-import asyncio
 import json
 import logging
 import re
@@ -352,9 +351,9 @@ class WhatsappClient:
 
     async def send_template(
         self,
-        message: str,
         phone_id: WSPhoneID,
         variables: Optional[list] = [],
+        is_flow: Optional[bool] = False,
         header_variables: Optional[list] = None,
         button_variables: Optional[list] = None,
         template_name: Optional[str] = None,
@@ -433,6 +432,16 @@ class WhatsappClient:
                         "parameters": [{"type": "text", "text": button}],
                     }
                 )
+
+        if is_flow:
+            components.append(
+                {
+                    "type": "button",
+                    "sub_type": "flow",
+                    "index": "0",
+                    "parameters": [{"type": "action", "action": {}}],
+                }
+            )
 
         data = {
             "messaging_product": "whatsapp",
@@ -592,7 +601,7 @@ class WhatsappClient:
             # Search the template with the name of the template_name to save it in a text message
             if template.get("name") == template_name:
                 for component in template.get("components", []):
-                    has_variables = re.findall(r'\{\{\d+\}\}', component.get("text", ""))
+                    has_variables = re.findall(r"\{\{\d+\}\}", component.get("text", ""))
                     if component.get("type") == "HEADER":
                         if not header_variables and has_variables:
                             raise ValueError(
@@ -646,7 +655,9 @@ class WhatsappClient:
                             variables = copy(button_variables)
                         for i in range(len(component.get("buttons", []))):
                             button = component.get("buttons", [])[i]
-                            has_button_variables = re.findall(r'\{\{\d+\}\}', button.get("url", ""))
+                            has_button_variables = re.findall(
+                                r"\{\{\d+\}\}", button.get("url", "")
+                            )
                             # If the template has a url button, validate if the button has a variable or not
                             if button.get("type") == "URL":
                                 if not variables and has_button_variables:

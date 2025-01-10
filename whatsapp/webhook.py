@@ -96,11 +96,11 @@ class WhatsappHandler:
             return await self.message_event(WhatsappEvent.from_dict(data))
 
         # If the event is a read, we send a read event to matrix
-        elif wb_value.get("statuses")[0].get("status") == "read":
+        elif wb_value.get("statuses") and wb_value.get("statuses")[0].get("status") == "read":
             return await self.read_event(WhatsappEvent.from_dict(data))
 
         # If the event is an error, we send to the user the message error
-        elif wb_value.get("statuses")[0].get("status") == "failed":
+        elif wb_value.get("statuses") and wb_value.get("statuses")[0].get("status") == "failed":
             wb_statuses = WhatsappStatusesEvent.from_dict(wb_value.get("statuses")[0])
             # Get the customer phone
             customer_phone = wb_statuses.recipient_id
@@ -146,7 +146,7 @@ class WhatsappHandler:
         business_id = data.entry.id
         # Get the portal
         portal: Portal = await Portal.get_by_app_and_phone_id(
-           phone_id=wa_id, app_business_id=business_id, create=False
+            phone_id=wa_id, app_business_id=business_id, create=False
         )
         # Handle the read event
         if portal:

@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from asyncio import Lock
+from asyncio import Lock, sleep
 from datetime import datetime
 from string import Template
 from typing import TYPE_CHECKING, Any, Dict, List, Optional, Union, cast
@@ -28,7 +28,7 @@ from mautrix.types import (
 
 from whatsapp.api import WhatsappClient
 from whatsapp.data import WhatsappContacts, WhatsappEvent, WhatsappReaction
-from whatsapp.interactive_message import EventInteractiveMessage
+from whatsapp.interactive_message import EventInteractiveMessage, FormMessage, FormResponseMessage
 from whatsapp.types import WhatsappMessageID, WhatsappPhone, WsBusinessID
 from whatsapp_matrix.formatter.from_matrix import matrix_to_whatsapp
 from whatsapp_matrix.formatter.from_whatsapp import whatsapp_reply_to_matrix
@@ -114,6 +114,27 @@ class Portal(DBPortal, BasePortal):
     def is_direct(self) -> bool:
         return self.phone_id is not None
 
+    @property
+    def bridge_info_state_key(self) -> str:
+        return f"com.github.whatsapp-cloud://whatsapp-cloud/{self.phone_id}"
+
+    @property
+    def bridge_info(self) -> Dict[str, Any]:
+        return {
+            "bridgebot": self.az.bot_mxid,
+            "creator": self.main_intent.mxid,
+            "protocol": {
+                "id": "whatsapp",
+                "displayname": "Whatsapp Bridge",
+                "avatar_url": self.config["appservice.bot_avatar"],
+            },
+            "channel": {
+                "id": str(self.phone_id),
+                "displayname": None,
+                "avatar_url": None,
+            },
+        }
+
     @classmethod
     def init_cls(cls, bridge: "WhatsappBridge") -> None:
         cls.config = bridge.config
@@ -123,6 +144,63 @@ class Portal(DBPortal, BasePortal):
         BasePortal.bridge = bridge
         cls.private_chat_portal_whatsapp = cls.config["bridge.private_chat_portal_whatsapp"]
         cls.session = bridge.session
+
+    @classmethod
+    async def get_by_mxid(cls, mxid: RoomID) -> Optional["Portal"]:
+        try:
+            return cls.by_mxid[mxid]
+        except KeyError:
+            pass
+
+        portal = cast(cls, await super().get_by_mxid(mxid))
+        if portal is not None:
+            await portal.postinit()
+            return portal
+
+        return None
+
+    @classmethod
+    async def get_by_app_and_phone_id(
+        cls,
+        phone_id: WhatsappPhone,
+        app_business_id: WsBusinessID,
+        create: Optional[bool] = True,
+    ) -> Optional["Portal"]:
+        """
+        Get a portal by its phone_id and save it in the cache
+
+        Parameters
+        ----------
+        phone_id : WhatsappPhone
+            The phone id of the user.
+
+        app_business_id : WsBusinessID
+            The business id of the user.
+
+        create: bool
+            Variable that indicates if the portal it will be create if not exist.
+        """
+        try:
+            # Search if the phone_id is in the cache
+            return cls.by_app_and_phone_id[(phone_id, app_business_id)]
+        except KeyError:
+            pass
+        # Search if the phone_id is in the database
+        portal = cast(
+            cls, await super().get_by_phone_id(phone_id=phone_id, app_business_id=app_business_id)
+        )
+        if portal:
+            await portal.postinit()
+            return portal
+
+        # If the phone_id is not in the database, it is created if the variable create is True
+        if create:
+            portal = cls(phone_id=phone_id, app_business_id=app_business_id)
+            await portal.insert()
+            await portal.postinit()
+            return portal
+
+        return None
 
     def send_text_message(self, message: str) -> Optional[EventID]:
         """
@@ -302,27 +380,6 @@ class Portal(DBPortal, BasePortal):
 
         return levels
 
-    @property
-    def bridge_info_state_key(self) -> str:
-        return f"com.github.whatsapp-cloud://whatsapp-cloud/{self.phone_id}"
-
-    @property
-    def bridge_info(self) -> Dict[str, Any]:
-        return {
-            "bridgebot": self.az.bot_mxid,
-            "creator": self.main_intent.mxid,
-            "protocol": {
-                "id": "whatsapp",
-                "displayname": "Whatsapp Bridge",
-                "avatar_url": self.config["appservice.bot_avatar"],
-            },
-            "channel": {
-                "id": str(self.phone_id),
-                "displayname": None,
-                "avatar_url": None,
-            },
-        }
-
     async def delete(self) -> None:
         """
         Delete a portal
@@ -394,6 +451,7 @@ class Portal(DBPortal, BasePortal):
                 reply_message_id
             )
 
+        message_type: MessageType = None
         # Validate what kind of message is and obtain the id of the message
         if whatsapp_message_type == "text":
             message_type = MessageType.TEXT
@@ -431,6 +489,12 @@ class Portal(DBPortal, BasePortal):
                 attachment = message_data.interactive.button_reply.id
             elif message_data.interactive.type == "list_reply":
                 attachment = message_data.interactive.list_reply_message
+            elif message_data.interactive.type == "nfm_reply":
+                message_type = "m.form_response"
+                content_attachment = FormResponseMessage(
+                    msgtype=message_type,
+                    form_data=message_data.interactive.nfm_reply.response_json,
+                )
 
         elif whatsapp_message_type == "button":
             message_type = MessageType.TEXT
@@ -444,7 +508,7 @@ class Portal(DBPortal, BasePortal):
         if message_type == MessageType.TEXT:
             content_attachment = TextMessageEventContent(msgtype=message_type, body=attachment)
 
-        elif message_type != MessageType.LOCATION:
+        elif isinstance(message_type, MessageType) and message_type.is_media:
             if media_id:
                 # Obtain the url of the file from Whatsapp API
                 media_data = await self.whatsapp_client.get_media(media_id=media_id)
@@ -474,7 +538,7 @@ class Portal(DBPortal, BasePortal):
                 info=FileInfo(size=len(data)),
             )
 
-        else:
+        elif message_type == MessageType.LOCATION:
             # Obtain the dat of the location
             location = message_data.location
             longitude = location.longitude
@@ -673,6 +737,9 @@ class Portal(DBPortal, BasePortal):
         """
         if message.msgtype == "m.interactive_message":
             await self.handle_interactive_message(sender, message, event_id)
+            return
+        elif message.msgtype == "m.form":
+            await self.handle_form_message(sender, message, event_id)
             return
 
         orig_sender = sender
@@ -941,12 +1008,12 @@ class Portal(DBPortal, BasePortal):
     async def handle_matrix_template(
         self,
         sender: User,
-        message: MessageEventContent,
         event_id: EventID,
         variables: Optional[list],
         header_variables: Optional[list],
         button_variables: Optional[list],
         template_name: str,
+        is_flow: Optional[bool] = False,
         media: Optional[list] = None,
         indexes: Optional[list] = None,
         language: Optional[str] = None,
@@ -985,7 +1052,6 @@ class Portal(DBPortal, BasePortal):
         try:
             # Send the message to Whatsapp
             response = await self.whatsapp_client.send_template(
-                message=message,
                 phone_id=self.phone_id,
                 variables=variables,
                 header_variables=header_variables,
@@ -994,6 +1060,7 @@ class Portal(DBPortal, BasePortal):
                 media_data=media,
                 indexes=indexes,
                 language=language,
+                is_flow=is_flow,
             )
         except TypeError as error:
             self.log.error(f"Error sending the template: {error}")
@@ -1038,63 +1105,6 @@ class Portal(DBPortal, BasePortal):
             self._main_intent = puppet.default_mxid_intent
         elif not self.is_direct:
             self._main_intent = self.az.intent
-
-    @classmethod
-    async def get_by_mxid(cls, mxid: RoomID) -> Optional["Portal"]:
-        try:
-            return cls.by_mxid[mxid]
-        except KeyError:
-            pass
-
-        portal = cast(cls, await super().get_by_mxid(mxid))
-        if portal is not None:
-            await portal.postinit()
-            return portal
-
-        return None
-
-    @classmethod
-    async def get_by_app_and_phone_id(
-        cls,
-        phone_id: WhatsappPhone,
-        app_business_id: WsBusinessID,
-        create: Optional[bool] = True,
-    ) -> Optional["Portal"]:
-        """
-        Get a portal by its phone_id and save it in the cache
-
-        Parameters
-        ----------
-        phone_id : WhatsappPhone
-            The phone id of the user.
-
-        app_business_id : WsBusinessID
-            The business id of the user.
-
-        create: bool
-            Variable that indicates if the portal it will be create if not exist.
-        """
-        try:
-            # Search if the phone_id is in the cache
-            return cls.by_app_and_phone_id[(phone_id, app_business_id)]
-        except KeyError:
-            pass
-        # Search if the phone_id is in the database
-        portal = cast(
-            cls, await super().get_by_phone_id(phone_id=phone_id, app_business_id=app_business_id)
-        )
-        if portal:
-            await portal.postinit()
-            return portal
-
-        # If the phone_id is not in the database, it is created if the variable create is True
-        if create:
-            portal = cls(phone_id=phone_id, app_business_id=app_business_id)
-            await portal.insert()
-            await portal.postinit()
-            return portal
-
-        return None
 
     async def handle_whatsapp_error(self, message_error):
         """
@@ -1268,3 +1278,157 @@ class Portal(DBPortal, BasePortal):
             app_business_id=self.app_business_id,
             created_at=datetime.now(),
         ).insert()
+
+    async def handle_form_message(
+        self, sender: User, message: MessageEventContent, event_id: EventID
+    ):
+        """
+        Handle WhatsApp Flow message and send it to Matrix
+
+        Parameters
+        ----------
+        sender : User
+            The class that will be used to specify who sends the message.
+        message: MessageEventContent
+            The class that containt the data of the message.
+        event_id: EventID
+            The id of the event.
+        """
+
+        media_ids = []
+        indexes = []
+        form_message = FormMessage.from_dict(message)
+
+        try:
+            (
+                template_message,
+                media_type,
+                media_url,
+                template_status,
+                indexes,
+            ) = await self.whatsapp_client.get_template_message(
+                template_name=form_message.form_message.template_name,
+                body_variables=form_message.form_message.body_variables,
+                header_variables=form_message.form_message.header_variables,
+                button_variables=form_message.form_message.button_variables,
+            )
+
+        except Exception as e:
+            self.log.warning(f"Error getting the template message: {e}")
+            return
+
+        # If the template has media, download it and send it to Matrix
+        if media_type and media_url:
+            try:
+                await self.get_and_send_media(
+                    media_type=media_type, media_url=media_url, media_ids=media_ids
+                )
+            except Exception as e:
+                self.log.exception(f"Error trying to send the media message: {e}")
+                return
+
+        if template_message:
+            # Format the message to send to Matrix
+            msg = TextMessageEventContent(body=template_message, msgtype=MessageType.TEXT)
+            msg.trim_reply_fallback()
+            msg_event_id = None
+            for i in range(10):
+                try:
+                    # Send the message to Matrix
+                    self.log.debug(f"Trying to send a message to Matrix, attempt: {i + 1}")
+                    msg_event_id = await self.az.intent.send_message(self.mxid, msg)
+                    break
+
+                except Exception as e:
+                    self.log.error(f"Error after trying to send the message to Matrix: {e}")
+                    await sleep(1)
+
+            if not msg_event_id:
+                self.log.error("Failed to send the message to Matrix")
+                return
+
+        if template_status != "APPROVED":
+            self.log.error(f"Can't send the message, template status is {template_status}")
+            return
+
+        await self.handle_matrix_template(
+            sender=sender,
+            event_id=msg_event_id,
+            variables=form_message.form_message.body_variables,
+            header_variables=form_message.form_message.header_variables,
+            button_variables=form_message.form_message.button_variables,
+            template_name=form_message.form_message.template_name,
+            media=[media_type, media_ids],
+            indexes=indexes,
+            language=form_message.form_message.language,
+            is_flow=True,
+        )
+
+    async def get_and_send_media(self, media_type: str, media_url: str, media_ids: list) -> None:
+        """
+        Download the media and send it to Matrix
+
+        Parameters
+        ----------
+        portal: Portal
+            The portal of the room
+        media_type: str
+            The type of the media
+        media_url: str
+            The url of the media
+        media_ids: list
+            The list of the ids of the media that whatsapp cloud api returns
+        """
+        # Set the message type
+        message_type = (
+            MessageType.IMAGE
+            if media_type == "image"
+            else MessageType.VIDEO if media_type == "video" else MessageType.FILE
+        )
+
+        for url in media_url:
+            # Obtain the media file
+            response = await self.az.http_session.get(url)
+            data = await response.content.read()
+            filename = "file"
+            file_type = ""
+            if "Content-Type" in response.headers:
+                file_type = response.headers["Content-Type"]
+
+            # Upload the media to whatsapp cloud api to get the media_id
+            response_upload_media = await self.whatsapp_client.upload_media(
+                data_file=data,
+                messaging_product="whatsapp",
+                file_name=filename,
+                file_type=file_type,
+            )
+
+            # Check if the media was uploaded or not
+            error = response_upload_media.get("error", {}).get("message", "")
+            if error:
+                self.log.error(f"Error uploading the media to whatsapp cloud: {error}")
+                return
+
+            # Add the media_id to the list
+            media_ids.append(response_upload_media.get("id"))
+
+            try:
+                # Upload the message media to Matrix
+                attachment = await self.main_intent.upload_media(data=data)
+            except Exception as e:
+                self.log.exception(f"Message not receive, error: {e}")
+                return
+
+            # Create the content of the message media for send to Matrix
+            content_attachment = MediaMessageEventContent(
+                body=filename,
+                msgtype=message_type,
+                url=attachment,
+                info=FileInfo(size=len(data)),
+            )
+
+            # Send the message media to Matrix
+            await self.az.intent.send_message(
+                room_id=self.mxid,
+                content=content_attachment,
+            )
