@@ -55,7 +55,7 @@ class NFMReply(SerializableAttrs):
     @classmethod
     def from_dict(cls, data: dict):
         return cls(
-            response_json=json.loads(data.get("response_json", {})),
+            response_json=json.loads(data.get("response_json", "{}")),
             body=data.get("body", ""),
             name=data.get("name", ""),
         )
