@@ -20,6 +20,14 @@ class RowSection(SerializableAttrs):
     title: str = ib(metadata={"json": "title"}, default="")
     description: str = ib(metadata={"json": "description"}, default="")
 
+    @classmethod
+    def from_dict(cls, data: dict):
+        return cls(
+            id=data.get("id", ""),
+            title=data.get("title", ""),
+            description=data.get("description", ""),
+        )
+
 
 @dataclass
 class SectionsQuickReply(SerializableAttrs):
@@ -293,42 +301,6 @@ class InteractiveMessage(SerializableAttrs):
                     row_index=row_index,
                 )
         return msg
-
-
-@dataclass
-class EventInteractiveMessage(SerializableAttrs):
-    """
-    Contains the information of the interactive message.
-
-    - body: The message of the interactive message.
-
-    - interactive_message: The data of the interactive message.
-
-    - msgtype: The type of the interactive message.
-    """
-
-    body: str = ib(metadata={"json": "body"}, default="")
-    interactive_message: InteractiveMessage = ib(
-        metadata={"json": "interactive_message"}, default={}
-    )
-    msgtype: str = ib(metadata={"json": "msgtype"}, default="")
-
-    @classmethod
-    def from_dict(cls, data: dict):
-        interactive_message_obj = None
-        interactive_message = InteractiveMessage
-
-        if data.get("interactive_message", {}):
-            interactive_message_obj = interactive_message.from_dict(
-                data.get("interactive_message", {})
-            )
-
-        return cls(
-            body=data.get("body", ""),
-            interactive_message=interactive_message_obj,
-            msgtype=data.get("msgtype", ""),
-        )
-
 
 @dataclass
 class FormResponseMessage(SerializableAttrs, BaseMessageEventContent):
