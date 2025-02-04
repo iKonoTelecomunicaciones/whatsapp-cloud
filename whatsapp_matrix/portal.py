@@ -1326,7 +1326,10 @@ class Portal(DBPortal, BasePortal):
 
         if template_data["template_status"] != "APPROVED":
             self.log.error(
-                f"Can't send the message, template status is {template_data['emplate_status']}"
+                f"""
+                    Can't send the message of the template {template_data['template_name']},
+                    his template status is {template_data['template_status']}
+                """
             )
             return
 

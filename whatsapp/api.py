@@ -867,8 +867,7 @@ class WhatsappClient:
         for facebook_template in templates:
             if facebook_template.get("name") == template_name:
                 template = facebook_template
-
-        self.log.critical(f"Template: {template}")
+                break
 
         if not template:
             self.log.error(f"Template {template_name} not found")
