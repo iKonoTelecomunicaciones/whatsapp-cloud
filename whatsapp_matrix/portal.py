@@ -1276,7 +1276,7 @@ class Portal(DBPortal, BasePortal):
         variables = [
             *form_message.form_message.header_variables,
             *form_message.form_message.body_variables,
-            *form_message.form_message.button_variables
+            *form_message.form_message.button_variables,
         ]
 
         try:

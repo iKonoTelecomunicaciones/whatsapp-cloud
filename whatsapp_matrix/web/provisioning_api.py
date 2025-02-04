@@ -6,9 +6,7 @@ from json import JSONDecodeError
 from logging import Logger, getLogger
 
 from aiohttp import ClientResponse, ClientSession, web
-from mautrix.types import (
-    UserID,
-)
+from mautrix.types import UserID
 
 from whatsapp.data import WhatsappContacts
 from whatsapp.types import WsBusinessID, WSPhoneID

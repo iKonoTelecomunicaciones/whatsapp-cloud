@@ -5,13 +5,10 @@ from copy import copy
 from typing import Dict, List, Optional, Tuple
 
 from aiohttp import ClientConnectorError, ClientSession, FormData
-from mautrix.types import (
-    MessageType,
-)
+from mautrix.types import MessageType
 
 from whatsapp.data import WhatsappMediaData
 from whatsapp_matrix.config import Config
-
 
 from .types import WhatsappMediaID, WhatsappMessageID, WhatsappPhone, WsBusinessID, WSPhoneID
 
