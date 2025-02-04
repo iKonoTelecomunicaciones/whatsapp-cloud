@@ -3,7 +3,7 @@ from __future__ import annotations
 from asyncio import Lock, sleep
 from datetime import datetime
 from string import Template
-from typing import TYPE_CHECKING, Any, Dict, List, Optional, Union, cast
+from typing import TYPE_CHECKING, Any, Dict, List, Optional, Tuple, Union, cast
 
 from aiohttp import ClientConnectorError, ClientSession
 from asyncpg.exceptions import UniqueViolationError
@@ -1010,14 +1010,8 @@ class Portal(DBPortal, BasePortal):
         self,
         sender: User,
         event_id: EventID,
-        variables: Optional[list],
-        header_variables: Optional[list],
-        button_variables: Optional[list],
-        template_name: str,
-        is_flow: Optional[bool] = False,
+        template_data: Dict,
         media: Optional[list] = None,
-        indexes: Optional[list] = None,
-        language: Optional[str] = None,
     ):
         """
         It sends the template to Whatsapp and save it in the database.
@@ -1026,42 +1020,23 @@ class Portal(DBPortal, BasePortal):
         ----------
         sender : User
             The class that will be used to specify who sends the message.
-        message: str
-            The message of the template.
         event_id: EventID
             The id of the event.
-        variables:
-            The variables of the template.
-        header_variables: list
-            The variables of the header of the template.
-        button_variables: list
-            The variables of the buttons of the template.
-        template_name:
-            The name of the template.
         media: list
             A list with the type of the media and the ids of the media.
-        indexes: list
-            indexes of the buttons that contains dynamic urls.
-        language:
-            The language of the template.
+        template_data: Dict
+            A dictionary with the data of the template.
 
         Returns
         -------
             A dict with the response of the Whatsapp API.
-
         """
         try:
             # Send the message to Whatsapp
             response = await self.whatsapp_client.send_template(
                 phone_id=self.phone_id,
-                variables=variables,
-                header_variables=header_variables,
-                button_variables=button_variables,
-                template_name=template_name,
+                template_data=template_data,
                 media_data=media,
-                indexes=indexes,
-                language=language,
-                is_flow=is_flow,
             )
         except TypeError as error:
             self.log.error(f"Error sending the template: {error}")
@@ -1297,21 +1272,18 @@ class Portal(DBPortal, BasePortal):
         """
 
         media_ids = []
-        indexes = []
         form_message = FormMessage.from_dict(message)
+        variables = [
+            *form_message.form_message.header_variables,
+            *form_message.form_message.body_variables,
+            *form_message.form_message.button_variables,
+        ]
 
         try:
-            (
-                template_message,
-                media_type,
-                media_url,
-                template_status,
-                indexes,
-            ) = await self.whatsapp_client.get_template_message(
+            template_data = await self.whatsapp_client.get_template_data(
                 template_name=form_message.form_message.template_name,
-                body_variables=form_message.form_message.body_variables,
-                header_variables=form_message.form_message.header_variables,
-                button_variables=form_message.form_message.button_variables,
+                variables=variables,
+                language=form_message.form_message.language,
             )
 
         except Exception as e:
@@ -1319,18 +1291,22 @@ class Portal(DBPortal, BasePortal):
             return
 
         # If the template has media, download it and send it to Matrix
-        if media_type and media_url:
+        if template_data["media_type"] and template_data["media_url"]:
             try:
                 await self.get_and_send_media(
-                    media_type=media_type, media_url=media_url, media_ids=media_ids
+                    media_type=template_data["media_type"],
+                    media_url=template_data["media_url"],
+                    media_ids=media_ids,
                 )
             except Exception as e:
                 self.log.exception(f"Error trying to send the media message: {e}")
                 return
 
-        if template_message:
+        if template_data["template_message"]:
             # Format the message to send to Matrix
-            msg = TextMessageEventContent(body=template_message, msgtype=MessageType.TEXT)
+            msg = TextMessageEventContent(
+                body=template_data["template_message"], msgtype=MessageType.TEXT
+            )
             msg.trim_reply_fallback()
             msg_event_id = None
             for i in range(10):
@@ -1348,21 +1324,20 @@ class Portal(DBPortal, BasePortal):
                 self.log.error("Failed to send the message to Matrix")
                 return
 
-        if template_status != "APPROVED":
-            self.log.error(f"Can't send the message, template status is {template_status}")
+        if template_data["template_status"] != "APPROVED":
+            self.log.error(
+                f"""
+                    Can't send the message of the template {template_data['template_name']},
+                    his template status is {template_data['template_status']}
+                """
+            )
             return
 
         await self.handle_matrix_template(
             sender=sender,
             event_id=msg_event_id,
-            variables=form_message.form_message.body_variables,
-            header_variables=form_message.form_message.header_variables,
-            button_variables=form_message.form_message.button_variables,
-            template_name=form_message.form_message.template_name,
-            media=[media_type, media_ids],
-            indexes=indexes,
-            language=form_message.form_message.language,
-            is_flow=True,
+            template_data=template_data,
+            media=[template_data["media_type"], media_ids],
         )
 
     async def get_and_send_media(self, media_type: str, media_url: str, media_ids: list) -> None:
@@ -1405,10 +1380,13 @@ class Portal(DBPortal, BasePortal):
             )
 
             # Check if the media was uploaded or not
-            error = response_upload_media.get("error", {}).get("message", "")
+            error = response_upload_media.get("error", {})
             if error:
+                error_detail = error.get("error_data", {}).get("details", "")
                 self.log.error(f"Error uploading the media to whatsapp cloud: {error}")
-                return
+                raise ValueError(
+                    f"Error uploading the media to Whatsapp API Cloud: {error_detail}"
+                )
 
             # Add the media_id to the list
             media_ids.append(response_upload_media.get("id"))
@@ -1433,3 +1411,106 @@ class Portal(DBPortal, BasePortal):
                 room_id=self.mxid,
                 content=content_attachment,
             )
+
+    async def send_template_message(
+        self, template_message: str
+    ) -> Tuple[EventID, MessageEventContent]:
+        """
+        Send a template message to Matrix.
+
+        Parameters
+        ----------
+        template_message : str
+            The template message to send.
+
+        Returns
+        -------
+        Tuple[EventID, MessageEventContent]
+            The event id and the message content.
+        """
+        # Format the message to send to Matrix
+        msg: MessageEventContent = TextMessageEventContent(
+            body=template_message, msgtype=MessageType.TEXT
+        )
+        msg.trim_reply_fallback()
+        msg_event_id = None
+        for i in range(10):
+            try:
+                # Send the message to Matrix
+                self.log.debug(f"Trying to send a message to Matrix, attempt: {i + 1}")
+                msg_event_id = await self.az.intent.send_message(self.mxid, msg)
+                break
+
+            except Exception as e:
+                self.log.error(f"Error after trying to send the message to Matrix: {e}")
+                await sleep(1)
+
+        if not msg_event_id:
+            raise Exception("Failed to send the message to Matrix, please try again later")
+
+        return msg_event_id, msg
+
+    async def validate_and_send_template(
+        self,
+        *,
+        template_name: str,
+        variables: List[str],
+        language: str,
+        user: User,
+    ):
+        """
+        Validate if the template exists and send it to Whatsapp API Cloud and Matrix.
+
+        Parameters
+        ----------
+        template_name : str
+            The name of the template.
+        variables: List[str]
+            The list of the values of the variables that will be replaced in the template.
+        language: str
+            The language of the template.
+        user: User
+            The user that will send the template.
+        """
+        media_ids = []
+
+        template_data = await self.whatsapp_client.get_template_data(
+            template_name=template_name,
+            variables=variables,
+            language=language,
+        )
+
+        if not template_data["template_message"] and not template_data["media_type"]:
+            raise ValueError(f"The template {template_name} does not exist")
+
+        # If the template has media, download it and send it to Matrix
+        if template_data["media_type"] and template_data["media_url"]:
+            await self.get_and_send_media(
+                media_type=template_data["media_type"],
+                media_url=template_data["media_url"],
+                media_ids=media_ids,
+            )
+
+        if template_data["template_message"]:
+            msg_event_id, msg = await self.send_template_message(
+                template_message=template_data["template_message"]
+            )
+
+        if template_data["template_status"] == "APPROVED":
+            # Send the template to Whatsapp
+            return await self.handle_matrix_template(
+                sender=user,
+                event_id=msg_event_id,
+                template_data=template_data,
+                media=[template_data["media_type"], media_ids],
+            )
+
+        # Send the message to Whatsapp
+        await self.handle_matrix_message(sender=user, message=msg, event_id=msg_event_id)
+
+        data = {
+            "detail": f"The template has been sent successfully",
+            "event_id": msg_event_id,
+        }
+
+        return 200, data

@@ -2,7 +2,7 @@ import json
 import logging
 import re
 from copy import copy
-from typing import Dict, Optional
+from typing import Dict, List, Optional, Tuple
 
 from aiohttp import ClientConnectorError, ClientSession, FormData
 from mautrix.types import MessageType
@@ -352,38 +352,20 @@ class WhatsappClient:
     async def send_template(
         self,
         phone_id: WSPhoneID,
-        variables: Optional[list] = [],
-        is_flow: Optional[bool] = False,
-        header_variables: Optional[list] = None,
-        button_variables: Optional[list] = None,
-        template_name: Optional[str] = None,
+        template_data: Dict,
         media_data: Optional[list] = None,
-        indexes: Optional[list] = None,
-        language: Optional[str] = "es",
     ) -> Dict:
         """
         It sends a template message to a user.
 
         Parameters
         ----------
-        message: str
-            The message of the template.
         phone_id: WSPhoneID
             The id of the whatsapp business phone.
-        variables:
-            The variables of the template.
-        header_variables: str
-            The variables of the header of the template.
-        button_variables: list
-            The variables of the buttons of the template.
-        template_name:
-            The name of the template.
+        template_data: Dict
+            A dict with the information of the template.
         media_data: list
             The type and the ids of the media that will be sent to the user.
-        indexes: list
-            indexes of the buttons that contains dynamic urls.
-        language:
-            The language of the template.
 
         Returns
         -------
@@ -401,56 +383,39 @@ class WhatsappClient:
         self.log.debug(f"Sending template to {send_template_url}")
 
         header_parameters = []
-        body_parameters = [{"type": "text", "text": value} for value in variables]
 
         # If the template has a media, add it to the template
-        if media_data and media_data[0] and media_data[1]:
+        if isinstance(media_data, list) and len(media_data) == 2:
             media_type = media_data[0]
             media_ids = media_data[1]
 
             header_parameters = [
                 {"type": media_type, media_type: {"id": media_id}} for media_id in media_ids
             ]
-        elif header_variables:
-            header_parameters = [{"type": "text", "text": value} for value in header_variables]
 
         components = []
 
+        # Set the components of the template ( HEADER, BODY, BUTTONS ) to send it to Whatsapp API
+        # Cloud using the standard of the Whatsapp API Cloud.
         if header_parameters:
             components.append({"type": "header", "parameters": header_parameters})
 
-        if body_parameters:
-            components.append({"type": "body", "parameters": body_parameters})
+        if template_data.get("header_data"):
+            components.append(template_data.get("header_data"))
 
-        if button_variables and indexes:
-            for button in button_variables:
-                components.append(
-                    {
-                        "type": "button",
-                        "sub_type": "url",
-                        "index": indexes.pop(0),
-                        "parameters": [{"type": "text", "text": button}],
-                    }
-                )
+        if template_data.get("body_data"):
+            components.append(template_data.get("body_data"))
 
-        if is_flow:
-            components.append(
-                {
-                    "type": "button",
-                    "sub_type": "flow",
-                    "index": "0",
-                    "parameters": [{"type": "action", "action": {}}],
-                }
-            )
+        if template_data.get("buttons_data"):
+            components.append(template_data.get("buttons_data"))
 
         data = {
             "messaging_product": "whatsapp",
-            "recipient_type": "individual",
             "to": phone_id,
             "type": "template",
             "template": {
-                "name": template_name,
-                "language": {"code": language},
+                "name": template_data["template_name"],
+                "language": {"code": template_data["language"]},
                 "components": components,
             },
         }
@@ -466,13 +431,12 @@ class WhatsappClient:
 
         return await resp.json()
 
-    async def get_template_message(
+    async def get_template_data(
         self,
         template_name: str,
-        body_variables: Optional[list],
-        header_variables: Optional[list],
-        button_variables: Optional[list],
-    ) -> tuple:
+        variables: Optional[list],
+        language: str,
+    ) -> Dict:
         """
         Get a template message.
 
@@ -480,17 +444,31 @@ class WhatsappClient:
         ----------
         template_name: str
             The name of the template.
-        body_variables: Optional[list]
-            The variables of the body of the template.
-        header_variables: Optional[list]
-            The variable of the header of the template.
-        button_variables: Optional[list]
-            The variables of the buttons of the template.
+        variables: Optional[List[str]]
+            The values of the variables that will be replaced in the message template.
+        language: str
+            The language of the template
 
         Returns
         -------
-            A tuple with the message of the template and the status of the template
-            (APPROVED, REJECTED, PENDING).
+            template_data: Dict
+                A dict with the message of the template, the header, body and footer data,
+                the media type and media url if the template has media, the buttons type if
+                the template has buttons, the status of the template (APPROVED, REJECTED, PENDING)
+                and the language of the template.
+
+                example:
+                {
+                    "template_name": template_name,
+                    "template_message": "Hi, this is a template message",
+                    "media_type": "",
+                    "media_url": [],
+                    "template_status": "APPROVED",
+                    "header_data": {},
+                    "body_data": {},
+                    "buttons_data": {},
+                    "language": "en",
+                }
         """
         # Getting the message of the template using the template_name
         # Get the url of the Whatsapp Api Cloud
@@ -501,9 +479,7 @@ class WhatsappClient:
             "Authorization": f"Bearer {self.page_access_token}",
         }
 
-        params = {
-            "name": template_name,
-        }
+        params = {"name": template_name}
 
         self.log.debug(f"Getting the approved template from Whatsapp Api Cloud: {url}")
         response: ClientSession = await self.http.get(url=url, headers=headers, params=params)
@@ -516,7 +492,10 @@ class WhatsappClient:
         templates = data.get("data", [])
 
         return self.search_and_get_template_message(
-            templates, template_name, body_variables, header_variables, button_variables
+            templates=templates,
+            template_name=template_name,
+            variables=variables,
+            language=language,
         )
 
     async def upload_media(
@@ -565,12 +544,275 @@ class WhatsappClient:
         data = await response.json()
         return data
 
-    def search_and_get_template_message(
-        self, templates, template_name, body_variables, header_variables, button_variables
-    ) -> tuple:
+    def get_header_component(
+        self, component: Dict, variables: Optional[List[str]], template_data: Dict
+    ):
         """
-        Search the template in a list of templates and return a list with the template_message,
-        template_status, media_data and media_type if the template is found.
+        Get the message of the header and validate if the header has a media to save the type and
+        the url of it.
+
+        Parameters
+        ----------
+        component: Dict
+            The component of the template.
+        variables: Optional[List[str]]
+            The values of the variables that will be replaced in the message template.
+        template_data: Dict
+            The data of the template.
+        """
+        # Get the message of the header
+        self.get_message_component(
+            component=component, variables=variables, template_data=template_data
+        )
+
+        # If the header has a media, get the type and the url of the media
+        if component.get("format") in ("IMAGE", "VIDEO", "DOCUMENT"):
+            template_data["media_type"] = component.get("format", "").lower()
+            # The media url is saved in the example of the template, usually in the header_handle
+            # that is a list with the url of the media.
+            template_data["media_url"] = component.get("example", {}).get("header_handle")
+
+    def get_template_variables(
+        self,
+        component: Dict,
+        template_data: Dict,
+        message_variables: List[str],
+        variables: List[str],
+    ):
+        """
+        Get the variables of the template message, replace the values of the variables in the
+        message template and save the variables to send it to Whatsapp API Cloud.
+
+        Parameters
+        ----------
+        component: Dict
+            The component of the template.
+        template_data: Dict
+            The data of the template.
+        message_variables: List[str]
+            The variables that the message template contains.
+        variables: List[str]
+            The values of the variables that will be replaced in the message template.
+        """
+        total_message_variables = len(message_variables)
+        # Get the component type ( HEADER, BODY, FOOTER )
+        component_type = component.get("type").lower()
+        component_type_data = f"{component_type}_data"
+        # Replace the variables standar of Meta Template ( {{name}}, {{1}} ) with
+        # our standar ( {} ), this is because the variables of the template are in a list and we
+        # need to replace it in the message.
+        message = re.sub(r"{{[a-z0-9_]+}}", "{}", component.get("text"))
+        # component_example contains the example of the component, when the component has named
+        # variables, it contains the name of the variables and other information of the message.
+        component_example = component.get("example", {})
+        # named_params contains the name of the variables of the template
+        named_params = component_example.get(f"{component_type}_text_named_params")
+
+        # If the template has variables, replace the variable and add it to the message
+        template_data[
+            "template_message"
+        ] += f"{message.format(*variables[:total_message_variables])}\n"
+
+        # Save the variables of the template to send it to Whatsapp API Cloud
+        parameters_data = [
+            {"type": "text", "text": variable} for variable in variables[:total_message_variables]
+        ]
+
+        # Remove the variables of the template that were replaced
+        del variables[:total_message_variables]
+
+        # If the variables have a name ( like {{name}} ), add it to the variable
+        # This is used to send the names of the variables to Whatsapp API Cloud
+        if component_example and named_params:
+            for index, param in enumerate(named_params):
+                parameters_data[index]["parameter_name"] = param.get("param_name")
+
+        # Save the format of the component and the parameters of the template
+        template_data[component_type_data] = {
+            "type": component_type,
+            "parameters": parameters_data,
+        }
+
+    def get_message_component(
+        self, component: Dict, variables: Optional[List[str]], template_data: Dict
+    ):
+        """
+        Get the message of a component type (HEADER, BODY, FOOTER) and validate if the component
+        has variables, if the component has variables, replace the variables, add it to
+        the message and save the variables of the template to send it to Whatsapp API Cloud.
+
+        Parameters
+        ----------
+        component: Dict
+            The component of the template.
+        variables: Optional[List[str]]
+            The values of the variables that will be replaced in the message template.
+        template_data: Dict
+            The data of the template.
+        """
+        # Get the variables of the template message, each variable is in the format {{name}} or
+        # {{1}}
+        message_variables = re.findall(r"{{[a-z0-9_]+}}", component.get("text", ""))
+
+        if not variables and message_variables:
+            raise ValueError(
+                "the template has body with variables, but the variables are not provided"
+            )
+
+        # If the template has variables, replace the variable and add it to the message
+        if message_variables:
+            self.get_template_variables(
+                template_data=template_data,
+                component=component,
+                message_variables=message_variables,
+                variables=variables,
+            )
+        else:
+            template_data["template_message"] += (
+                f"{component.get('text')}\n" if component.get("text") else ""
+            )
+
+    def get_button_url(self, button: Dict, variables: List[str]) -> Tuple[str, Dict]:
+        """
+        Validate if the button has a variable, if it has, replace the variable and add it to the
+        parameter dictionary, else add the url of the button to the message.
+
+        Parameters
+        ----------
+        button: Dict
+            The button of the template.
+        variables: List[str]
+            The values of the variables that will be replaced in the button message.
+        """
+        # Get the variables of the template message, each variable is in the format {{1}}
+        has_button_variables = re.findall(r"\{\{\d+\}\}", button.get("url", ""))
+
+        if not variables and has_button_variables:
+            raise ValueError(
+                "The template has button with variable, but the variable are not provided"
+            )
+
+        # The parameter is not set by default because if the button has not a variable, the
+        # parameter is not needed
+        parameter = None
+        message = f"{button.get('text')}: "
+
+        if not has_button_variables:
+            message += f"{button.get('url')}\n"
+        else:
+            variable = variables.pop(0)
+            # Replace the variables standar of Meta Template ( {{name}}, {{1}} ) with our standar
+            # ( {} ), this is because the variables of the template are in a list and we need to
+            # replace it in the message.
+            url = re.sub(r"\{\{\d+\}\}", "{}", button.get("url"))
+            message += f"{url.format(variable)}\n"
+            parameter = {"type": "text", "text": variable}
+
+        return message, parameter
+
+    def get_buttons_component(
+        self, component: Dict, variables: Optional[List[str]], template_data: Dict
+    ):
+        """
+        Get the buttons of the template and validate the type of the button to send it to Whatsapp
+        API Cloud, if the button has a url, validate if it has a variable or not, also validate
+        others types of buttons to send the valid parameters that Whatsapp API Cloud needs.
+
+        Parameters
+        ----------
+        component: Dict
+            The component of the template.
+        variables: Optional[List[str]]
+            The values of the variables that will be replaced in the message template.
+        template_data: Dict
+            The data of the template.
+        """
+        for i, button in enumerate(component.get("buttons", [])):
+            # Get the type of the button and its text
+            button_type = button.get("type", "").lower()
+            message = f"{button.get('text')}\n"
+            # Set the default parameters of the button
+            parameter: Dict = {"type": "text", "text": button.get("text")}
+
+            match button_type:
+                case "quick_reply":
+                    parameter = {"type": "payload", "payload": button.get("text")}
+
+                case "flow" | "catalog":
+                    parameter = {"type": "action", "action": {}}
+
+                # If the template has a url button, validate if the button has a variable or not
+                case "url":
+                    message, parameter = self.get_button_url(
+                        button=button,
+                        variables=variables,
+                    )
+
+                # If the template has a button with a number, add it to the message
+                case "phone_number":
+                    message = (
+                        f"{button.get('text')}: {button.get('phone_number').replace('+', '')}\n"
+                    )
+
+            template_data["template_message"] += message
+
+            if not parameter:
+                continue
+
+            # If the button has a parameter, add it to the button
+            template_data["buttons_data"] = {
+                "type": "button",
+                "sub_type": button_type,
+                "index": i,
+                "parameters": [parameter],
+            }
+
+    def get_component_data(
+        self, component: Dict, template_data: Dict, template_variables: List[str]
+    ):
+        """
+        Validate the type of the component (HEADER, BODY, FOOTER, BUTTONS) and get the relevant
+        information of the component.
+
+        Parameters
+        ----------
+        component: Dict
+            The component of the template.
+        template_data: Dict
+            The data of the template.
+        template_variables: List[str]
+            The values of the variables that will be replaced in the message template.
+        """
+        match component.get("type"):
+            case "HEADER":
+                self.get_header_component(
+                    component=component,
+                    variables=template_variables,
+                    template_data=template_data,
+                )
+            case "BODY" | "FOOTER":
+                self.get_message_component(
+                    component=component,
+                    variables=template_variables,
+                    template_data=template_data,
+                )
+            case "BUTTONS":
+                self.get_buttons_component(
+                    component=component,
+                    variables=template_variables,
+                    template_data=template_data,
+                )
+
+    def search_and_get_template_message(
+        self,
+        templates: List[Dict],
+        template_name: str,
+        language: str,
+        variables: Optional[List[str]] = [],
+    ) -> Dict:
+        """
+        Search the template in a list of templates and return a Dict with the relevant information
+        of the template.
 
         Parameters
         ----------
@@ -578,117 +820,73 @@ class WhatsappClient:
             The list of templates.
         template_name: str
             The name of the template that will be search.
-        body_variables: Optional[list]
-            The variables of the body of the template.
-        header_variables: Optional[list]
-            The variables of the header of the template.
-        button_variables: Optional[list]
-            The variables of the buttons of the template.
+        language: str
+            The language of the template.
+        variables: Optional[List[str]]
+            The values of the variables that will be replaced in the template.
 
         Returns
         -------
-            A tuple with the message of the template, the status of the template
-            (APPROVED, REJECTED, PENDING), the media data and the media type
-            (if the template has a media header).
+            template_data: Dict
+                A dict with the message of the template, the header, body and footer data,
+                the media type and media url if the template has media, the buttons type if
+                the template has buttons, the status of the template (APPROVED, REJECTED, PENDING)
+                and the language of the template.
+
+                example:
+                {
+                    "template_name": template_name,
+                    "template_message": "Hi, this is a template message",
+                    "media_type": "",
+                    "media_url": [],
+                    "template_status": "APPROVED",
+                    "header_data": {},
+                    "body_data": {},
+                    "buttons_data": {},
+                    "language": "en",
+                }
         """
-        template_message = ""
-        template_status = ""
-        media_data = ""
-        media_type = ""
-        indexes = []
+        # Template data has the relevant information of the template, like the message,
+        # the language, the media type, the media url, the status of the template, the header data,
+        # body data, and buttons data
+        template_data = {
+            "template_name": template_name,
+            "template_message": "",
+            "media_type": "",
+            "media_url": [],
+            "template_status": "",
+            "header_data": {},
+            "body_data": {},
+            "buttons_data": {},
+            "language": language,
+        }
 
-        for template in templates:
-            # Search the template with the name of the template_name to save it in a text message
-            if template.get("name") == template_name:
-                for component in template.get("components", []):
-                    has_variables = re.findall(r"\{\{\d+\}\}", component.get("text", ""))
-                    if component.get("type") == "HEADER":
-                        if not header_variables and has_variables:
-                            raise ValueError(
-                                "the template has header with variable, but the variable are not provided"
-                            )
-                        # If the template has a header with a variable, add it to the message
-                        if header_variables and has_variables:
-                            if len(header_variables) != len(has_variables):
-                                raise ValueError(
-                                    f"the template has header with {len(has_variables)} variables,but {len(header_variables)} variables are provided."
-                                )
-                            header = re.sub(r"\{\{\d+\}\}", "{}", component.get("text"))
-                            template_message += f"{header.format(*header_variables)}\n"
+        template = None
+        template_variables = copy(variables)
 
-                        # If the header has a media, get the type and the url of the media
-                        elif component.get("format") in ("IMAGE", "VIDEO", "DOCUMENT"):
-                            media_type = component.get("format", "").lower()
-                            media_data = [
-                                url for url in component.get("example", {}).get("header_handle")
-                            ]
-
-                        # If the template has a header without a variable, add it to the message
-                        else:
-                            template_message += f"{component.get('text')}\n"
-
-                    # If the template has a body wit variables, add it to the message, else add the text
-                    elif component.get("type") == "BODY":
-                        if not body_variables and has_variables:
-                            raise ValueError(
-                                "the template has body with variables, but the variables are not provided"
-                            )
-                        if has_variables and body_variables:
-                            if len(body_variables) != len(has_variables):
-                                raise ValueError(
-                                    f"the template has body with {len(has_variables)} variables, but {len(body_variables)} variables are provided."
-                                )
-                            body = re.sub(r"\{\{\d+\}\}", "{}", component.get("text"))
-                            template_message += f"{body.format(*body_variables)}\n"
-
-                        else:
-                            template_message += f"{component.get('text')}\n"
-
-                    elif component.get("type") == "FOOTER":
-                        if component.get("text"):
-                            template_message += f"{component.get('text')}\n"
-
-                    # If the template has a button, add it to the message
-                    elif component.get("type") == "BUTTONS":
-                        variables = []
-                        if button_variables:
-                            variables = copy(button_variables)
-                        for i in range(len(component.get("buttons", []))):
-                            button = component.get("buttons", [])[i]
-                            has_button_variables = re.findall(
-                                r"\{\{\d+\}\}", button.get("url", "")
-                            )
-                            # If the template has a url button, validate if the button has a variable or not
-                            if button.get("type") == "URL":
-                                if not variables and has_button_variables:
-                                    raise ValueError(
-                                        "the template has button with variables, but the variables are not provided"
-                                    )
-                                # If the template has a button with a variable, add it to the message, else add the text
-                                if variables and has_button_variables:
-                                    indexes.append(i)
-                                    url = re.sub(r"\{\{\d+\}\}", "{}", button.get("url"))
-                                    template_message += (
-                                        f"{button.get('text')}: {url.format(variables.pop(0))}\n"
-                                    )
-
-                                else:
-                                    template_message += (
-                                        f"{button.get('text')}: {button.get('url')}\n"
-                                    )
-
-                            elif button.get("type") == "PHONE_NUMBER":
-                                # If the template has a button with a number, add it to the message
-                                template_message += f"{button.get('text')}: {button.get('phone_number').replace('+', '')}\n"
-
-                            else:
-                                # If the template has a button with a text, add it to the message
-                                template_message += f"{button.get('text')}\n"
-
-                template_status = template.get("status", "")
-                self.log.debug(
-                    f"""Getting the message of the template: {template_name},
-                    status: {template_status}, message: {template_message}"""
-                )
+        for facebook_template in templates:
+            if facebook_template.get("name") == template_name:
+                template = facebook_template
                 break
-        return template_message, media_type, media_data, template_status, indexes
+
+        if not template:
+            self.log.error(f"Template {template_name} not found")
+            raise ValueError(f"The template {template_name} does not exist")
+
+        # Search the template with the name of the template_name to save it in a text message
+        template_data["template_status"] = template.get("status", "")
+
+        # Iterate over the components of the template to get the relevant information of the
+        # template
+        for component in template.get("components", []):
+            self.get_component_data(component, template_data, template_variables)
+
+        self.log.debug(
+            f"""
+            Getting the message of the template: {template_name},
+            status: {template_data['template_status']},
+            message: {template_data['template_message']}
+            """
+        )
+
+        return template_data

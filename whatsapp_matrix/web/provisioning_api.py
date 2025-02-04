@@ -1,19 +1,12 @@
 from __future__ import annotations
 
 import json
-from asyncio import AbstractEventLoop, get_event_loop, sleep
+from asyncio import AbstractEventLoop, get_event_loop
 from json import JSONDecodeError
 from logging import Logger, getLogger
-from urllib.parse import unquote
 
 from aiohttp import ClientResponse, ClientSession, web
-from mautrix.types import (
-    FileInfo,
-    MediaMessageEventContent,
-    MessageType,
-    TextMessageEventContent,
-    UserID,
-)
+from mautrix.types import UserID
 
 from whatsapp.data import WhatsappContacts
 from whatsapp.types import WsBusinessID, WSPhoneID
@@ -621,7 +614,22 @@ class ProvisioningAPI:
         Parameters
         ----------
         request: web.Request
-            The request that contains the data of the company_app and the user.
+            The request that contains the data of:
+
+            - room_id: str
+                The room_id of the room
+            - template_name: str
+                The name of the template
+            - variables: list
+                The values of the variables of the template that Whatsapp Api Cloud needs
+            - language: str
+                The language of the template
+            - header_variables: Optional[list] (deprecated)
+                The values of the variables of the header of the template that Whatsapp Api Cloud
+                needs
+            - button_variables: Optional[list] (deprecated)
+                The values of the variables of the buttons of the template that Whatsapp Api Cloud
+                needs
 
         Returns
         -------
@@ -629,8 +637,6 @@ class ProvisioningAPI:
             The response of the request
         """
         self.log.debug("Sending the template")
-        media_ids = []
-        indexes = []
         user, data = await self._get_user_and_body(request)
 
         try:
@@ -660,6 +666,8 @@ class ProvisioningAPI:
                     headers=self._acao_headers,
                 )
 
+            variables = [*variables, *button_variables]
+
         if header_variables:
             if type(header_variables) != list:
                 return web.json_response(
@@ -667,6 +675,8 @@ class ProvisioningAPI:
                     status=400,
                     headers=self._acao_headers,
                 )
+
+            variables = [*header_variables, *variables]
 
         if not room_id:
             return web.json_response(
@@ -691,176 +701,34 @@ class ProvisioningAPI:
             )
 
         try:
-            (
-                template_message,
-                media_type,
-                media_url,
-                template_status,
-                indexes,
-            ) = await portal.whatsapp_client.get_template_message(
+            # Send the template or message (depend if the template are approved or not) to the room
+            status, response = await portal.validate_and_send_template(
                 template_name=template_name,
-                body_variables=variables,
-                header_variables=header_variables,
-                button_variables=button_variables,
+                variables=variables,
+                language=language,
+                user=user,
             )
 
+            return web.json_response(data=response, headers=self._acao_headers, status=status)
+        except ValueError as e:
+            return web.json_response(
+                data={"detail": str(e)},
+                status=400,
+                headers=self._acao_headers,
+            )
+        except IndexError as e:
+            self.log.error(f"Error replacing the variables: {e}")
+            return web.json_response(
+                data={"detail": f"Error replacing the variables, maybe some variable is missing"},
+                status=400,
+                headers=self._acao_headers,
+            )
         except Exception as e:
             self.log.error(f"Error getting the template message: {e}")
             return web.json_response(
                 data={"detail": f"Failed to get template {template_name}: {e}"},
                 status=400,
                 headers=self._acao_headers,
-            )
-
-        if not template_message and not media_type:
-            return web.json_response(
-                data={"detail": f"The template {template_name} does not exist"},
-                status=400,
-                headers=self._acao_headers,
-            )
-
-        # If the template has media, download it and send it to Matrix
-        if media_type and media_url:
-            try:
-                await self.get_and_send_media(
-                    portal=portal, media_type=media_type, media_url=media_url, media_ids=media_ids
-                )
-            except Exception as e:
-                self.log.exception(f"Error trying to send the media message: {e}")
-                return web.json_response(
-                    data={"detail": f"Error trying to send the media message: {e}"},
-                    status=400,
-                    headers=self._acao_headers,
-                )
-
-        if template_message:
-            # Format the message to send to Matrix
-            msg = TextMessageEventContent(body=template_message, msgtype=MessageType.TEXT)
-            msg.trim_reply_fallback()
-            msg_event_id = None
-            for i in range(10):
-                try:
-                    # Send the message to Matrix
-                    self.log.debug(f"Trying to send a message to Matrix, attempt: {i + 1}")
-                    msg_event_id = await portal.az.intent.send_message(portal.mxid, msg)
-                    break
-
-                except Exception as e:
-                    self.log.error(f"Error after trying to send the message to Matrix: {e}")
-                    await sleep(1)
-
-            if not msg_event_id:
-                return web.json_response(
-                    data={
-                        "detail": f"Failed to send the message to Matrix, please try again later"
-                    },
-                    status=400,
-                    headers=self._acao_headers,
-                )
-
-        if template_status == "APPROVED":
-            # Send the template to Whatsapp
-            status, response = await portal.handle_matrix_template(
-                sender=user,
-                event_id=msg_event_id,
-                variables=variables,
-                header_variables=header_variables,
-                button_variables=button_variables,
-                template_name=template_name,
-                media=[media_type, media_ids],
-                indexes=indexes,
-                language=language,
-            )
-            return web.json_response(data=response, headers=self._acao_headers, status=status)
-
-        else:
-            # Send the message to Whatsapp
-            await portal.handle_matrix_message(sender=user, message=msg, event_id=msg_event_id)
-            return web.json_response(
-                data={
-                    "detail": f"The template has been sent successfully",
-                    "event_id": msg_event_id,
-                },
-                status=200,
-                headers=self._acao_headers,
-            )
-
-    async def get_and_send_media(
-        self, portal: Portal, media_type: str, media_url: str, media_ids: list
-    ) -> None:
-        """
-        Download the media and send it to Matrix
-
-        Parameters
-        ----------
-        portal: Portal
-            The portal of the room
-        media_type: str
-            The type of the media
-        media_url: str
-            The url of the media
-        media_ids: list
-            The list of the ids of the media that whatsapp cloud api returns
-        """
-        # Set the message type
-        message_type = (
-            MessageType.IMAGE
-            if media_type == "image"
-            else MessageType.VIDEO if media_type == "video" else MessageType.FILE
-        )
-
-        for url in media_url:
-            # Obtain the media file
-            response = await self.http.get(url)
-            data = await response.content.read()
-            filename = "file"
-            file_type = ""
-            if "Content-Type" in response.headers:
-                file_type = response.headers["Content-Type"]
-
-            # Upload the media to whatsapp cloud api to get the media_id
-            response_upload_media = await portal.whatsapp_client.upload_media(
-                data_file=data,
-                messaging_product="whatsapp",
-                file_name=filename,
-                file_type=file_type,
-            )
-
-            # Check if the media was uploaded or not
-            error = response_upload_media.get("error", {}).get("message", "")
-            if error:
-                return web.json_response(
-                    data={"detail": f"Error uploading the media to whatsapp cloud: {error}"},
-                    status=400,
-                    headers=self._acao_headers,
-                )
-
-            # Add the media_id to the list
-            media_ids.append(response_upload_media.get("id"))
-
-            try:
-                # Upload the message media to Matrix
-                attachment = await portal.main_intent.upload_media(data=data)
-            except Exception as e:
-                self.log.exception(f"Message not receive, error: {e}")
-                return web.json_response(
-                    data={"detail": "Error trying to upload the media message"},
-                    status=400,
-                    headers=self._acao_headers,
-                )
-
-            # Create the content of the message media for send to Matrix
-            content_attachment = MediaMessageEventContent(
-                body=filename,
-                msgtype=message_type,
-                url=attachment,
-                info=FileInfo(size=len(data)),
-            )
-
-            # Send the message media to Matrix
-            await portal.az.intent.send_message(
-                room_id=portal.mxid,
-                content=content_attachment,
             )
 
     async def delete_template(self, request: web.Request) -> web.Response:

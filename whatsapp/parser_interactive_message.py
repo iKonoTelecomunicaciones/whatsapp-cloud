@@ -1,16 +1,18 @@
 from typing import List
+
 from attr import dataclass, ib
 from mautrix.types import SerializableAttrs
+
 from whatsapp.interactive_message import (
     ActionQuickReply,
     ButtonsQuickReply,
     DocumentQuickReply,
     HeaderQuickReply,
+    InteractiveMessage,
     MediaQuickReply,
     RowSection,
     SectionsQuickReply,
     TextReply,
-    InteractiveMessage,
 )
 
 
