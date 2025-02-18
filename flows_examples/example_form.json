@@ -1,0 +1,123 @@
+{
+    "version": "6.0",
+    "screens": [
+        {
+            "id": "RATE",
+            "title": "Feedback",
+            "data": {},
+            "terminal": true,
+            "success": true,
+            "layout": {
+                "type": "SingleColumnLayout",
+                "children": [
+                    {
+                        "type": "Form",
+                        "name": "form",
+                        "children": [
+                            {
+                                "type": "TextSubheading",
+                                "text": "Califica lo siguiente: "
+                            },
+                            {
+                                "type": "Dropdown",
+                                "label": "Efectividad del bot",
+                                "required": true,
+                                "name": "Purchase_experience",
+                                "data-source": [
+                                    {
+                                        "id": "0_Excellent",
+                                        "title": "★★★★★ • Excelente (5/5)"
+                                    },
+                                    {
+                                        "id": "1_Good",
+                                        "title": "★★★★☆ • Buena (4/5)"
+                                    },
+                                    {
+                                        "id": "2_Average",
+                                        "title": "★★★☆☆ • Más o menos (3/5)"
+                                    },
+                                    {
+                                        "id": "3_Poor",
+                                        "title": "★★☆☆☆ • Mala (2/5)"
+                                    },
+                                    {
+                                        "id": "4_Very_Poor",
+                                        "title": "★☆☆☆☆ • Muy mala (1/5)"
+                                    }
+                                ]
+                            },
+                            {
+                                "type": "Dropdown",
+                                "label": "Fechas de citas",
+                                "required": true,
+                                "name": "Delivery_and_setup",
+                                "data-source": [
+                                    {
+                                        "id": "0_Excellent",
+                                        "title": "★★★★★ • Excelente (5/5)"
+                                    },
+                                    {
+                                        "id": "1_Good",
+                                        "title": "★★★★☆ • Buena (4/5)"
+                                    },
+                                    {
+                                        "id": "2_Average",
+                                        "title": "★★★☆☆ • Más o menos (3/5)"
+                                    },
+                                    {
+                                        "id": "3_Poor",
+                                        "title": "★★☆☆☆ • Mala (2/5)"
+                                    },
+                                    {
+                                        "id": "4_Very_Poor",
+                                        "title": "★☆☆☆☆ • Muy mala (1/5)"
+                                    }
+                                ]
+                            },
+                            {
+                                "type": "Dropdown",
+                                "label": "Quedaste satisfecho?",
+                                "required": true,
+                                "name": "Customer_service",
+                                "data-source": [
+                                    {
+                                        "id": "0_Excellent",
+                                        "title": "★★★★★ • Excelente (5/5)"
+                                    },
+                                    {
+                                        "id": "1_Good",
+                                        "title": "★★★★☆ • Buena (4/5)"
+                                    },
+                                    {
+                                        "id": "2_Average",
+                                        "title": "★★★☆☆ • Más o menos (3/5)"
+                                    },
+                                    {
+                                        "id": "3_Poor",
+                                        "title": "★★☆☆☆ • Mala (2/5)"
+                                    },
+                                    {
+                                        "id": "4_Very_Poor",
+                                        "title": "★☆☆☆☆ • Muy mala (1/5)"
+                                    }
+                                ]
+                            },
+                            {
+                                "type": "Footer",
+                                "label": "Enviar",
+                                "on-click-action": {
+                                    "name": "complete",
+                                    "payload": {
+                                        "purchase_experience": "${form.Purchase_experience}",
+                                        "delivery_and_setup": "${form.Delivery_and_setup}",
+                                        "customer_service": "${form.Customer_service}"
+                                    }
+                                }
+                            }
+                        ]
+                    }
+                ]
+            }
+        }
+    ]
+}

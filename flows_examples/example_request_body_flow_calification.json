@@ -1,0 +1,104 @@
+{
+    "messaging_product": "whatsapp",
+    "to": "573185645",
+    "type": "interactive",
+    "interactive": {
+        "type": "flow",
+        "header": {
+            "type": "text",
+            "text": "Hola"
+        },
+        "body": {
+            "text": "Este es un flujo"
+        },
+        "action": {
+            "name": "flow",
+            "parameters": {
+                "flow_message_version": "3",
+                "flow_name": "Calificación atención",
+                "flow_cta": "Calificar",
+                "flow_action": "navigate",
+                "flow_action_payload": {
+                    "screen": "RATE",
+                    "data": {
+                        "countries": [
+                            {
+                                "id": "1",
+                                "title": "Colombia",
+                                "state_visibility": false,
+                                "pincode_visibility": false,
+                                "on-select-action": {
+                                    "name": "update_data",
+                                    "payload": {
+                                        "states": [
+                                            {
+                                                "id": "bogota_dc",
+                                                "title": "Bogotá",
+                                                "on-unselect-action": {
+                                                    "name": "update_data",
+                                                    "payload": {
+                                                        "pincode_visibility": false
+                                                    }
+                                                },
+                                                "on-select-action": {
+                                                    "name": "update_data",
+                                                    "payload": {
+                                                        "pincode": [
+                                                            {
+                                                                "id": "110110",
+                                                                "title": "110110"
+                                                            },
+                                                            {
+                                                                "id": "110111",
+                                                                "title": "110111"
+                                                            }
+                                                        ],
+                                                        "pincode_visibility": true
+                                                    }
+                                                }
+                                            },
+                                            {
+                                                "id": "medellin",
+                                                "title": "Medellín",
+                                                "on-unselect-action": {
+                                                    "name": "update_data",
+                                                    "payload": {
+                                                        "pincode_visibility": false
+                                                    }
+                                                },
+                                                "on-select-action": {
+                                                    "name": "update_data",
+                                                    "payload": {
+                                                        "pincode": [
+                                                            {
+                                                                "id": "050001",
+                                                                "title": "050001"
+                                                            },
+                                                            {
+                                                                "id": "050010",
+                                                                "title": "050010"
+                                                            }
+                                                        ],
+                                                        "pincode_visibility": true
+                                                    }
+                                                }
+                                            }
+                                        ],
+                                        "state_visibility": true
+                                    }
+                                },
+                                "on-unselect-action": {
+                                    "name": "update_data",
+                                    "payload": {
+                                        "state_visibility": false,
+                                        "pincode_visibility": false
+                                    }
+                                }
+                            }
+                        ]
+                    }
+                }
+            }
+        }
+    }
+}
