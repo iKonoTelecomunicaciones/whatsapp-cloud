@@ -22,7 +22,7 @@
                 "flow_cta": "Empezar",
                 "flow_action": "navigate",
                 "flow_action_payload": {
-                    "screen": "ERROR_AWARD",
+                    "screen": "AWARD_CLAIM",
                     "data": {
                         "error_types": [
                             {

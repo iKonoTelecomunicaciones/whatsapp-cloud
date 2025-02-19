@@ -2,10 +2,10 @@
     "version": "6.3",
     "screens": [
         {
-            "id": "ERROR_AWARD",
+            "id": "AWARD_CLAIM",
             "title": "Tipo de problema (1/3)",
             "data": {
-                "error_types": {
+                "claim_types": {
                     "type": "array",
                     "items": {
                         "type": "object",
@@ -20,15 +20,15 @@
                     },
                     "__example__": [
                         {
-                            "id": "error_type_1",
+                            "id": "claim_type_1",
                             "title": "No llega"
                         },
                         {
-                            "id": "error_type_2",
+                            "id": "claim_type_2",
                             "title": "Diferente"
                         },
                         {
-                            "id": "error_type_3",
+                            "id": "claim_type_3",
                             "title": "Calidad"
                         }
                     ]
@@ -136,10 +136,10 @@
                 "children": [
                     {
                         "type": "RadioButtonsGroup",
-                        "name": "select_error_award",
+                        "name": "select_claim_award",
                         "label": "Selecciona una opción:",
                         "required": true,
-                        "data-source": "${data.error_types}"
+                        "data-source": "${data.claim_types}"
                     },
                     {
                         "type": "Footer",
@@ -176,7 +176,7 @@
                                 "label": "Campaña",
                                 "required": true,
                                 "name": "campaigns",
-                                "data-source": "${screen.ERROR_AWARD.data.campaigns}"
+                                "data-source": "${screen.AWARD_CLAIM.data.campaigns}"
                             },
                             {
                                 "type": "TextSubheading",
@@ -200,7 +200,7 @@
                                 "name": "CATEGORY_SELECTION"
                             },
                             "payload": {
-                                "subcategory_visibility": "${screen.ERROR_AWARD.data.subcategory_visibility}"
+                                "subcategory_visibility": "${screen.AWARD_CLAIM.data.subcategory_visibility}"
                             }
                         }
                     }
@@ -241,7 +241,7 @@
                         "name": "category",
                         "label": "Selecciona una categoría:",
                         "required": true,
-                        "data-source": "${screen.ERROR_AWARD.data.categories}"
+                        "data-source": "${screen.AWARD_CLAIM.data.categories}"
                     },
                     {
                         "type": "RadioButtonsGroup",
@@ -257,7 +257,7 @@
                         "on-click-action": {
                             "name": "complete",
                             "payload": {
-                                "error_award": "${screen.ERROR_AWARD.data.select_error_award}",
+                                "claim_award": "${screen.AWARD_CLAIM.data.select_claim_award}",
                                 "campaign": "${screen.CAMPAIGN_SELECTION.form.campaigns}",
                                 "comment": "${screen.CAMPAIGN_SELECTION.form.comment}",
                                 "category": "${data.category}",
