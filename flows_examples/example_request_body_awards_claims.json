@@ -1,0 +1,97 @@
+{
+    "messaging_product": "whatsapp",
+    "to": "573245678941",
+    "type": "interactive",
+    "interactive": {
+        "type": "flow",
+        "header": {
+            "type": "text",
+            "text": "Bienvenido"
+        },
+        "body": {
+            "text": "Ese es nuestro formulario para reportar errores"
+        },
+        "footer": {
+            "text": "Por favor llena el formulario para atender tu solicitud"
+        },
+        "action": {
+            "name": "flow",
+            "parameters": {
+                "flow_message_version": "3",
+                "flow_name": "Premios",
+                "flow_cta": "Empezar",
+                "flow_action": "navigate",
+                "flow_action_payload": {
+                    "screen": "AWARD_CLAIM",
+                    "data": {
+                        "error_types": [
+                            {
+                                "id": "1",
+                                "title": "No llega"
+                            },
+                            {
+                                "id": "2",
+                                "title": "Diferente"
+                            },
+                            {
+                                "id": "3",
+                                "title": "Calidad"
+                            }
+                        ],
+                        "campaigns": [
+                            {
+                                "id": "campaign_1",
+                                "title": "Campaña 1"
+                            },
+                            {
+                                "id": "campaign_2",
+                                "title": "Campaña 2"
+                            },
+                            {
+                                "id": "campaign_3",
+                                "title": "Campaña 3"
+                            }
+                        ],
+                        "categories": [
+                            {
+                                "id": "category_1",
+                                "title": "Unicam"
+                            },
+                            {
+                                "id": "category_2",
+                                "title": "Constantes"
+                            },
+                            {
+                                "id": "category_3",
+                                "title": "Referidos",
+                                "on-unselect-action": {
+                                    "name": "update_data",
+                                    "payload": {
+                                        "subcategory_visibility": false
+                                    }
+                                },
+                                "on-select-action": {
+                                    "name": "update_data",
+                                    "payload": {
+                                        "subcategories": [
+                                            {
+                                                "id": "1",
+                                                "title": "1 subcategory"
+                                            },
+                                            {
+                                                "id": "2",
+                                                "title": "2 subcategory"
+                                            }
+                                        ],
+                                        "subcategory_visibility": true
+                                    }
+                                }
+                            }
+                        ],
+                        "subcategory_visibility": false
+                    }
+                }
+            }
+        }
+    }
+}

@@ -1,0 +1,26 @@
+{
+    "messaging_product": "whatsapp",
+    "to": "5735845645",
+    "type": "interactive",
+    "interactive": {
+        "type": "flow",
+        "header": {
+            "type": "text",
+            "text": "Bienvenido"
+        },
+        "body": {
+            "text": "Ese es nuestro formulario para reportar errores o inconsistencias con tus premios"
+        },
+        "footer": {
+            "text": "Por favor llena el formulario para atender tu solicitud"
+        },
+        "action": {
+            "name": "flow",
+            "parameters": {
+                "flow_message_version": "3",
+                "flow_name": "Calificacion",
+                "flow_cta": "Empezar"
+            }
+        }
+    }
+}

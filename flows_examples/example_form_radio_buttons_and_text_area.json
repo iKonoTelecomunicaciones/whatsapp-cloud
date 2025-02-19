@@ -1,0 +1,65 @@
+{
+    "version": "6.0",
+    "screens": [
+        {
+            "id": "RECOMMEND",
+            "title": "Calificación",
+            "data": {},
+            "terminal": true,
+            "success": true,
+            "layout": {
+                "type": "SingleColumnLayout",
+                "children": [
+                    {
+                        "type": "Form",
+                        "name": "form",
+
+                        "children": [
+                            {
+                                "type": "TextSubheading",
+                                "text": "¿Estas satisfecho con la atención prestada?"
+                            },
+                            {
+                                "type": "RadioButtonsGroup",
+                                "label": "Elige uno",
+                                "name": "Choose_one",
+                                "data-source": [
+                                    {
+                                        "id": "0_Yes",
+                                        "title": "Si"
+                                    },
+                                    {
+                                        "id": "1_No",
+                                        "title": "No"
+                                    }
+                                ],
+                                "required": true
+                            },
+                            {
+                                "type": "TextSubheading",
+                                "text": "¿Cómo podemos hacerlo mejor?"
+                            },
+                            {
+                                "type": "TextArea",
+                                "label": "Deja un comentario",
+                                "required": false,
+                                "name": "Leave_a_comment"
+                            },
+                            {
+                                "type": "Footer",
+                                "label": "Enviar",
+                                "on-click-action": {
+                                    "name": "complete",
+                                    "payload": {
+                                        "recommned_to_friend": "${form.Choose_one}",
+                                        "comment": "${form.Leave_a_comment}"
+                                    }
+                                }
+                            }
+                        ]
+                    }
+                ]
+            }
+        }
+    ]
+}
