@@ -196,6 +196,8 @@ class WhatsappClient:
             type_message: message_data,
         }
 
+        self.log.debug(f"Interactive message: {data}")
+
         # Send the message to the Whatsapp API
         resp = await self.http.post(send_message_url, json=data, headers=headers)
         response_data = json.loads(await resp.text())

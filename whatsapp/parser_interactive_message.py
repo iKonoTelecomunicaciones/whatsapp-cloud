@@ -1,23 +1,101 @@
+from email import header
 from typing import List
 
 from attr import dataclass, ib
 from mautrix.types import SerializableAttrs
 
 from whatsapp.interactive_message import (
-    ActionQuickReply,
     ButtonsQuickReply,
     DocumentQuickReply,
     HeaderQuickReply,
-    InteractiveMessage,
     MediaQuickReply,
     RowSection,
     SectionsQuickReply,
     TextReply,
 )
+from whatsapp_matrix.config import Config
 
 
 @dataclass
-class OptionsInteractiveMessage(InteractiveMessage):
+class ActionReply(SerializableAttrs):
+    """
+    Contains the action section of the interactive message.
+
+    - name: The name of the action message.
+    """
+
+    name: str = ib(metadata={"json": "name"}, default="")
+
+    @classmethod
+    def from_dict(cls, data: dict):
+        return cls(
+            name=data.get("name", ""),
+        )
+
+
+@dataclass
+class InteractiveMessage(SerializableAttrs):
+    """
+    Contains the information from the interactive buttons message.
+
+    - type: The type of the interactive message.
+
+    - header: The information of the interactive header message.
+
+    - body: The information of the interactive body message.
+
+    - footer: The information of the interactive footer message.
+
+    - action: The information of the interactive buttons message.
+
+    """
+
+    type: str = ib(metadata={"json": "type"}, default="")
+    header: HeaderQuickReply = ib(metadata={"json": "header"}, default={})
+    body: TextReply = ib(metadata={"json": "body"}, default={})
+    footer: TextReply = ib(metadata={"json": "footer"}, default={})
+
+    @classmethod
+    def from_dict(cls, data: dict):
+        header_obj = None
+        body_obj = None
+        footer_obj = None
+
+        if data.get("header", {}):
+            header_obj = HeaderQuickReply.from_dict(data.get("header", {}))
+
+        if data.get("body", {}):
+            body_obj = TextReply.from_dict(data.get("body", {}))
+
+        if data.get("footer", {}):
+            footer_obj = TextReply.from_dict(data.get("footer", {}))
+
+        return cls(
+            type=data.get("type", ""),
+            header=header_obj,
+            body=body_obj,
+            footer=footer_obj,
+        )
+
+    def body_message(self, config: Config) -> str:
+        """
+        Obtain a message text with the information of the interactive body message.
+
+        Params
+        ------
+        config: Config
+            The configuration of the bridge.
+
+        Returns
+        -------
+        str
+            The message text with the information of the interactive body message.
+        """
+        return None
+
+
+@dataclass
+class OptionsInteractiveMessage(SerializableAttrs):
     """
     Contains the information of the options of a section.
 
@@ -60,7 +138,7 @@ class OptionsInteractiveMessage(InteractiveMessage):
 
 
 @dataclass
-class ParserSectionInteractiveMessage(SerializableAttrs):
+class SectionInteractiveMessage(SerializableAttrs):
     """
     Contains the information of the sections of the interactive message.
 
@@ -94,35 +172,6 @@ class ParserSectionInteractiveMessage(SerializableAttrs):
             options=options_list,
             subtitle=subtitle_objt,
             title=title_objt,
-        )
-
-
-@dataclass
-class OptionsInteractiveMessage(SerializableAttrs):
-    """
-    Contains the information of the buttons of the interactive message.
-
-    - title: The title of the button.
-    - type: The type of the button.
-    """
-
-    title: str = ib(metadata={"json": "title"}, default="")
-    type: str = ib(metadata={"json": "type"}, default="")
-
-    @classmethod
-    def from_dict(cls, data: dict):
-        title_objt = None
-        type_objt = None
-
-        if data.get("title", {}):
-            title_objt = data.get("title", "")
-
-        if data.get("type", {}):
-            type_objt = data.get("type", "")
-
-        return cls(
-            title=title_objt,
-            type=type_objt,
         )
 
 
@@ -177,7 +226,84 @@ class ContentInteractiveMessage(SerializableAttrs):
 
 
 @dataclass
-class ParserInteractiveButtonsMessage(InteractiveMessage):
+class InteractiveReplyContent(ContentInteractiveMessage):
+    """
+    Contains the information of the header, body and footer of the interactive message.
+    This class is used to transform the interactive message object from menuflow rete to the
+    interactive message object of whatsapp cloud.
+
+    - header: The header of the interactive message.
+    - body: The body of the interactive message.
+    - footer: The footer of the interactive message.
+    """
+
+    header: HeaderQuickReply = ib(factory=HeaderQuickReply, metadata={"json": "header"})
+    body: TextReply = ib(factory=TextReply, metadata={"json": "body"})
+    footer: TextReply = ib(factory=TextReply, metadata={"json": "footer"})
+
+    @classmethod
+    def from_dict(cls, data: dict):
+        # We use the same structure in gupshup and cloud for send interactive messages,
+        # this structure containt the necesary information for the interactive message in the
+        # content object and the options list, so we need to transform the interactive message
+        # object from our structure to the cloud structure.
+        content_obj = super().from_dict(data)
+        body_obj = TextReply(text=content_obj.text)
+        footer_obj = TextReply(text=content_obj.caption)
+        header_obj = None
+        match content_obj.type:
+            case "image":
+                header_obj = HeaderQuickReply(
+                    type=content_obj.type,
+                    image=MediaQuickReply(link=content_obj.url),
+                )
+            case "video":
+                header_obj = HeaderQuickReply(
+                    type=content_obj.type,
+                    video=MediaQuickReply(link=content_obj.url),
+                )
+            case "document":
+                header_obj = HeaderQuickReply(
+                    type=content_obj.type,
+                    document=DocumentQuickReply(link=content_obj.url, filename="Document"),
+                )
+            case "text":
+                header_obj = HeaderQuickReply(type=content_obj.type, text=content_obj.header)
+
+        return cls(
+            header=header_obj,
+            body=body_obj,
+            footer=footer_obj,
+        )
+
+
+@dataclass
+class ActionQuickReply(ActionReply):
+    """
+    Contains the buttons of the interactive message.
+
+    - buttons: The information of the buttons in a quick reply message.
+    """
+
+    buttons: List[ButtonsQuickReply] = ib(factory=List, metadata={"json": "buttons"})
+
+    @classmethod
+    def from_dict(cls, data: dict):
+        button_obj = None
+
+        if data.get("buttons", []):
+            button_obj = [
+                ButtonsQuickReply(**button.__dict__) for button in data.get("buttons", [])
+            ]
+
+        return cls(
+            name=data.get("name", ""),
+            buttons=button_obj,
+        )
+
+
+@dataclass
+class InteractiveButtonsMessage(InteractiveMessage):
     """
     Contains the information of the interactive button message that is sended from menuflow rete.
 
@@ -185,42 +311,17 @@ class ParserInteractiveButtonsMessage(InteractiveMessage):
     menuflow rete to the interactive message object of whatsapp cloud.
     """
 
+    action: ActionQuickReply = ib(metadata={"json": "action"}, default={})
+
     @classmethod
     def from_dict(cls, data: dict):
-        header_obj = None
         action_obj = None
-        body_obj = None
-        footer_obj = None
-        content_obj = None
+        reply_content = None
         options_list = []
         interactive_type = data.get("type", "")
 
-        # We use the same structure in gupshup and cloud for send interactive messages,
-        # this structure containt the necesary information for the interactive message in the
-        # content object and the options list, so we need to transform the interactive message
-        # object from our structure to the cloud structure.
         if data.get("content", {}):
-            content_obj = ContentInteractiveMessage.from_dict(data.get("content", {}))
-            body_obj = TextReply(text=content_obj.text)
-            footer_obj = TextReply(text=content_obj.caption)
-            match content_obj.type:
-                case "text":
-                    header_obj = HeaderQuickReply(type=content_obj.type, text=content_obj.header)
-                case "image":
-                    header_obj = HeaderQuickReply(
-                        type=content_obj.type,
-                        image=MediaQuickReply(link=content_obj.url),
-                    )
-                case "video":
-                    header_obj = HeaderQuickReply(
-                        type=content_obj.type,
-                        video=MediaQuickReply(link=content_obj.url),
-                    )
-                case "document":
-                    header_obj = HeaderQuickReply(
-                        type=content_obj.type,
-                        document=DocumentQuickReply(link=content_obj.url, filename="Document"),
-                    )
+            reply_content = InteractiveReplyContent.from_dict(data.get("content", {}))
 
         if data.get("options", []):
             options_list = [
@@ -245,11 +346,149 @@ class ParserInteractiveButtonsMessage(InteractiveMessage):
 
         return cls(
             type=interactive_type,
-            header=header_obj,
-            body=body_obj,
-            footer=footer_obj,
+            header=reply_content.header,
+            body=reply_content.body,
+            footer=reply_content.footer,
             action=action_obj,
         )
+
+    def body_message(self, config: Config) -> str:
+        """
+        Obtain a message text with the information of the interactive quick reply message.
+
+        Params
+        ------
+        config: Config
+            The configuration of the bridge.
+
+        Returns
+        -------
+        str
+            The message text with the information of the interactive quick reply message.
+        """
+        button_item_format = config.get("bridge.interactive_messages.button_message")
+        msg = f"""{self.header.text if self.header else ''}
+            {self.body.text  if self.body else ''}
+            {self.footer.text  if self.footer else ''}
+        """
+        message: str = button_item_format or ""
+        for index, button in enumerate(self.action.buttons, start=1):
+            msg += message.format(index=index, title=button.reply.title, id=button.reply.id)
+        return msg
+
+
+@dataclass
+class ParameterFlowReply(SerializableAttrs):
+    """
+    Contains the parameters of the interactive flow message.
+
+    - flow_message_version: The version of the interactive flow message.
+    - flow_name: The name of the interactive flow message.
+    - flow_cta: The button to call to action of the interactive flow message.
+    - flow_action: The action of the interactive flow message.
+    - flow_token: The token of the interactive flow message.
+    - flow_action: The action of the interactive flow message (navigate, data_exchange)
+    - flow_action_payload: The payload of the interactive flow message, this payload is used when
+        the action is navigate, otherwise it is empty.
+    """
+
+    flow_message_version: str = ib(metadata={"json": "flow_message_version"}, default="")
+    flow_name: str = ib(metadata={"json": "flow_name"}, default="")
+    flow_cta: str = ib(metadata={"json": "flow_cta"}, default="")
+    flow_token: str = ib(metadata={"json": "flow_token"}, default="")
+    flow_action: str = ib(metadata={"json": "flow_action"}, default="")
+    flow_action_payload: str = ib(metadata={"json": "flow_action_payload"}, default="")
+
+    @classmethod
+    def from_dict(cls, data: dict):
+        return cls(
+            flow_message_version=data.get("message_version", "3"),
+            flow_name=data.get("name", ""),
+            flow_cta=data.get("button", ""),
+            flow_token=data.get("token", ""),
+            flow_action=data.get("action", ""),
+            flow_action_payload=data.get("payload", ""),
+        )
+
+
+@dataclass
+class ActionFlowReply(ActionReply):
+    """
+    Contains the information of the interactive flow message.
+
+    - parameters: The parameters of the interactive flow message.
+
+    """
+    parameters: ParameterFlowReply = ib(
+        factory=ParameterFlowReply, metadata={"json": "parameters"}
+    )
+
+    @classmethod
+    def from_dict(cls, data: dict):
+
+        parameters_obj: ParameterFlowReply = ParameterFlowReply.from_dict(
+            data.get("parameters", {})
+        )
+
+        return cls(
+            name=data.get("name", "flow"),
+            parameters=parameters_obj,
+        )
+
+
+@dataclass
+class InteractiveFlowMessage(InteractiveMessage):
+    """
+    Contains the information of the interactive flow message that is sended from menuflow rete.
+
+    It is a subclass of InteractiveMessage that transforms the interactive message object from
+    menuflow rete to the interactive message object of whatsapp cloud.
+
+    - action: The information of the interactive flow message.
+    """
+
+    action: ActionFlowReply = ib(metadata={"json": "action"}, default={})
+
+    @classmethod
+    def from_dict(cls, data: dict):
+        action_obj = None
+        reply_content = None
+        interactive_type = data.get("type", "")
+
+        if data.get("content", {}):
+            reply_content = InteractiveReplyContent.from_dict(data.get("content", {}))
+
+        if data.get("action"):
+            action_obj: ActionFlowReply = ActionFlowReply.from_dict(data.get("action", {}))
+
+        return cls(
+            type=interactive_type,
+            header=reply_content.header,
+            body=reply_content.body,
+            footer=reply_content.footer,
+            action=action_obj,
+        )
+
+    def body_message(self, config: Config) -> str:
+        """
+        Obtain a message text with the information of the interactive flow message.
+
+        Params
+        ------
+        config: Config
+            The configuration of the bridge.
+
+        Returns
+        -------
+        str
+            The message text with the information of the interactive flow message.
+        """
+        msg = f"""{self.header.text if self.header else ''}
+            {self.body.text  if self.body else ''}
+            {self.footer.text  if self.footer else ''}
+            {self.action.name}
+        """
+        return msg
 
 
 @dataclass
@@ -281,13 +520,44 @@ class GlobalButtons(SerializableAttrs):
         )
 
 
-class ParserInteractiveListsMessage(InteractiveMessage):
+@dataclass
+class ActionListReply(ActionReply):
+    """
+    Contains the buttons of the interactive message.
+
+    - button: The name of the button in a list message.
+
+    - sections: The information of the sections in a list message.
+    """
+
+    button: str = ib(metadata={"json": "button"}, default="")
+    sections: List[SectionsQuickReply] = ib(factory=List, metadata={"json": "sections"})
+
+    @classmethod
+    def from_dict(cls, data: dict):
+        section_obj = None
+
+        if data.get("sections", []):
+            section_obj = [
+                SectionsQuickReply(**section.__dict__) for section in data.get("sections", [])
+            ]
+
+        return cls(
+            name=data.get("name", ""),
+            button=data.get("button", ""),
+            sections=section_obj,
+        )
+
+
+class InteractiveListsMessage(InteractiveMessage):
     """
     Contains the information of the interactive list message that is sended from menuflow rete.
 
     It is a subclass of InteractiveMessage that transforms the interactive message object from
     menuflow rete to the interactive message object of whatsapp cloud.
     """
+
+    action: ActionListReply = ib(metadata={"json": "action"}, default={})
 
     @classmethod
     def from_dict(cls, data: dict):
@@ -296,7 +566,7 @@ class ParserInteractiveListsMessage(InteractiveMessage):
         body_obj = None
         global_button_obj = None
         global_button = ""
-        list_items = [ParserSectionInteractiveMessage]
+        list_items = [SectionInteractiveMessage]
         interactive_type = data.get("type", "")
 
         if data.get("title", ""):
@@ -311,7 +581,7 @@ class ParserInteractiveListsMessage(InteractiveMessage):
 
         if data.get("items", []):
             list_items = [
-                ParserSectionInteractiveMessage(**item.__dict__) for item in data.get("items", [])
+                SectionInteractiveMessage(**item.__dict__) for item in data.get("items", [])
             ]
 
         if global_button and list_items:
@@ -337,7 +607,7 @@ class ParserInteractiveListsMessage(InteractiveMessage):
                     SectionsQuickReply.from_dict({"title": item.title, "rows": list_rows})
                 )
 
-            action_obj = ActionQuickReply.from_dict(
+            action_obj = ActionListReply.from_dict(
                 {"button": global_button, "sections": list_section}
             )
 
@@ -347,6 +617,38 @@ class ParserInteractiveListsMessage(InteractiveMessage):
             body=body_obj,
             action=action_obj,
         )
+
+    def body_message(self, config: Config) -> str:
+        """
+        Obtain a message text with the information of the interactive list message.
+
+        Params
+        ------
+        config: Config
+            The configuration of the bridge.
+
+        Returns
+        -------
+        str
+            The message text with the information of the interactive list message.
+        """
+        list_item_format = config.get("bridge.interactive_messages.list_message")
+        msg = f"""{self.header.text if self.header else ''}
+            {self.body.text  if self.body else ''}
+            {self.footer.text  if self.footer else ''}
+        """
+        message: str = list_item_format or ""
+        for section_index, section in enumerate(self.action.sections, start=1):
+            for row_index, row in enumerate(section.rows, start=1):
+                msg += message.format(
+                    section_title=section.title,
+                    section_index=section_index,
+                    row_title=row.title,
+                    row_description=row.description,
+                    row_id=row.id,
+                    row_index=row_index,
+                )
+        return msg
 
 
 @dataclass
@@ -370,18 +672,16 @@ class EventInteractiveMessage(SerializableAttrs):
     @classmethod
     def from_dict(cls, data: dict):
         interactive_message_obj: (
-            ParserInteractiveButtonsMessage | ParserInteractiveListsMessage | InteractiveMessage
+            InteractiveButtonsMessage | InteractiveListsMessage | InteractiveMessage
         ) = None
         interactive_message_data = data.get("interactive_message", {})
 
-        if interactive_message_data.get("content", {}):
-            interactive_message_obj = ParserInteractiveButtonsMessage.from_dict(
-                interactive_message_data
-            )
-        elif interactive_message_data.get("global_buttons", {}):
-            interactive_message_obj = ParserInteractiveListsMessage.from_dict(
-                interactive_message_data
-            )
+        if interactive_message_data.get("type") == "quick_reply":
+            interactive_message_obj = InteractiveButtonsMessage.from_dict(interactive_message_data)
+        elif interactive_message_data.get("type") == "list":
+            interactive_message_obj = InteractiveListsMessage.from_dict(interactive_message_data)
+        elif interactive_message_data.get("type") == "flow":
+            interactive_message_obj = InteractiveFlowMessage.from_dict(interactive_message_data)
         elif interactive_message_data:
             interactive_message_obj = InteractiveMessage.from_dict(interactive_message_data)
 

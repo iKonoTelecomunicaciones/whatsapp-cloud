@@ -1115,7 +1115,7 @@ class Portal(DBPortal, BasePortal):
         FileNotFoundError:
             Show an error if the message is not in the correct format.
         """
-        message_body = None
+        self.log.debug(f"Handling interactive message: {message}")
         # Get the data of the interactive message
         event_interactive_message: EventInteractiveMessage = EventInteractiveMessage.from_dict(
             message
@@ -1176,24 +1176,13 @@ class Portal(DBPortal, BasePortal):
             await self.az.intent.send_message(self.mxid, content_attachment)
 
         # Obtain the body of the message to send it to matrix
-        if event_interactive_message.interactive_message.type == "button":
-            try:
-                message_body = event_interactive_message.interactive_message.button_message(
-                    button_item_format=self.config["bridge.interactive_messages.button_message"]
-                )
-            except KeyError as error:
-                self.log.error(f"Error, the key {error} does not exist in the button message")
-                await self.main_intent.send_notice(self.mxid, "Error getting the button message")
-                return
-        elif event_interactive_message.interactive_message.type == "list":
-            try:
-                message_body = event_interactive_message.interactive_message.list_message(
-                    list_item_format=self.config["bridge.interactive_messages.list_message"]
-                )
-            except KeyError as error:
-                self.log.error(f"Error, the key {error} does not exist in the list message")
-                await self.main_intent.send_notice(self.mxid, "Error setting the list message")
-                return
+        try:
+            message_body: str = event_interactive_message.interactive_message.body_message(config=self.config)
+        except KeyError as error:
+            message_type: str = event_interactive_message.interactive_message.type
+            self.log.error(f"Error, the key {error} does not exist in the {message_type} message")
+            await self.main_intent.send_notice(self.mxid, f"Error getting the {message_type} message")
+            return
 
         try:
             msg = TextMessageEventContent(

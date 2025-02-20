@@ -14,7 +14,7 @@ from mautrix.types import (
 )
 from mautrix.util.logging import TraceLogger
 
-from whatsapp.interactive_message import InteractiveMessage
+from whatsapp.parser_interactive_message import InteractiveMessage
 
 from ..db import Message
 from ..puppet import Puppet
