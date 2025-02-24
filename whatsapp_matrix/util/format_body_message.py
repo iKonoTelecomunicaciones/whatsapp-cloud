@@ -1,5 +1,4 @@
 import yaml
-import html
 
 
 def format_body_message(yaml_message: dict) -> str:

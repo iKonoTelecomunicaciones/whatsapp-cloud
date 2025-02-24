@@ -27,8 +27,7 @@ from mautrix.types import (
 
 from whatsapp.api import WhatsappClient
 from whatsapp.data import WhatsappContacts, WhatsappEvent, WhatsappReaction
-from whatsapp.interactive_message import FormMessage, FormResponseMessage
-from whatsapp.interactive_message import EventInteractiveMessage
+from whatsapp.interactive_message import EventInteractiveMessage, FormMessage, FormResponseMessage
 from whatsapp.types import WhatsappMessageID, WhatsappPhone, WsBusinessID
 from whatsapp_matrix.formatter.from_matrix import matrix_to_whatsapp
 from whatsapp_matrix.formatter.from_whatsapp import whatsapp_reply_to_matrix

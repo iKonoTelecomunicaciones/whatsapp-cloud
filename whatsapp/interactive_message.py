@@ -1,7 +1,7 @@
 from typing import Dict, List
 
 from attr import dataclass, ib
-from mautrix.types import BaseMessageEventContent, SerializableAttrs, MessageType, Obj
+from mautrix.types import BaseMessageEventContent, MessageType, Obj, SerializableAttrs
 
 
 @dataclass
