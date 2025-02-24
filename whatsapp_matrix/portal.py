@@ -7,7 +7,6 @@ from typing import TYPE_CHECKING, Any, Dict, List, Optional, Tuple, Union, cast
 
 from aiohttp import ClientConnectorError, ClientSession
 from asyncpg.exceptions import UniqueViolationError
-from markdown import markdown
 from mautrix.appservice import AppService, IntentAPI
 from mautrix.bridge import BasePortal
 from mautrix.types import (
@@ -29,10 +28,11 @@ from mautrix.types import (
 from whatsapp.api import WhatsappClient
 from whatsapp.data import WhatsappContacts, WhatsappEvent, WhatsappReaction
 from whatsapp.interactive_message import FormMessage, FormResponseMessage
-from whatsapp.parser_interactive_message import EventInteractiveMessage
+from whatsapp.interactive_message import EventInteractiveMessage
 from whatsapp.types import WhatsappMessageID, WhatsappPhone, WsBusinessID
 from whatsapp_matrix.formatter.from_matrix import matrix_to_whatsapp
 from whatsapp_matrix.formatter.from_whatsapp import whatsapp_reply_to_matrix
+from whatsapp_matrix.util import format_body_message, json_to_yaml
 
 from .db import Message as DBMessage
 from .db import Portal as DBPortal
@@ -1093,6 +1093,57 @@ class Portal(DBPortal, BasePortal):
         """
         await self.main_intent.send_notice(self.mxid, message_error)
 
+    async def send_interactive_message_to_matrix(
+        self,
+        event_interactive_message: EventInteractiveMessage,
+    ) -> None:
+        """
+        Send interactive message to Matrix
+
+        Parameters
+        ----------
+        event_interactive_message : EventInteractiveMessage
+            The class that containt the data of the interactive message.
+
+        """
+        # Obtain the body of the message to send it to matrix
+        try:
+            message: str = event_interactive_message.interactive_message.body_message()
+            yaml_message: str = json_to_yaml(message)
+        except KeyError as error:
+            message_type: str = event_interactive_message.interactive_message.type
+            self.log.error(f"Error, the key {error} does not exist in the {message_type} message")
+            await self.main_intent.send_notice(
+                self.mxid, f"Error getting the {message_type} message"
+            )
+            return
+
+        message_type = "m.interactive_message"
+
+        if event_interactive_message.interactive_message.type == "form":
+            message_type = "m.form"
+
+        formated_body = format_body_message(yaml_message=yaml_message)
+
+        try:
+            msg = TextMessageEventContent(
+                body=f"```YAML\n{yaml_message}\n```",
+                msgtype=message_type,
+                formatted_body=formated_body,
+                format="org.matrix.custom.html",
+            )
+        except AttributeError as error:
+            self.log.error(error)
+            await self.main_intent.send_notice(
+                self.mxid, f"Error sending the interactive message: {error}"
+            )
+            return
+
+        msg.trim_reply_fallback()
+
+        # Send message in matrix format
+        await self.az.intent.send_message(self.mxid, msg)
+
     async def handle_interactive_message(
         self, sender: User, message: MessageEventContent, event_id: EventID
     ) -> None:
@@ -1115,7 +1166,7 @@ class Portal(DBPortal, BasePortal):
         FileNotFoundError:
             Show an error if the message is not in the correct format.
         """
-        message_body = None
+        self.log.debug(f"Handling interactive message: {message}")
         # Get the data of the interactive message
         event_interactive_message: EventInteractiveMessage = EventInteractiveMessage.from_dict(
             message
@@ -1131,18 +1182,9 @@ class Portal(DBPortal, BasePortal):
             header_type = event_interactive_message.interactive_message.header.type
 
         if header_type and header_type in ("image", "document", "video"):
-            file_name = ""
-            # Validate the type of the header media of the interactive message to send it to Matrix
-            if header_type == "image":
-                message_type = MessageType.IMAGE
-                url = event_interactive_message.interactive_message.header.image.link
-            elif header_type == "document":
-                message_type = MessageType.FILE
-                url = event_interactive_message.interactive_message.header.document.link
-                file_name = event_interactive_message.interactive_message.header.document.filename
-            elif header_type == "video":
-                message_type = MessageType.VIDEO
-                url = event_interactive_message.interactive_message.header.video.link
+            file_name = event_interactive_message.interactive_message.header.get_media_name()
+            url = event_interactive_message.interactive_message.header.get_media_link()
+            message_type = event_interactive_message.interactive_message.header.get_media_type()
 
             if not url:
                 self.log.error(
@@ -1175,44 +1217,9 @@ class Portal(DBPortal, BasePortal):
             # Send message in matrix format
             await self.az.intent.send_message(self.mxid, content_attachment)
 
-        # Obtain the body of the message to send it to matrix
-        if event_interactive_message.interactive_message.type == "button":
-            try:
-                message_body = event_interactive_message.interactive_message.button_message(
-                    button_item_format=self.config["bridge.interactive_messages.button_message"]
-                )
-            except KeyError as error:
-                self.log.error(f"Error, the key {error} does not exist in the button message")
-                await self.main_intent.send_notice(self.mxid, "Error getting the button message")
-                return
-        elif event_interactive_message.interactive_message.type == "list":
-            try:
-                message_body = event_interactive_message.interactive_message.list_message(
-                    list_item_format=self.config["bridge.interactive_messages.list_message"]
-                )
-            except KeyError as error:
-                self.log.error(f"Error, the key {error} does not exist in the list message")
-                await self.main_intent.send_notice(self.mxid, "Error setting the list message")
-                return
-
-        try:
-            msg = TextMessageEventContent(
-                body=message_body,
-                msgtype=MessageType.TEXT,
-                formatted_body=markdown(message_body.replace("\n", "<br>")),
-                format=Format.HTML,
-            )
-        except AttributeError as error:
-            self.log.error(error)
-            await self.main_intent.send_notice(
-                self.mxid, f"Error sending the interactive message: {error}"
-            )
-            return
-
-        msg.trim_reply_fallback()
-
-        # Send message in matrix format
-        await self.az.intent.send_message(self.mxid, msg)
+        await self.send_interactive_message_to_matrix(
+            event_interactive_message=event_interactive_message
+        )
 
         try:
             # Send the interactive message in whatsapp format
@@ -1241,7 +1248,9 @@ class Portal(DBPortal, BasePortal):
             return
         except ValueError as error:
             self.log.error(f"Error sending the interactive message: {error}")
-            await self.main_intent.send_notice(self.mxid, f"Error sending the interactive message")
+            await self.main_intent.send_notice(
+                self.mxid, f"Error sending the interactive message: {error}"
+            )
             return
 
         # Save the message in the database
