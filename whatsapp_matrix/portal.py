@@ -444,6 +444,7 @@ class Portal(DBPortal, BasePortal):
         whatsapp_message_id = message_data.id
         file_name = ""
         media_id = None
+        caption = None
         messasge_reply = {}
 
         if message_data.context and not whatsapp_message_type == "interactive":
@@ -461,10 +462,12 @@ class Portal(DBPortal, BasePortal):
         elif whatsapp_message_type == "image":
             message_type = MessageType.IMAGE
             media_id = message_data.image.id
+            caption = message_data.image.caption
 
         elif whatsapp_message_type == "video":
             message_type = MessageType.VIDEO
             media_id = message_data.video.id
+            caption = message_data.video.caption
 
         elif whatsapp_message_type == "audio":
             message_type = MessageType.AUDIO
@@ -571,6 +574,7 @@ class Portal(DBPortal, BasePortal):
             content_attachment=content_attachment,
             messasge_reply=messasge_reply,
             message_type=message_type,
+            caption=caption,
         )
 
         puppet: Puppet = await self.get_dm_puppet()
@@ -599,7 +603,11 @@ class Portal(DBPortal, BasePortal):
             )
 
     async def send_data_message(
-        self, content_attachment: Any, messasge_reply: DBMessage, message_type: str
+        self,
+        content_attachment: Any,
+        messasge_reply: DBMessage,
+        message_type: str,
+        caption: str | None,
     ) -> EventID:
         """
         Obtain the data of the message that will be send to Matrix and validate if the message has
@@ -617,7 +625,12 @@ class Portal(DBPortal, BasePortal):
 
         else:
             # Send the message to Matrix
-            return await self.main_intent.send_message(self.mxid, content_attachment)
+            event_mxid = await self.main_intent.send_message(self.mxid, content_attachment)
+
+            if caption:
+                await self.main_intent.send_notice(self.mxid, caption)
+
+            return event_mxid
 
     async def handle_whatsapp_read(self, message_id: WhatsappMessageID) -> None:
         """

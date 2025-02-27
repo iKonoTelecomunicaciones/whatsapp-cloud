@@ -129,6 +129,30 @@ class WhatsappReaction(SerializableAttrs):
 
 
 @dataclass
+class WhatsappMedia(SerializableAttrs):
+    """
+    Contain the image of the customer.
+
+    - id: The id of the image.
+
+    - hash: The hash of the image.
+
+    - mime_type: The type of the image.
+    """
+
+    id: str = ib(metadata={"json": "id"}, default="")
+    hash: str = ib(metadata={"json": "sha256"}, default="")
+    mime_type: str = ib(metadata={"json": "mime_type"}, default="")
+
+    @classmethod
+    def from_dict(cls, data: dict):
+        return cls(
+            id=data.get("id", ""),
+            hash=data.get("sha256", ""),
+            mime_type=data.get("mime_type", ""),
+        )
+
+@dataclass
 class WhatsappLocation(SerializableAttrs):
     """
     Contain the location of the customer.
@@ -152,7 +176,7 @@ class WhatsappLocation(SerializableAttrs):
 
 
 @dataclass
-class WhatsappDocument(SerializableAttrs):
+class WhatsappDocument(WhatsappMedia):
     """
     Contain the document of the customer.
 
@@ -165,9 +189,6 @@ class WhatsappDocument(SerializableAttrs):
     - filename: The name of the document.
     """
 
-    id: str = ib(metadata={"json": "id"}, default="")
-    hash: str = ib(metadata={"json": "sha256"}, default="")
-    mime_type: str = ib(metadata={"json": "mime_type"}, default="")
     filename: str = ib(metadata={"json": "filename"}, default=False)
 
     @classmethod
@@ -181,7 +202,7 @@ class WhatsappDocument(SerializableAttrs):
 
 
 @dataclass
-class WhatsappSticker(SerializableAttrs):
+class WhatsappSticker(WhatsappMedia):
     """
     Contain the sticker of the customer.
 
@@ -194,9 +215,6 @@ class WhatsappSticker(SerializableAttrs):
     - animated: If the sticker is animated.
     """
 
-    id: str = ib(metadata={"json": "id"}, default="")
-    hash: str = ib(metadata={"json": "sha256"}, default="")
-    mime_type: str = ib(metadata={"json": "mime_type"}, default="")
     animated: bool = ib(metadata={"json": "voice"}, default=False)
 
     @classmethod
@@ -210,7 +228,7 @@ class WhatsappSticker(SerializableAttrs):
 
 
 @dataclass
-class WhatsappAudio(SerializableAttrs):
+class WhatsappAudio(WhatsappMedia):
     """
     Contain the audio of the customer.
 
@@ -223,9 +241,6 @@ class WhatsappAudio(SerializableAttrs):
     - voice: If the audio is a voice note.
     """
 
-    id: str = ib(metadata={"json": "id"}, default="")
-    hash: str = ib(metadata={"json": "sha256"}, default="")
-    mime_type: str = ib(metadata={"json": "mime_type"}, default="")
     voice: bool = ib(metadata={"json": "voice"}, default=False)
 
     @classmethod
@@ -239,7 +254,7 @@ class WhatsappAudio(SerializableAttrs):
 
 
 @dataclass
-class WhatsappVideo(SerializableAttrs):
+class WhatsappVideo(WhatsappMedia):
     """
     Contain the video of the customer.
 
@@ -249,10 +264,7 @@ class WhatsappVideo(SerializableAttrs):
 
     - mime_type: The type of the video.
     """
-
-    id: str = ib(metadata={"json": "id"}, default="")
-    hash: str = ib(metadata={"json": "sha256"}, default="")
-    mime_type: str = ib(metadata={"json": "mime_type"}, default="")
+    caption: str | None = ib(metadata={"json": "caption"}, default=None)
 
     @classmethod
     def from_dict(cls, data: dict):
@@ -260,11 +272,11 @@ class WhatsappVideo(SerializableAttrs):
             id=data.get("id", ""),
             hash=data.get("sha256", ""),
             mime_type=data.get("mime_type", ""),
+            caption=data.get("caption", None),
         )
 
-
 @dataclass
-class WhatsappImage(SerializableAttrs):
+class WhatsappImage(WhatsappMedia):
     """
     Contain the image of the customer.
 
@@ -274,10 +286,7 @@ class WhatsappImage(SerializableAttrs):
 
     - mime_type: The type of the image.
     """
-
-    id: str = ib(metadata={"json": "id"}, default="")
-    hash: str = ib(metadata={"json": "sha256"}, default="")
-    mime_type: str = ib(metadata={"json": "mime_type"}, default="")
+    caption: str | None = ib(metadata={"json": "caption"}, default=None)
 
     @classmethod
     def from_dict(cls, data: dict):
@@ -285,6 +294,7 @@ class WhatsappImage(SerializableAttrs):
             id=data.get("id", ""),
             hash=data.get("sha256", ""),
             mime_type=data.get("mime_type", ""),
+            caption=data.get("caption", None)
         )
 
 
