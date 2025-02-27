@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from asyncio import Lock, sleep
 from datetime import datetime
+import json
 from string import Template
 from typing import TYPE_CHECKING, Any, Dict, List, Optional, Tuple, Union, cast
 
@@ -27,7 +28,12 @@ from mautrix.types import (
 
 from whatsapp.api import WhatsappClient
 from whatsapp.data import WhatsappContacts, WhatsappEvent, WhatsappReaction
-from whatsapp.interactive_message import EventInteractiveMessage, FormMessage, FormResponseMessage
+from whatsapp.interactive_message import (
+    EventInteractiveMessage,
+    FormMessage,
+    FormResponseMessage,
+    InteractiveResponseMessage,
+)
 from whatsapp.types import WhatsappMessageID, WhatsappPhone, WsBusinessID
 from whatsapp_matrix.formatter.from_matrix import matrix_to_whatsapp
 from whatsapp_matrix.formatter.from_whatsapp import whatsapp_reply_to_matrix
@@ -405,6 +411,44 @@ class Portal(DBPortal, BasePortal):
         """
         await self.update()
 
+    def get_message_content(
+        self,
+        json_message: str,
+        message_type: str,
+        response_message: FormResponseMessage | InteractiveResponseMessage,
+        message: str | None = None,
+    ) -> FormResponseMessage | InteractiveResponseMessage:
+        """
+        Obtain the content of the message that will be send to Matrix
+
+        Parameters
+        ----------
+        message : str
+            Message that does not need to be converted to yaml.
+        json_message : str
+            Message that is in json format and will be converted to yaml.
+        message_type : str
+            The type of the message, like interactive, form, etc.
+        response_message: FormResponseMessage | InteractiveResponseMessage
+            The class that containt the data of the response message.
+        """
+        yaml_message: str = json_to_yaml(json_message)
+        formated_body = format_body_message(yaml_message=yaml_message)
+        body_message = f"```YAML\n{yaml_message}\n```"
+
+        if message:
+            body_message = message + body_message
+            formated_body = message + formated_body
+
+        content = response_message(
+            body=body_message,
+            msgtype=message_type,
+            formatted_body=formated_body,
+            format="org.matrix.custom.html",
+        )
+
+        return content
+
     async def handle_whatsapp_message(
         self, source: User, message: WhatsappEvent, sender: WhatsappContacts
     ) -> None:
@@ -491,10 +535,14 @@ class Portal(DBPortal, BasePortal):
                 attachment = message_data.interactive.list_reply_message
             elif message_data.interactive.type == "nfm_reply":
                 message_type = "m.form_response"
-                content_attachment = FormResponseMessage(
-                    msgtype=message_type,
-                    form_data=message_data.interactive.nfm_reply.response_json,
+                message_form = message_data.interactive.nfm_reply.response_json
+                content_attachment = self.get_message_content(
+                    json_message=message_form,
+                    message_type=message_type,
+                    response_message=FormResponseMessage,
                 )
+                content_attachment.form_data = message_form
+                content_attachment.visible = message_form.get("visible", True)
 
         elif whatsapp_message_type == "button":
             message_type = MessageType.TEXT
@@ -739,7 +787,7 @@ class Portal(DBPortal, BasePortal):
             await self.handle_interactive_message(sender, message, event_id)
             return
         elif message.msgtype == "m.form":
-            await self.handle_form_message(sender, message, event_id)
+            await self.handle_form_message(sender, message)
             return
 
         orig_sender = sender
@@ -1108,7 +1156,6 @@ class Portal(DBPortal, BasePortal):
         # Obtain the body of the message to send it to matrix
         try:
             message: str = event_interactive_message.interactive_message.body_message()
-            yaml_message: str = json_to_yaml(message)
         except KeyError as error:
             message_type: str = event_interactive_message.interactive_message.type
             self.log.error(f"Error, the key {error} does not exist in the {message_type} message")
@@ -1122,15 +1169,14 @@ class Portal(DBPortal, BasePortal):
         if event_interactive_message.interactive_message.type == "form":
             message_type = "m.form"
 
-        formated_body = format_body_message(yaml_message=yaml_message)
-
         try:
-            msg = TextMessageEventContent(
-                body=f"```YAML\n{yaml_message}\n```",
-                msgtype=message_type,
-                formatted_body=formated_body,
-                format="org.matrix.custom.html",
+            msg = self.get_message_content(
+                json_message=message,
+                message_type=message_type,
+                response_message=InteractiveResponseMessage,
             )
+            msg.interactive_message = event_interactive_message.interactive_message
+
         except AttributeError as error:
             self.log.error(error)
             await self.main_intent.send_notice(
@@ -1263,8 +1309,71 @@ class Portal(DBPortal, BasePortal):
             created_at=datetime.now(),
         ).insert()
 
+    async def send_form_message_to_matrix(
+        self, template_data: dict, form_message: FormMessage, media_ids: list
+    ) -> EventID:
+        """
+        Send the form message to Matrix and return the event id
+
+        Parameters
+        ----------
+        form_message: FormMessage
+            The class that containt the data of the form message.
+        template_data: dict
+            A dictionary with the data of the template.
+        media_ids: list
+            A list with the ids of the media.
+
+        Returns
+        -------
+            The event id of the message.
+        """
+        # If the template has media, download it and send it to Matrix
+        if template_data["media_type"] and template_data["media_url"]:
+            try:
+                await self.get_and_send_media(
+                    media_type=template_data["media_type"],
+                    media_url=template_data["media_url"],
+                    media_ids=media_ids,
+                )
+            except Exception as e:
+                self.log.exception(f"Error trying to send the media message: {e}")
+                return
+
+        if template_data["template_message"]:
+            if form_message.form_message.flow_action:
+                msg = self.get_message_content(
+                    message=template_data["template_message"],
+                    json_message=form_message.form_message.flow_action.serialize(),
+                    message_type="m.form",
+                    response_message=FormResponseMessage,
+                )
+            else:
+                # Format the message to send to Matrix
+                msg = TextMessageEventContent(
+                    body=template_data["template_message"], msgtype=MessageType.TEXT
+                )
+
+            msg.form_data = form_message.form_message.flow_action.serialize()
+            msg.trim_reply_fallback()
+            msg_event_id = None
+            for i in range(10):
+                try:
+                    # Send the message to Matrix
+                    self.log.debug(f"Trying to send a message to Matrix, attempt: {i + 1}")
+                    msg_event_id = await self.az.intent.send_message(self.mxid, msg)
+                    break
+
+                except Exception as e:
+                    self.log.error(f"Error after trying to send the message to Matrix: {e}")
+                    await sleep(1)
+
+            return msg_event_id
+
+        return
+
     async def handle_form_message(
-        self, sender: User, message: MessageEventContent, event_id: EventID
+        self, sender: User, message: MessageEventContent
     ):
         """
         Handle WhatsApp Flow message and send it to Matrix
@@ -1275,8 +1384,6 @@ class Portal(DBPortal, BasePortal):
             The class that will be used to specify who sends the message.
         message: MessageEventContent
             The class that containt the data of the message.
-        event_id: EventID
-            The id of the event.
         """
 
         media_ids = []
@@ -1292,45 +1399,12 @@ class Portal(DBPortal, BasePortal):
                 template_name=form_message.form_message.template_name,
                 variables=variables,
                 language=form_message.form_message.language,
+                parameter_actions=[form_message.form_message.flow_action.serialize()],
             )
 
         except Exception as e:
             self.log.warning(f"Error getting the template message: {e}")
             return
-
-        # If the template has media, download it and send it to Matrix
-        if template_data["media_type"] and template_data["media_url"]:
-            try:
-                await self.get_and_send_media(
-                    media_type=template_data["media_type"],
-                    media_url=template_data["media_url"],
-                    media_ids=media_ids,
-                )
-            except Exception as e:
-                self.log.exception(f"Error trying to send the media message: {e}")
-                return
-
-        if template_data["template_message"]:
-            # Format the message to send to Matrix
-            msg = TextMessageEventContent(
-                body=template_data["template_message"], msgtype=MessageType.TEXT
-            )
-            msg.trim_reply_fallback()
-            msg_event_id = None
-            for i in range(10):
-                try:
-                    # Send the message to Matrix
-                    self.log.debug(f"Trying to send a message to Matrix, attempt: {i + 1}")
-                    msg_event_id = await self.az.intent.send_message(self.mxid, msg)
-                    break
-
-                except Exception as e:
-                    self.log.error(f"Error after trying to send the message to Matrix: {e}")
-                    await sleep(1)
-
-            if not msg_event_id:
-                self.log.error("Failed to send the message to Matrix")
-                return
 
         if template_data["template_status"] != "APPROVED":
             self.log.error(
@@ -1338,6 +1412,25 @@ class Portal(DBPortal, BasePortal):
                     Can't send the message of the template {template_data['template_name']},
                     his template status is {template_data['template_status']}
                 """
+            )
+            self.az.intent.send_notice(
+                room_id=self.mxid,
+                text=f"""
+                    Can't send the message of the template {template_data['template_name']},
+                    because his template status is {template_data['template_status']}
+                """,
+            )
+            return
+
+        msg_event_id: EventID | None = await self.send_form_message_to_matrix(
+            template_data=template_data, form_message=form_message, media_ids=media_ids
+        )
+
+        if not msg_event_id:
+            self.log.error("Failed to send the message to Matrix")
+            self.az.intent.send_notice(
+                self.mxid,
+                "Failed to send the message to Matrix, please see the logs for more information",
             )
             return
 
@@ -1465,6 +1558,7 @@ class Portal(DBPortal, BasePortal):
         variables: List[str],
         language: str,
         user: User,
+        flow_action: dict | None = None,
     ):
         """
         Validate if the template exists and send it to Whatsapp API Cloud and Matrix.
@@ -1479,13 +1573,17 @@ class Portal(DBPortal, BasePortal):
             The language of the template.
         user: User
             The user that will send the template.
+        flow_action: dict | None
+            The flow action of the template, if the template has a flow with dynamic content.
         """
         media_ids = []
+        parameter_actions = [flow_action]
 
         template_data = await self.whatsapp_client.get_template_data(
             template_name=template_name,
             variables=variables,
             language=language,
+            parameter_actions=parameter_actions
         )
 
         if not template_data["template_message"] and not template_data["media_type"]:

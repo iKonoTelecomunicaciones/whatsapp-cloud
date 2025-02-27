@@ -1,7 +1,7 @@
-from typing import Dict, List
+from typing import List
 
 from attr import dataclass, ib
-from mautrix.types import BaseMessageEventContent, MessageType, Obj, SerializableAttrs
+from mautrix.types import TextMessageEventContent, MessageType, Obj, SerializableAttrs
 
 
 @dataclass
@@ -710,9 +710,6 @@ class InteractiveFlowMessage(InteractiveMessage):
         """
         payload: dict = {}
 
-        if self.action.parameters.flow_action_payload:
-            payload = self.action.parameters.flow_action_payload.serialize()
-
         msg: dict[str, str | list] = {
             "header": self.header.text if self.header else "",
             "body": self.body.text if self.body else "",
@@ -721,10 +718,13 @@ class InteractiveFlowMessage(InteractiveMessage):
                 "parameters": {
                     "flow_name": self.action.parameters.flow_name,
                     "button": self.action.parameters.flow_cta,
-                    "payload": payload,
                 }
             },
         }
+
+        if self.action.parameters.flow_action_payload:
+            payload = self.action.parameters.flow_action_payload.serialize()
+            msg["flow"]["parameters"]["payload"] = payload
 
         return msg
 
@@ -925,19 +925,19 @@ class EventInteractiveMessage(SerializableAttrs):
 
 
 @dataclass
-class FormResponseMessage(SerializableAttrs, BaseMessageEventContent):
-    msgtype: str = ib(default=None, metadata={"json": "msgtype"})
-    body: str = ib(default="", metadata={"json": "body"})
-    form_data: Dict = ib(factory=Dict, metadata={"json": "form_data"})
+class FormResponseMessage(TextMessageEventContent):
+    form_data: dict = ib(factory=dict, metadata={"json": "form_data"})
+    visible: bool = ib(default=True, metadata={"json": "visible"})
 
 
 @dataclass
 class FormMessageContent(SerializableAttrs):
     template_name: str = ib(factory=str, metadata={"json": "template_name"})
     language: str = ib(factory=str, metadata={"json": "language"})
-    body_variables: Dict[str, str] = ib(default=None, metadata={"json": "body_variables"})
-    header_variables: Dict[str, str] = ib(default=None, metadata={"json": "header_variables"})
-    button_variables: Dict[str, str] = ib(default=None, metadata={"json": "button_variables"})
+    body_variables: dict[str, str] = ib(default=None, metadata={"json": "body_variables"})
+    header_variables: dict[str, str] = ib(default=None, metadata={"json": "header_variables"})
+    button_variables: dict[str, str] = ib(default=None, metadata={"json": "button_variables"})
+    flow_action: dict = ib(default=None, metadata={"json": "flow_action"})
 
     @classmethod
     def from_dict(cls, data: dict):
@@ -947,6 +947,7 @@ class FormMessageContent(SerializableAttrs):
             body_variables=data.get("body_variables", {}),
             header_variables=data.get("header_variables", {}),
             button_variables=data.get("button_variables", {}),
+            flow_action=data.get("flow_action", {}),
         )
 
 
@@ -965,3 +966,7 @@ class FormMessage(SerializableAttrs):
             body=data.get("body", ""),
             form_message=FormMessageContent.from_dict(data.get("form_message", {})),
         )
+
+@dataclass
+class InteractiveResponseMessage(TextMessageEventContent):
+    interactive_message: dict = ib(factory=dict, metadata={"json": "interactive_message"})
