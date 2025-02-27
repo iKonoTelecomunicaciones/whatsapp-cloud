@@ -630,6 +630,9 @@ class ProvisioningAPI:
             - button_variables: Optional[list] (deprecated)
                 The values of the variables of the buttons of the template that Whatsapp Api Cloud
                 needs
+            - flow_action: JSON | None
+                The content action of the flow, if the template is a flow template and the flow
+                has dynamic values
 
         Returns
         -------
@@ -646,6 +649,7 @@ class ProvisioningAPI:
             language = data.get("language", "es")
             header_variables = data.get("header_variables") or None
             button_variables = data.get("button_variables") or None
+            flow_action = data.get("flow_action") or None
 
         except KeyError as e:
             raise self._missing_key_error(e)
@@ -705,6 +709,7 @@ class ProvisioningAPI:
             status, response = await portal.validate_and_send_template(
                 template_name=template_name,
                 variables=variables,
+                flow_action=flow_action,
                 language=language,
                 user=user,
             )

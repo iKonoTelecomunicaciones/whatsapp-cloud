@@ -352,11 +352,11 @@
                                 "purchase_experience": "${screen.RATE.form.Purchase_experience}",
                                 "delivery_and_setup": "${screen.RATE.form.Delivery_and_setup}",
                                 "customer_service": "${screen.RATE.form.Customer_service}",
-                                "countries": "${data.countries}",
-                                "states": "${data.states}",
-                                "pincode": "${data.pincode}",
-                                "state_visibility": "${data.state_visibility}",
-                                "pincode_visibility": "${data.pincode_visibility}"
+                                "countries": "${form.countries}",
+                                "states": "${form.states}",
+                                "pincode": "${form.pincode}",
+                                "state_visibility": "${form.state_visibility}",
+                                "pincode_visibility": "${form.pincode_visibility}"
                             }
                         }
                     }

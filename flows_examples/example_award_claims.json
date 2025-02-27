@@ -257,11 +257,11 @@
                         "on-click-action": {
                             "name": "complete",
                             "payload": {
-                                "claim_award": "${screen.AWARD_CLAIM.data.select_claim_award}",
+                                "claim_award": "${screen.AWARD_CLAIM.form.select_claim_award}",
                                 "campaign": "${screen.CAMPAIGN_SELECTION.form.campaigns}",
                                 "comment": "${screen.CAMPAIGN_SELECTION.form.comment}",
-                                "category": "${data.category}",
-                                "subcategory": "${data.subcategory}"
+                                "category": "${form.category}",
+                                "subcategory": "${form.subcategory}"
                             }
                         }
                     }

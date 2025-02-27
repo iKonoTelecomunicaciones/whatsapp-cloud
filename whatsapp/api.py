@@ -196,6 +196,8 @@ class WhatsappClient:
             type_message: message_data,
         }
 
+        self.log.debug(f"Interactive message: {data}")
+
         # Send the message to the Whatsapp API
         resp = await self.http.post(send_message_url, json=data, headers=headers)
         response_data = json.loads(await resp.text())
@@ -436,6 +438,7 @@ class WhatsappClient:
         template_name: str,
         variables: Optional[list],
         language: str,
+        parameter_actions: list = [],
     ) -> Dict:
         """
         Get a template message.
@@ -448,6 +451,8 @@ class WhatsappClient:
             The values of the variables that will be replaced in the message template.
         language: str
             The language of the template
+        parameter_actions: list
+            Actions that the template needs to be send, usually is used to send flows
 
         Returns
         -------
@@ -496,6 +501,7 @@ class WhatsappClient:
             template_name=template_name,
             variables=variables,
             language=language,
+            parameter_actions=parameter_actions,
         )
 
     async def upload_media(
@@ -711,7 +717,11 @@ class WhatsappClient:
         return message, parameter
 
     def get_buttons_component(
-        self, component: Dict, variables: Optional[List[str]], template_data: Dict
+        self,
+        component: Dict,
+        variables: Optional[List[str]],
+        template_data: Dict,
+        parameter_actions: list,
     ):
         """
         Get the buttons of the template and validate the type of the button to send it to Whatsapp
@@ -726,6 +736,8 @@ class WhatsappClient:
             The values of the variables that will be replaced in the message template.
         template_data: Dict
             The data of the template.
+        parameter_actions: list
+            Actions that the template needs to be send, usually is used to send flows
         """
         for i, button in enumerate(component.get("buttons", [])):
             # Get the type of the button and its text
@@ -738,7 +750,16 @@ class WhatsappClient:
                 case "quick_reply":
                     parameter = {"type": "payload", "payload": button.get("text")}
 
-                case "flow" | "catalog":
+                case "flow":
+                    parameter = {"type": "action", "action": {}}
+
+                    if parameter_actions:
+                        parameter = {
+                            "type": "action",
+                            "action": {"flow_action_data": parameter_actions.pop()},
+                        }
+
+                case "catalog":
                     parameter = {"type": "action", "action": {}}
 
                 # If the template has a url button, validate if the button has a variable or not
@@ -768,7 +789,11 @@ class WhatsappClient:
             }
 
     def get_component_data(
-        self, component: Dict, template_data: Dict, template_variables: List[str]
+        self,
+        component: Dict,
+        template_data: Dict,
+        template_variables: List[str],
+        parameter_actions: list,
     ):
         """
         Validate the type of the component (HEADER, BODY, FOOTER, BUTTONS) and get the relevant
@@ -782,6 +807,8 @@ class WhatsappClient:
             The data of the template.
         template_variables: List[str]
             The values of the variables that will be replaced in the message template.
+        parameter_actions: list
+            Actions that the template needs to be send, usually is used to send flows
         """
         match component.get("type"):
             case "HEADER":
@@ -801,6 +828,7 @@ class WhatsappClient:
                     component=component,
                     variables=template_variables,
                     template_data=template_data,
+                    parameter_actions=parameter_actions,
                 )
 
     def search_and_get_template_message(
@@ -809,6 +837,7 @@ class WhatsappClient:
         template_name: str,
         language: str,
         variables: Optional[List[str]] = [],
+        parameter_actions: list = [],
     ) -> Dict:
         """
         Search the template in a list of templates and return a Dict with the relevant information
@@ -824,6 +853,8 @@ class WhatsappClient:
             The language of the template.
         variables: Optional[List[str]]
             The values of the variables that will be replaced in the template.
+        parameter_actions: list
+            Actions that the template needs to be send, usually is used to send flows
 
         Returns
         -------
@@ -879,7 +910,9 @@ class WhatsappClient:
         # Iterate over the components of the template to get the relevant information of the
         # template
         for component in template.get("components", []):
-            self.get_component_data(component, template_data, template_variables)
+            self.get_component_data(
+                component, template_data, template_variables, parameter_actions
+            )
 
         self.log.debug(
             f"""
