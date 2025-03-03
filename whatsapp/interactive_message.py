@@ -1,7 +1,7 @@
 from typing import List
 
 from attr import dataclass, ib
-from mautrix.types import TextMessageEventContent, MessageType, Obj, SerializableAttrs
+from mautrix.types import MessageType, Obj, SerializableAttrs, TextMessageEventContent
 
 
 @dataclass
@@ -958,6 +958,7 @@ class FormMessage(SerializableAttrs):
             body=data.get("body", ""),
             form_message=FormMessageContent.from_dict(data.get("form_message", {})),
         )
+
 
 @dataclass
 class InteractiveResponseMessage(TextMessageEventContent):

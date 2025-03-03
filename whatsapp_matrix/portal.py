@@ -2,7 +2,6 @@ from __future__ import annotations
 
 from asyncio import Lock, sleep
 from datetime import datetime
-import json
 from string import Template
 from typing import TYPE_CHECKING, Any, Dict, List, Optional, Tuple, Union, cast
 
@@ -1372,9 +1371,7 @@ class Portal(DBPortal, BasePortal):
 
         return
 
-    async def handle_form_message(
-        self, sender: User, message: MessageEventContent
-    ):
+    async def handle_form_message(self, sender: User, message: MessageEventContent):
         """
         Handle WhatsApp Flow message and send it to Matrix
 
@@ -1583,7 +1580,7 @@ class Portal(DBPortal, BasePortal):
             template_name=template_name,
             variables=variables,
             language=language,
-            parameter_actions=parameter_actions
+            parameter_actions=parameter_actions,
         )
 
         if not template_data["template_message"] and not template_data["media_type"]:
