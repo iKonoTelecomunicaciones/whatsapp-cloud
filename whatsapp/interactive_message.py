@@ -391,10 +391,6 @@ class InteractiveReplyContent(SerializableAttrs):
         match data.get("type", ""):
             case "image" | "video" | "document":
                 interactive_header_data = self._get_media_data(data)
-                import logging
-
-                logging.getLogger().critical(f"data: {data}")
-                logging.getLogger().critical(f"interactive_header_data: {interactive_header_data}")
                 header_obj = InteractiveHeader.from_dict(interactive_header_data)
 
             case "text":
@@ -821,10 +817,6 @@ class InteractiveListsMessage(InteractiveMessage):
             action_obj: ActionListReply = ActionListReply.from_dict(
                 {"button": global_button, "sections": list_section}
             )
-
-        import logging
-
-        logging.getLogger().critical(f"action_obj<<<<<<<<: {action_obj}")
 
         return cls(
             type=interactive_type,
