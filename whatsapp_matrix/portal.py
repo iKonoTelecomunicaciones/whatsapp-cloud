@@ -7,6 +7,7 @@ from typing import TYPE_CHECKING, Any, Dict, List, Optional, Tuple, Union, cast
 
 from aiohttp import ClientConnectorError, ClientSession
 from asyncpg.exceptions import UniqueViolationError
+from markdown import markdown
 from mautrix.appservice import AppService, IntentAPI
 from mautrix.bridge import BasePortal
 from mautrix.types import (
@@ -1152,6 +1153,29 @@ class Portal(DBPortal, BasePortal):
         """
         await self.main_intent.send_notice(self.mxid, message_error)
 
+    def get_interactive_message(
+        self, event_interactive_message: EventInteractiveMessage, message: str
+    ) -> InteractiveResponseMessage:
+
+        if event_interactive_message.interactive_message.type == "form":
+            msg = self.get_message_content(
+                json_message=message,
+                message_type="m.form",
+                response_message=InteractiveResponseMessage,
+            )
+        else:
+            msg = TextMessageEventContent(
+                body=message,
+                msgtype=MessageType.TEXT,
+                formatted_body=markdown(message.replace("\n", "<br>")),
+                format=Format.HTML,
+            )
+
+        msg.interactive_message = event_interactive_message.interactive_message
+        msg.trim_reply_fallback()
+
+        return msg
+
     async def send_interactive_message_to_matrix(
         self,
         event_interactive_message: EventInteractiveMessage,
@@ -1176,27 +1200,14 @@ class Portal(DBPortal, BasePortal):
             )
             return
 
-        message_type = "m.interactive_message"
-
-        if event_interactive_message.interactive_message.type == "form":
-            message_type = "m.form"
-
         try:
-            msg = self.get_message_content(
-                json_message=message,
-                message_type=message_type,
-                response_message=InteractiveResponseMessage,
-            )
-            msg.interactive_message = event_interactive_message.interactive_message
-
+            msg = self.get_interactive_message(event_interactive_message, message=message)
         except AttributeError as error:
             self.log.error(error)
             await self.main_intent.send_notice(
                 self.mxid, f"Error sending the interactive message: {error}"
             )
             return
-
-        msg.trim_reply_fallback()
 
         # Send message in matrix format
         await self.az.intent.send_message(self.mxid, msg)
@@ -1226,7 +1237,7 @@ class Portal(DBPortal, BasePortal):
         self.log.debug(f"Handling interactive message: {message}")
         # Get the data of the interactive message
         event_interactive_message: EventInteractiveMessage = EventInteractiveMessage.from_dict(
-            message
+            message, config=self.config
         )
 
         if not event_interactive_message.interactive_message:
