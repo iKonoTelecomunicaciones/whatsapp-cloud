@@ -703,7 +703,7 @@ class Portal(DBPortal, BasePortal):
                 try:
                     await self.main_intent.mark_read(self.mxid, msg.event_mxid)
                 except Exception as e:
-                    self.log.error(f"Error marking message as read in rooom {self.mxid}: {e}")
+                    self.log.error(f"Error marking message as read in room {self.mxid}: {e}")
             else:
                 self.log.debug(f"Ignoring the null message")
 
