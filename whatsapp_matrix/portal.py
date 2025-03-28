@@ -201,7 +201,17 @@ class Portal(DBPortal, BasePortal):
 
         # If the phone_id is not in the database, it is created if the variable create is True
         if create:
-            portal = cls(phone_id=phone_id, app_business_id=app_business_id)
+            try:
+                portal = cls(phone_id=phone_id, app_business_id=app_business_id)
+            except UniqueViolationError as e:
+                cls.log.exception(f"Failed to create portal {phone_id}: {e}")
+                portal = cast(
+                    cls,
+                    await super().get_by_phone_id(
+                        phone_id=phone_id, app_business_id=app_business_id
+                    ),
+                )
+
             await portal.insert()
             await portal.postinit()
             return portal
@@ -690,7 +700,10 @@ class Portal(DBPortal, BasePortal):
         async with self._send_lock:
             msg = await DBMessage.get_by_whatsapp_message_id(message_id)
             if msg:
-                await self.main_intent.mark_read(self.mxid, msg.event_mxid)
+                try:
+                    await self.main_intent.mark_read(self.mxid, msg.event_mxid)
+                except Exception as e:
+                    self.log.error(f"Error marking message as read in rooom {self.mxid}: {e}")
             else:
                 self.log.debug(f"Ignoring the null message")
 
