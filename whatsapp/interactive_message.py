@@ -244,12 +244,14 @@ class OptionsInteractiveMessage(SerializableAttrs):
     """
     Contains the information of the options of a section.
 
+    - buttonId: The id of the button.
     - description: The description of the option.
     - postback_text: The identifier of the option.
     - title: The title of the option.
     - type: The type of the option.
     """
 
+    buttonId: str = ib(metadata={"json": "buttonId"}, default="")
     description: str = ib(metadata={"json": "description"}, default="")
     postback_text: str = ib(metadata={"json": "postback_text"}, default="")
     title: str = ib(metadata={"json": "title"}, default="")
