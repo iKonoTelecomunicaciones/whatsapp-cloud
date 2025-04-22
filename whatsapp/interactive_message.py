@@ -1,3 +1,4 @@
+import re
 from typing import List
 
 from attr import dataclass, ib
@@ -107,7 +108,9 @@ class TextReply(SerializableAttrs):
 
     @classmethod
     def from_dict(cls, data: dict):
-        return cls(text=data.get("text", ""))
+        text_objt = data.get("text", "")
+        text_objt = re.sub(r"\*\*(.+?)\*\*", r"*\1*", text_objt)
+        return cls(text=text_objt)
 
 
 @dataclass
@@ -341,8 +344,8 @@ class InteractiveReplyContent(SerializableAttrs):
     @classmethod
     def from_dict(cls, data: dict):
         header_obj: InteractiveHeader = cls()._translate_header(data=data)
-        body_obj = TextReply(text=data.get("text", ""))
-        footer_obj = TextReply(text=data.get("caption", ""))
+        body_obj = TextReply.from_dict(data=data)
+        footer_obj = TextReply.from_dict(data={"text": data.get("caption", "")})
 
         return cls(
             header=header_obj,
@@ -644,7 +647,7 @@ class InteractiveButtonsMessage(InteractiveMessage):
         for index, button in enumerate(self.action.buttons, start=1):
             msg += button_format.format(index=index, title=button.reply.title, id=button.reply.id)
 
-        return msg
+        return re.sub(r"\*(.+?)\*", r"**\1**", msg)
 
 
 @dataclass
@@ -707,7 +710,7 @@ class InteractiveFlowMessage(InteractiveMessage):
             payload = self.action.parameters.flow_action_payload.serialize()
             msg["flow"]["parameters"]["payload"] = payload
 
-        return msg
+        return re.sub(r"\*(.+?)\*", r"**\1**", msg)
 
 
 @dataclass
@@ -766,7 +769,7 @@ class InteractiveListsMessage(InteractiveMessage):
             header_obj = InteractiveHeader(type="text", text=data.get("title"))
 
         if data.get("body", ""):
-            body_obj = TextReply(text=data.get("body"))
+            body_obj = TextReply.from_dict(data={"text": data.get("body", "")})
 
         if data.get("global_buttons", []):
             global_button_obj = GlobalButtons.from_dict(data.get("global_buttons", [])[0])
@@ -838,7 +841,7 @@ class InteractiveListsMessage(InteractiveMessage):
                     row_index=row_index,
                 )
 
-        return msg
+        return re.sub(r"\*(.+?)\*", r"**\1**", msg)
 
 
 @dataclass
