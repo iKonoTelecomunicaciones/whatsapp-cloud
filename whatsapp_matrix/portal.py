@@ -203,6 +203,7 @@ class Portal(DBPortal, BasePortal):
         if create:
             try:
                 portal = cls(phone_id=phone_id, app_business_id=app_business_id)
+                await portal.insert()
             except UniqueViolationError as e:
                 cls.log.exception(f"Failed to create portal {phone_id}: {e}")
                 portal = cast(
@@ -212,7 +213,10 @@ class Portal(DBPortal, BasePortal):
                     ),
                 )
 
-            await portal.insert()
+            if not portal:
+                cls.log.error(f"Failed to create portal {phone_id}")
+                return None
+
             await portal.postinit()
             return portal
 
