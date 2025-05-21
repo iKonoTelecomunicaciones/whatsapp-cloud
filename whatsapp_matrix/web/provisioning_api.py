@@ -962,9 +962,6 @@ class ProvisioningAPI:
                 headers=self._acao_headers,
             )
 
-        self.log.critical(
-            f"Set relay for user {portal.relay_user_id} in portal {room_id} with phone {portal.phone_id}"
-        )
         user: User = await User.get_by_mxid(portal.relay_user_id, create=False)
         if not user:
             self.log.error(f"User {portal.mxid} not found")
