@@ -152,6 +152,7 @@ class WhatsappMedia(SerializableAttrs):
             mime_type=data.get("mime_type", ""),
         )
 
+
 @dataclass
 class WhatsappLocation(SerializableAttrs):
     """
@@ -264,6 +265,7 @@ class WhatsappVideo(WhatsappMedia):
 
     - mime_type: The type of the video.
     """
+
     caption: str | None = ib(metadata={"json": "caption"}, default=None)
 
     @classmethod
@@ -274,6 +276,7 @@ class WhatsappVideo(WhatsappMedia):
             mime_type=data.get("mime_type", ""),
             caption=data.get("caption", None),
         )
+
 
 @dataclass
 class WhatsappImage(WhatsappMedia):
@@ -286,6 +289,7 @@ class WhatsappImage(WhatsappMedia):
 
     - mime_type: The type of the image.
     """
+
     caption: str | None = ib(metadata={"json": "caption"}, default=None)
 
     @classmethod
@@ -294,7 +298,7 @@ class WhatsappImage(WhatsappMedia):
             id=data.get("id", ""),
             hash=data.get("sha256", ""),
             mime_type=data.get("mime_type", ""),
-            caption=data.get("caption", None)
+            caption=data.get("caption", None),
         )
 
 

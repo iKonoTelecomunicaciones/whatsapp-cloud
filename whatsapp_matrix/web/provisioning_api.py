@@ -10,6 +10,7 @@ from mautrix.types import UserID
 
 from whatsapp.data import WhatsappContacts
 from whatsapp.types import WsBusinessID, WSPhoneID
+from whatsapp_matrix import user
 from whatsapp_matrix.portal import Portal
 from whatsapp_matrix.puppet import Puppet
 
@@ -17,7 +18,6 @@ from ..config import Config
 from ..db.whatsapp_application import WhatsappApplication
 from ..user import User
 from ..util import normalize_number
-from whatsapp_matrix import user
 
 
 class ProvisioningAPI:
