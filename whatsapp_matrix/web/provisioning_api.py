@@ -860,7 +860,7 @@ class ProvisioningAPI:
             f"Set power level for room {room_id} and user {user_id} with power level {power_level}"
         )
 
-        if not user_id or not power_level or not room_id:
+        if not user_id or power_level is None or power_level < 0 or not room_id:
             return web.json_response(
                 data={
                     "detail": {"message": "The user_id or power_level or room_id was not provided"}
