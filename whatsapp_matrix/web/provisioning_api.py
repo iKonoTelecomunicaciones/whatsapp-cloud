@@ -10,6 +10,7 @@ from mautrix.types import UserID
 
 from whatsapp.data import WhatsappContacts
 from whatsapp.types import WsBusinessID, WSPhoneID
+from whatsapp_matrix import user
 from whatsapp_matrix.portal import Portal
 from whatsapp_matrix.puppet import Puppet
 
@@ -45,6 +46,8 @@ class ProvisioningAPI:
         self.app.router.add_route("POST", "/v1/pm/{number}", self.start_pm)
         self.app.router.add_route("POST", "/v1/template", self.template)
         self.app.router.add_route("DELETE", "/v1/delete_template", self.delete_template)
+        self.app.router.add_route("POST", "/v1/set_power_level", self.set_power_level)
+        self.app.router.add_route("POST", "/v1/set_relay", self.set_relay)
 
     @property
     def _acao_headers(self) -> dict[str, str]:
@@ -831,3 +834,165 @@ class ProvisioningAPI:
                 ),
                 headers=self._headers,
             )
+
+    async def set_power_level(self, request: web.Request) -> web.Response:
+        """
+        Set the power level of a user in a room
+        Parameters
+        ----------
+        request: web.Request
+            The request that contains the data of the company_app and the user.
+        Returns
+        -------
+        JSON
+            The response of the request with a success message or an error message
+        """
+        data = await self._get_body(request)
+
+        try:
+            user_id = data["user_id"]
+            power_level = data["power_level"]
+            room_id = data["room_id"]
+        except KeyError as e:
+            raise self._missing_key_error(e)
+
+        self.log.debug(
+            f"Set power level for room {room_id} and user {user_id} with power level {power_level}"
+        )
+
+        if not user_id or power_level is None or power_level < 0 or not room_id:
+            return web.json_response(
+                data={
+                    "detail": {"message": "The user_id or power_level or room_id was not provided"}
+                },
+                status=400,
+                headers=self._acao_headers,
+            )
+
+        # Get the portal by room_id
+        portal: Portal = await Portal.get_by_mxid(room_id)
+        if not portal:
+            return web.json_response(
+                data={"detail": {"message": f"Failed to get portal {room_id}"}},
+                status=400,
+                headers=self._acao_headers,
+            )
+        # Get the power level of the room
+        try:
+            power_levels = await portal.main_intent.get_power_levels(room_id)
+        except Exception as e:
+            self.log.error(f"Error getting the power level: {e}")
+            return web.json_response(
+                data={
+                    "detail": {
+                        "message": f"Failed to get power level for room {room_id}. Error:{e}"
+                    }
+                },
+                status=400,
+                headers=self._acao_headers,
+            )
+
+        # Change the power level of the user
+        power_levels.set_user_level(user_id, power_level)
+
+        # Update the power level of the user in the room
+        try:
+            await portal.main_intent.set_power_levels(
+                room_id=room_id,
+                content=power_levels,
+            )
+        except Exception as e:
+            self.log.error(f"Error setting the power level for portal {room_id}. Error: {e}")
+            return web.json_response(
+                data={
+                    "detail": {
+                        "message": f"Failed to set power level for user {user_id} in portal {room_id}. Error:{e}"
+                    }
+                },
+                status=400,
+                headers=self._acao_headers,
+            )
+
+        self.log.debug(f"Set power level for user {user_id} in portal {room_id}")
+        return web.json_response(
+            data={
+                "detail": {
+                    "message": f"Set power level for user {user_id} in portal {room_id} with power level {power_level} was successful"
+                }
+            },
+            status=200,
+            headers=self._acao_headers,
+        )
+
+    async def set_relay(self, request: web.Request) -> web.Response:
+        """
+        Set the relay of a user in a room
+        Parameters
+        ----------
+        request: web.Request
+            The request that contains the data of the company_app and the user.
+        Returns
+        -------
+        JSON
+            The response of the request with a success message or an error message
+        """
+        data = await self._get_body(request)
+
+        try:
+            room_id = data["room_id"]
+        except KeyError as e:
+            raise self._missing_key_error(e)
+
+        self.log.debug(f"Set relay for room {room_id}")
+        if not room_id:
+            self.log.error("The room_id was not provided")
+            return web.json_response(
+                data={"detail": {"message": "The room_id was not provided"}},
+                status=400,
+                headers=self._acao_headers,
+            )
+
+        # Get the portal by room_id
+        portal: Portal = await Portal.get_by_mxid(room_id)
+        if not portal:
+            self.log.error(f"Portal {room_id} not found")
+            return web.json_response(
+                data={"detail": {"message": f"Failed to get portal {room_id}"}},
+                status=400,
+                headers=self._acao_headers,
+            )
+
+        user: User = await User.get_by_mxid(portal.relay_user_id, create=False)
+        if not user:
+            self.log.error(f"User {portal.mxid} not found")
+            return web.json_response(
+                data={"detail": {"message": f"Failed to get user {portal.mxid}"}},
+                status=400,
+                headers=self._acao_headers,
+            )
+
+        # Set the relay of the puppet
+        try:
+            await portal.set_relay_user(user)
+        except Exception as e:
+            self.log.error(f"Error setting the relay for portal {room_id}. Error: {e}")
+            return web.json_response(
+                data={
+                    "detail": {
+                        "message": f"Failed to set relay for user {portal.mxid} in portal {room_id}. Error:{e}"
+                    }
+                },
+                status=400,
+                headers=self._acao_headers,
+            )
+
+        self.log.debug(f"Set relay for user {portal.mxid} in portal {room_id}")
+        return web.json_response(
+            data={
+                "detail": {
+                    "message": f"Set relay for user {portal.mxid} in portal {room_id} was successful"
+                }
+            },
+            status=200,
+            headers=self._acao_headers,
+        )
