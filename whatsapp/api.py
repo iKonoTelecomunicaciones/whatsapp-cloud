@@ -722,7 +722,6 @@ class WhatsappClient:
         variables: Optional[List[str]],
         template_data: Dict,
         parameter_actions: list,
-        buttons_data: list[dict],
     ):
         """
         Get the buttons of the template and validate the type of the button to send it to Whatsapp
@@ -792,7 +791,7 @@ class WhatsappClient:
                 continue
 
             # If the button has a parameter, add it to the button
-            buttons_data.append(
+            template_data["buttons_data"].append(
                 {
                     "type": "button",
                     "sub_type": button_type,
@@ -807,7 +806,6 @@ class WhatsappClient:
         template_data: Dict,
         template_variables: List[str],
         parameter_actions: list,
-        buttons_data: list[dict],
     ):
         """
         Validate the type of the component (HEADER, BODY, FOOTER, BUTTONS) and get the relevant
@@ -823,9 +821,6 @@ class WhatsappClient:
             The values of the variables that will be replaced in the message template.
         parameter_actions: list
             Actions that the template needs to be send, usually is used to send flows
-        buttons_data: list[dict]
-            A list of buttons data that will be added to the template data.
-            This is used to send the buttons of the template to Whatsapp API Cloud.
         """
         match component.get("type"):
             case "HEADER":
@@ -846,7 +841,6 @@ class WhatsappClient:
                     variables=template_variables,
                     template_data=template_data,
                     parameter_actions=parameter_actions,
-                    buttons_data=buttons_data,
                 )
 
     def search_and_get_template_message(
@@ -928,11 +922,9 @@ class WhatsappClient:
         # Iterate over the components of the template to get the relevant information of the
         # template
         for component in template.get("components", []):
-            buttons_data = []
             self.get_component_data(
-                component, template_data, template_variables, parameter_actions, buttons_data
+                component, template_data, template_variables, parameter_actions
             )
-            template_data["buttons_data"] = buttons_data
 
         self.log.debug(
             f"""
