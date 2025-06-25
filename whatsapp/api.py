@@ -409,7 +409,7 @@ class WhatsappClient:
             components.append(template_data.get("body_data"))
 
         if template_data.get("buttons_data"):
-            components.append(template_data.get("buttons_data"))
+            components += template_data.get("buttons_data")
 
         data = {
             "messaging_product": "whatsapp",
@@ -471,7 +471,7 @@ class WhatsappClient:
                     "template_status": "APPROVED",
                     "header_data": {},
                     "body_data": {},
-                    "buttons_data": {},
+                    "buttons_data": [],
                     "language": "en",
                 }
         """
@@ -722,6 +722,7 @@ class WhatsappClient:
         variables: Optional[List[str]],
         template_data: Dict,
         parameter_actions: list,
+        buttons_data: list[dict],
     ):
         """
         Get the buttons of the template and validate the type of the button to send it to Whatsapp
@@ -775,18 +776,30 @@ class WhatsappClient:
                         f"{button.get('text')}: {button.get('phone_number').replace('+', '')}\n"
                     )
 
+                # If the template has a button with a coupon code, add it to the message
+                case "copy_code":
+                    button_type = button.get("type", "")
+                    variable = variables.pop(0) if variables else ""
+                    parameter = {
+                        "type": "coupon_code",
+                        "coupon_code": variable,
+                    }
+                    message = f"{button.get('text')}: {variable}\n"
+
             template_data["template_message"] += message
 
             if not parameter:
                 continue
 
             # If the button has a parameter, add it to the button
-            template_data["buttons_data"] = {
-                "type": "button",
-                "sub_type": button_type,
-                "index": i,
-                "parameters": [parameter],
-            }
+            buttons_data.append(
+                {
+                    "type": "button",
+                    "sub_type": button_type,
+                    "index": i,
+                    "parameters": [parameter],
+                }
+            )
 
     def get_component_data(
         self,
@@ -794,6 +807,7 @@ class WhatsappClient:
         template_data: Dict,
         template_variables: List[str],
         parameter_actions: list,
+        buttons_data: list[dict],
     ):
         """
         Validate the type of the component (HEADER, BODY, FOOTER, BUTTONS) and get the relevant
@@ -809,6 +823,9 @@ class WhatsappClient:
             The values of the variables that will be replaced in the message template.
         parameter_actions: list
             Actions that the template needs to be send, usually is used to send flows
+        buttons_data: list[dict]
+            A list of buttons data that will be added to the template data.
+            This is used to send the buttons of the template to Whatsapp API Cloud.
         """
         match component.get("type"):
             case "HEADER":
@@ -829,6 +846,7 @@ class WhatsappClient:
                     variables=template_variables,
                     template_data=template_data,
                     parameter_actions=parameter_actions,
+                    buttons_data=buttons_data,
                 )
 
     def search_and_get_template_message(
@@ -873,7 +891,7 @@ class WhatsappClient:
                     "template_status": "APPROVED",
                     "header_data": {},
                     "body_data": {},
-                    "buttons_data": {},
+                    "buttons_data": [],
                     "language": "en",
                 }
         """
@@ -888,7 +906,7 @@ class WhatsappClient:
             "template_status": "",
             "header_data": {},
             "body_data": {},
-            "buttons_data": {},
+            "buttons_data": [],
             "language": language,
         }
 
@@ -910,9 +928,11 @@ class WhatsappClient:
         # Iterate over the components of the template to get the relevant information of the
         # template
         for component in template.get("components", []):
+            buttons_data = []
             self.get_component_data(
-                component, template_data, template_variables, parameter_actions
+                component, template_data, template_variables, parameter_actions, buttons_data
             )
+            template_data["buttons_data"] = buttons_data
 
         self.log.debug(
             f"""
