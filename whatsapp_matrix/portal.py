@@ -1569,7 +1569,6 @@ class Portal(DBPortal, BasePortal):
         """
         # Format the message to send to Matrix
         formated_body, template_message = whatsapp_to_matrix(template_message)
-        self.log.critical(f"Sending template message to Matrix: {formated_body}")
         msg: MessageEventContent = TextMessageEventContent(
             body=template_message,
             msgtype=MessageType.TEXT,
