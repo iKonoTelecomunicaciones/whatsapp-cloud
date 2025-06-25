@@ -1568,8 +1568,13 @@ class Portal(DBPortal, BasePortal):
             The event id and the message content.
         """
         # Format the message to send to Matrix
+        formated_body, template_message = whatsapp_to_matrix(template_message)
+        self.log.critical(f"Sending template message to Matrix: {formated_body}")
         msg: MessageEventContent = TextMessageEventContent(
-            body=template_message, msgtype=MessageType.TEXT
+            body=template_message,
+            msgtype=MessageType.TEXT,
+            formatted_body=formated_body,
+            format=Format.HTML,
         )
         msg.trim_reply_fallback()
         msg_event_id = None
