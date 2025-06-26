@@ -409,7 +409,7 @@ class WhatsappClient:
             components.append(template_data.get("body_data"))
 
         if template_data.get("buttons_data"):
-            components += template_data.get("buttons_data")
+            components.extend(template_data.get("buttons_data"))
 
         data = {
             "messaging_product": "whatsapp",
@@ -447,7 +447,7 @@ class WhatsappClient:
         ----------
         template_name: str
             The name of the template.
-        variables: [list[str]]
+        variables: list[str] | None
             The values of the variables that will be replaced in the message template.
         language: str
             The language of the template
@@ -561,7 +561,7 @@ class WhatsappClient:
         ----------
         component: dict
             The component of the template.
-        variables: [list[str]]
+        variables: list[str] | None
             The values of the variables that will be replaced in the message template.
         template_data: dict
             The data of the template.
@@ -651,7 +651,7 @@ class WhatsappClient:
         ----------
         component: dict
             The component of the template.
-        variables: [list[str]]
+        variables: list[str] | None
             The values of the variables that will be replaced in the message template.
         template_data: dict
             The data of the template.
@@ -732,7 +732,7 @@ class WhatsappClient:
         ----------
         component: dict
             The component of the template.
-        variables: [list[str]]
+        variables: list[str] | None
             The values of the variables that will be replaced in the message template.
         template_data: dict
             The data of the template.
@@ -863,7 +863,7 @@ class WhatsappClient:
             The name of the template that will be search.
         language: str
             The language of the template.
-        variables: [list[str]]
+        variables: list[str] | None
             The values of the variables that will be replaced in the template.
         parameter_actions: list
             Actions that the template needs to be send, usually is used to send flows
