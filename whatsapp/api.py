@@ -771,9 +771,14 @@ class WhatsappClient:
 
                 # If the template has a button with a number, add it to the message
                 case "phone_number":
+                    button_type = "voice_call"
                     message = (
                         f"{button.get('text')}: {button.get('phone_number').replace('+', '')}\n"
                     )
+                    parameter = {
+                        "type": "text",
+                        "text": button.get("phone_number", ""),
+                    }
 
                 # If the template has a button with a coupon code, add it to the message
                 case "copy_code":
