@@ -2,7 +2,7 @@ import json
 import logging
 import re
 from copy import copy
-from typing import Dict, List, Optional, Tuple
+from typing import Optional
 
 from aiohttp import ClientConnectorError, ClientSession, FormData
 from mautrix.types import MessageType
@@ -20,9 +20,9 @@ class WhatsappClient:
         self,
         config: Config,
         session: ClientSession,
-        page_access_token: Optional[str] = None,
-        business_id: Optional[WsBusinessID] = None,
-        wb_phone_id: Optional[WSPhoneID] = None,
+        page_access_token: str | None = None,
+        business_id: WsBusinessID | None = None,
+        wb_phone_id: WSPhoneID | None = None,
     ) -> None:
         self.base_url = config["whatsapp.base_url"]
         self.version = config["whatsapp.version"]
@@ -36,12 +36,12 @@ class WhatsappClient:
         self,
         phone_id: WhatsappPhone,
         message_type: MessageType,
-        message: Optional[str] = None,
-        url: Optional[str] = None,
-        location: Optional[tuple] = None,
-        file_name: Optional[str] = None,
-        aditional_data: Optional[Dict] = None,
-    ) -> Dict[str, str]:
+        message: str | None = None,
+        url: str | None = None,
+        location: tuple | None = None,
+        file_name: str | None = None,
+        aditional_data: dict | None = None,
+    ) -> dict[str, str]:
         """
         Send a message to the user.
 
@@ -137,8 +137,8 @@ class WhatsappClient:
         self,
         phone_id: WhatsappPhone,
         message_type: MessageType,
-        aditional_data: Optional[Dict] = None,
-    ) -> Dict[str, str]:
+        aditional_data: dict | None = None,
+    ) -> dict[str, str]:
         """
         Send an interactive message to the user.
 
@@ -301,8 +301,8 @@ class WhatsappClient:
         self,
         message_id: WhatsappMessageID,
         phone_id: WSPhoneID,
-        emoji: Optional[str] = "",
-    ) -> Dict:
+        emoji: str | None = "",
+    ) -> dict:
         """
         Send a reaction to the user.
 
@@ -354,9 +354,9 @@ class WhatsappClient:
     async def send_template(
         self,
         phone_id: WSPhoneID,
-        template_data: Dict,
-        media_data: Optional[list] = None,
-    ) -> Dict:
+        template_data: dict,
+        media_data: list | None = None,
+    ) -> dict:
         """
         It sends a template message to a user.
 
@@ -364,7 +364,7 @@ class WhatsappClient:
         ----------
         phone_id: WSPhoneID
             The id of the whatsapp business phone.
-        template_data: Dict
+        template_data: dict
             A dict with the information of the template.
         media_data: list
             The type and the ids of the media that will be sent to the user.
@@ -409,7 +409,7 @@ class WhatsappClient:
             components.append(template_data.get("body_data"))
 
         if template_data.get("buttons_data"):
-            components.append(template_data.get("buttons_data"))
+            components.extend(template_data.get("buttons_data"))
 
         data = {
             "messaging_product": "whatsapp",
@@ -436,10 +436,10 @@ class WhatsappClient:
     async def get_template_data(
         self,
         template_name: str,
-        variables: Optional[list],
+        variables: list | None,
         language: str,
         parameter_actions: list = [],
-    ) -> Dict:
+    ) -> dict:
         """
         Get a template message.
 
@@ -447,7 +447,7 @@ class WhatsappClient:
         ----------
         template_name: str
             The name of the template.
-        variables: Optional[List[str]]
+        variables: list[str] | None
             The values of the variables that will be replaced in the message template.
         language: str
             The language of the template
@@ -456,7 +456,7 @@ class WhatsappClient:
 
         Returns
         -------
-            template_data: Dict
+            template_data: dict
                 A dict with the message of the template, the header, body and footer data,
                 the media type and media url if the template has media, the buttons type if
                 the template has buttons, the status of the template (APPROVED, REJECTED, PENDING)
@@ -471,7 +471,7 @@ class WhatsappClient:
                     "template_status": "APPROVED",
                     "header_data": {},
                     "body_data": {},
-                    "buttons_data": {},
+                    "buttons_data": [],
                     "language": "en",
                 }
         """
@@ -551,7 +551,7 @@ class WhatsappClient:
         return data
 
     def get_header_component(
-        self, component: Dict, variables: Optional[List[str]], template_data: Dict
+        self, component: dict, variables: list[str] | None, template_data: dict
     ):
         """
         Get the message of the header and validate if the header has a media to save the type and
@@ -559,11 +559,11 @@ class WhatsappClient:
 
         Parameters
         ----------
-        component: Dict
+        component: dict
             The component of the template.
-        variables: Optional[List[str]]
+        variables: list[str] | None
             The values of the variables that will be replaced in the message template.
-        template_data: Dict
+        template_data: dict
             The data of the template.
         """
         # Get the message of the header
@@ -580,10 +580,10 @@ class WhatsappClient:
 
     def get_template_variables(
         self,
-        component: Dict,
-        template_data: Dict,
-        message_variables: List[str],
-        variables: List[str],
+        component: dict,
+        template_data: dict,
+        message_variables: list[str],
+        variables: list[str],
     ):
         """
         Get the variables of the template message, replace the values of the variables in the
@@ -591,13 +591,13 @@ class WhatsappClient:
 
         Parameters
         ----------
-        component: Dict
+        component: dict
             The component of the template.
-        template_data: Dict
+        template_data: dict
             The data of the template.
-        message_variables: List[str]
+        message_variables: list[str]
             The variables that the message template contains.
-        variables: List[str]
+        variables: list[str]
             The values of the variables that will be replaced in the message template.
         """
         total_message_variables = len(message_variables)
@@ -640,7 +640,7 @@ class WhatsappClient:
         }
 
     def get_message_component(
-        self, component: Dict, variables: Optional[List[str]], template_data: Dict
+        self, component: dict, variables: list[str] | None, template_data: dict
     ):
         """
         Get the message of a component type (HEADER, BODY, FOOTER) and validate if the component
@@ -649,11 +649,11 @@ class WhatsappClient:
 
         Parameters
         ----------
-        component: Dict
+        component: dict
             The component of the template.
-        variables: Optional[List[str]]
+        variables: list[str] | None
             The values of the variables that will be replaced in the message template.
-        template_data: Dict
+        template_data: dict
             The data of the template.
         """
         # Get the variables of the template message, each variable is in the format {{name}} or
@@ -678,16 +678,16 @@ class WhatsappClient:
                 f"{component.get('text')}\n" if component.get("text") else ""
             )
 
-    def get_button_url(self, button: Dict, variables: List[str]) -> Tuple[str, Dict]:
+    def get_button_url(self, button: dict, variables: list[str]) -> tuple[str, dict]:
         """
         Validate if the button has a variable, if it has, replace the variable and add it to the
         parameter dictionary, else add the url of the button to the message.
 
         Parameters
         ----------
-        button: Dict
+        button: dict
             The button of the template.
-        variables: List[str]
+        variables: list[str]
             The values of the variables that will be replaced in the button message.
         """
         # Get the variables of the template message, each variable is in the format {{1}}
@@ -718,9 +718,9 @@ class WhatsappClient:
 
     def get_buttons_component(
         self,
-        component: Dict,
-        variables: Optional[List[str]],
-        template_data: Dict,
+        component: dict,
+        variables: list[str] | None,
+        template_data: dict,
         parameter_actions: list,
     ):
         """
@@ -730,11 +730,11 @@ class WhatsappClient:
 
         Parameters
         ----------
-        component: Dict
+        component: dict
             The component of the template.
-        variables: Optional[List[str]]
+        variables: list[str] | None
             The values of the variables that will be replaced in the message template.
-        template_data: Dict
+        template_data: dict
             The data of the template.
         parameter_actions: list
             Actions that the template needs to be send, usually is used to send flows
@@ -744,7 +744,7 @@ class WhatsappClient:
             button_type = button.get("type", "").lower()
             message = f"{button.get('text')}\n"
             # Set the default parameters of the button
-            parameter: Dict = {"type": "text", "text": button.get("text")}
+            parameter: dict = {"type": "text", "text": button.get("text")}
 
             match button_type:
                 case "quick_reply":
@@ -771,9 +771,24 @@ class WhatsappClient:
 
                 # If the template has a button with a number, add it to the message
                 case "phone_number":
+                    button_type = "voice_call"
                     message = (
                         f"{button.get('text')}: {button.get('phone_number').replace('+', '')}\n"
                     )
+                    parameter = {
+                        "type": "text",
+                        "text": button.get("phone_number", ""),
+                    }
+
+                # If the template has a button with a coupon code, add it to the message
+                case "copy_code":
+                    button_type = button.get("type", "")
+                    variable = variables.pop(0) if variables else ""
+                    parameter = {
+                        "type": "coupon_code",
+                        "coupon_code": variable,
+                    }
+                    message = f"{button.get('text')}: {variable}\n"
 
             template_data["template_message"] += message
 
@@ -781,18 +796,20 @@ class WhatsappClient:
                 continue
 
             # If the button has a parameter, add it to the button
-            template_data["buttons_data"] = {
-                "type": "button",
-                "sub_type": button_type,
-                "index": i,
-                "parameters": [parameter],
-            }
+            template_data["buttons_data"].append(
+                {
+                    "type": "button",
+                    "sub_type": button_type,
+                    "index": i,
+                    "parameters": [parameter],
+                }
+            )
 
     def get_component_data(
         self,
-        component: Dict,
-        template_data: Dict,
-        template_variables: List[str],
+        component: dict,
+        template_data: dict,
+        template_variables: list[str],
         parameter_actions: list,
     ):
         """
@@ -801,11 +818,11 @@ class WhatsappClient:
 
         Parameters
         ----------
-        component: Dict
+        component: dict
             The component of the template.
-        template_data: Dict
+        template_data: dict
             The data of the template.
-        template_variables: List[str]
+        template_variables: list[str]
             The values of the variables that will be replaced in the message template.
         parameter_actions: list
             Actions that the template needs to be send, usually is used to send flows
@@ -833,14 +850,14 @@ class WhatsappClient:
 
     def search_and_get_template_message(
         self,
-        templates: List[Dict],
+        templates: list[dict],
         template_name: str,
         language: str,
-        variables: Optional[List[str]] = [],
+        variables: list[str] | None = [],
         parameter_actions: list = [],
-    ) -> Dict:
+    ) -> dict:
         """
-        Search the template in a list of templates and return a Dict with the relevant information
+        Search the template in a list of templates and return a dict with the relevant information
         of the template.
 
         Parameters
@@ -851,14 +868,14 @@ class WhatsappClient:
             The name of the template that will be search.
         language: str
             The language of the template.
-        variables: Optional[List[str]]
+        variables: list[str] | None
             The values of the variables that will be replaced in the template.
         parameter_actions: list
             Actions that the template needs to be send, usually is used to send flows
 
         Returns
         -------
-            template_data: Dict
+            template_data: dict
                 A dict with the message of the template, the header, body and footer data,
                 the media type and media url if the template has media, the buttons type if
                 the template has buttons, the status of the template (APPROVED, REJECTED, PENDING)
@@ -873,7 +890,7 @@ class WhatsappClient:
                     "template_status": "APPROVED",
                     "header_data": {},
                     "body_data": {},
-                    "buttons_data": {},
+                    "buttons_data": [],
                     "language": "en",
                 }
         """
@@ -888,7 +905,7 @@ class WhatsappClient:
             "template_status": "",
             "header_data": {},
             "body_data": {},
-            "buttons_data": {},
+            "buttons_data": [],
             "language": language,
         }
 

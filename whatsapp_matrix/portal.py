@@ -3,7 +3,7 @@ from __future__ import annotations
 from asyncio import Lock, sleep
 from datetime import datetime
 from string import Template
-from typing import TYPE_CHECKING, Any, Dict, List, Optional, Tuple, Union, cast
+from typing import TYPE_CHECKING, Any, cast
 
 from aiohttp import ClientConnectorError, ClientSession
 from asyncpg.exceptions import UniqueViolationError
@@ -53,24 +53,24 @@ if TYPE_CHECKING:
 StateBridge = EventType.find("m.bridge", EventType.Class.STATE)
 StateHalfShotBridge = EventType.find("uk.half-shot.bridge", EventType.Class.STATE)
 
-InviteList = Union[UserID, List[UserID]]
+Invitelist = UserID | list[UserID]
 
 
 class Portal(DBPortal, BasePortal):
-    by_mxid: Dict[RoomID, "Portal"] = {}
-    by_app_and_phone_id: Dict[(WhatsappPhone, WsBusinessID), "Portal"] = {}
+    by_mxid: dict[RoomID, "Portal"] = {}
+    by_app_and_phone_id: dict[(WhatsappPhone, WsBusinessID), "Portal"] = {}
 
     message_template: Template
     federate_rooms: bool
-    invite_users: List[UserID]
-    initial_state: Dict[str, Dict[str, Any]]
+    invite_users: list[UserID]
+    initial_state: dict[str, dict[str, Any]]
     auto_change_room_name: bool
 
     az: AppService
     private_chat_portal_whatsapp: bool
     session: ClientSession
 
-    _main_intent: Optional[IntentAPI] | None
+    _main_intent: IntentAPI | None
     _create_room_lock: Lock
     _send_lock: Lock
 
@@ -78,7 +78,7 @@ class Portal(DBPortal, BasePortal):
         self,
         phone_id: str,
         app_business_id: str,
-        mxid: Optional[RoomID] = None,
+        mxid: RoomID | None = None,
         relay_user_id: UserID | None = None,
     ) -> None:
         super().__init__(phone_id, app_business_id, mxid, relay_user_id)
@@ -103,7 +103,7 @@ class Portal(DBPortal, BasePortal):
         return self._main_intent
 
     @property
-    async def init_whatsapp_client(self) -> Dict:
+    async def init_whatsapp_client(self) -> dict:
         try:
             whatsapp_app = await DBWhatsappApplication.get_by_business_id(
                 business_id=self.app_business_id
@@ -125,7 +125,7 @@ class Portal(DBPortal, BasePortal):
         return f"com.github.whatsapp-cloud://whatsapp-cloud/{self.phone_id}"
 
     @property
-    def bridge_info(self) -> Dict[str, Any]:
+    def bridge_info(self) -> dict[str, Any]:
         return {
             "bridgebot": self.az.bot_mxid,
             "creator": self.main_intent.mxid,
@@ -152,7 +152,7 @@ class Portal(DBPortal, BasePortal):
         cls.session = bridge.session
 
     @classmethod
-    async def get_by_mxid(cls, mxid: RoomID) -> Optional["Portal"]:
+    async def get_by_mxid(cls, mxid: RoomID) -> Portal | None:
         try:
             return cls.by_mxid[mxid]
         except KeyError:
@@ -170,8 +170,8 @@ class Portal(DBPortal, BasePortal):
         cls,
         phone_id: WhatsappPhone,
         app_business_id: WsBusinessID,
-        create: Optional[bool] = True,
-    ) -> Optional["Portal"]:
+        create: bool | None = True,
+    ) -> Portal | None:
         """
         Get a portal by its phone_id and save it in the cache
 
@@ -222,7 +222,7 @@ class Portal(DBPortal, BasePortal):
 
         return None
 
-    def send_text_message(self, message: str) -> Optional[EventID]:
+    def send_text_message(self, message: str) -> EventID | None:
         """
         Takes a message from Whatsapp, checks the kind of message and change the format of it to a
         valid format of Matrix message and sends it to Matrix
@@ -253,8 +253,8 @@ class Portal(DBPortal, BasePortal):
         source : User
             The class that will be used to specify who receives the message.
 
-        sender : Dict
-            Dictionary that contains the data of who sends the message.
+        sender : dict
+            dictionary that contains the data of who sends the message.
 
         Exceptions
         ----------
@@ -281,8 +281,8 @@ class Portal(DBPortal, BasePortal):
         source : User
             The class that will be used to specify who receives the message.
 
-        sender : Dict
-            Dictionary that contains the data of who sends the message.
+        sender : dict
+            dictionary that contains the data of who sends the message.
         """
         self.log.debug("Creating Matrix room")
 
@@ -1087,8 +1087,8 @@ class Portal(DBPortal, BasePortal):
         self,
         sender: User,
         event_id: EventID,
-        template_data: Dict,
-        media: Optional[list] = None,
+        template_data: dict,
+        media: list | None = None,
     ):
         """
         It sends the template to Whatsapp and save it in the database.
@@ -1101,7 +1101,7 @@ class Portal(DBPortal, BasePortal):
             The id of the event.
         media: list
             A list with the type of the media and the ids of the media.
-        template_data: Dict
+        template_data: dict
             A dictionary with the data of the template.
 
         Returns
@@ -1553,7 +1553,7 @@ class Portal(DBPortal, BasePortal):
 
     async def send_template_message(
         self, template_message: str
-    ) -> Tuple[EventID, MessageEventContent]:
+    ) -> tuple[EventID, MessageEventContent]:
         """
         Send a template message to Matrix.
 
@@ -1564,12 +1564,16 @@ class Portal(DBPortal, BasePortal):
 
         Returns
         -------
-        Tuple[EventID, MessageEventContent]
+        tuple[EventID, MessageEventContent]
             The event id and the message content.
         """
         # Format the message to send to Matrix
+        formated_body, template_message = whatsapp_to_matrix(template_message)
         msg: MessageEventContent = TextMessageEventContent(
-            body=template_message, msgtype=MessageType.TEXT
+            body=template_message,
+            msgtype=MessageType.TEXT,
+            formatted_body=formated_body,
+            format=Format.HTML,
         )
         msg.trim_reply_fallback()
         msg_event_id = None
@@ -1593,7 +1597,7 @@ class Portal(DBPortal, BasePortal):
         self,
         *,
         template_name: str,
-        variables: List[str],
+        variables: list[str],
         language: str,
         user: User,
         flow_action: dict | None = None,
@@ -1605,7 +1609,7 @@ class Portal(DBPortal, BasePortal):
         ----------
         template_name : str
             The name of the template.
-        variables: List[str]
+        variables: list[str]
             The list of the values of the variables that will be replaced in the template.
         language: str
             The language of the template.
