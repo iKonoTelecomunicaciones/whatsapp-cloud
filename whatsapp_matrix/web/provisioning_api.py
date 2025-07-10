@@ -390,13 +390,18 @@ class ProvisioningAPI:
         ----------
         business_id: str
             The business_id of the app
+
+        page: str
+            The page of the template to get
         """
         # Validate the token
         self.log.debug("Get template")
         self.check_token(request)
 
         # Obtain the business_id from the request
-        business_id = request.query.get("business_id", None)
+        business_id = request.query.get("business_id")
+        # Obtain the page from the request
+        page = request.query.get("page")
 
         if not business_id:
             self.log.error("The business_id was not provided")
@@ -431,7 +436,11 @@ class ProvisioningAPI:
             )
 
         # Get the url of the Whatsapp Api Cloud
-        url = f"{self.base_url}/{self.version}/{business_id}{self.template_path}"
+        url = f"{self.base_url}/{self.version}/{business_id}{self.template_path}?limit=50"
+
+        if page:
+            url += f"&after={page}"
+
         headers = {
             "Authorization": f"Bearer {company.page_access_token}",
         }
@@ -442,7 +451,7 @@ class ProvisioningAPI:
         if client_response.status == 200:
             self.log.debug(f"Get the templates {response}")
             return web.HTTPOk(
-                text=json.dumps(response["data"]),
+                text=json.dumps(response),
                 headers=self._headers,
             )
         else:
