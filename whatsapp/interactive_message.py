@@ -2,11 +2,11 @@ import re
 
 from attr import dataclass, ib
 from mautrix.types import (
+    BaseMessageEventContent,
     MessageType,
     Obj,
     SerializableAttrs,
     TextMessageEventContent,
-    BaseMessageEventContent,
 )
 
 from whatsapp_matrix.config import Config

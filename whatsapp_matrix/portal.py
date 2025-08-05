@@ -517,8 +517,7 @@ class Portal(DBPortal, BasePortal):
                 message_type = "m.form_response"
                 message_form = message_data.interactive.nfm_reply.response_json
                 content_attachment = FormResponseMessage(
-                    form_data=message_form,
-                    msgtype="m.form_response"
+                    form_data=message_form, msgtype="m.form_response"
                 )
                 content_attachment.form_data = message_form
                 content_attachment.visible = message_form.get("visible", True)
@@ -1131,7 +1130,6 @@ class Portal(DBPortal, BasePortal):
             The message error that whatsapp return.
         """
         await self.main_intent.send_notice(self.mxid, message_error)
-
 
     async def send_interactive_message_to_matrix(
         self,
