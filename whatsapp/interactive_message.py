@@ -1,8 +1,13 @@
 import re
-from typing import List
 
 from attr import dataclass, ib
-from mautrix.types import MessageType, Obj, SerializableAttrs, TextMessageEventContent
+from mautrix.types import (
+    BaseMessageEventContent,
+    MessageType,
+    Obj,
+    SerializableAttrs,
+    TextMessageEventContent,
+)
 
 from whatsapp_matrix.config import Config
 
@@ -43,7 +48,7 @@ class SectionsQuickReply(SerializableAttrs):
     """
 
     title: str = ib(metadata={"json": "title"}, default="")
-    rows: List[RowSection] = ib(factory=List, metadata={"json": "rows"})
+    rows: list[RowSection] = ib(factory=list, metadata={"json": "rows"})
 
     @classmethod
     def from_dict(cls, data: dict):
@@ -418,7 +423,7 @@ class ActionQuickReply(ActionReply):
     - buttons: The information of the buttons in a quick reply message.
     """
 
-    buttons: List[ButtonsQuickReply] = ib(factory=List, metadata={"json": "buttons"})
+    buttons: list[ButtonsQuickReply] = ib(factory=list, metadata={"json": "buttons"})
 
     @classmethod
     def from_dict(cls, data: dict):
@@ -506,7 +511,7 @@ class ActionListReply(ActionReply):
     """
 
     button: str = ib(metadata={"json": "button"}, default="")
-    sections: List[SectionsQuickReply] = ib(factory=List, metadata={"json": "sections"})
+    sections: list[SectionsQuickReply] = ib(factory=list, metadata={"json": "sections"})
 
     @classmethod
     def from_dict(cls, data: dict):
@@ -785,10 +790,10 @@ class InteractiveListsMessage(InteractiveMessage):
             # this structure containt the necesary information for the interactive message in the
             # items list and the rows list, so we need to transform the interactive message
             # object from our structure to the cloud structure.
-            list_section: List[SectionsQuickReply] = []
+            list_section: list[SectionsQuickReply] = []
 
             for item in list_items:
-                list_rows: List[RowSection] = [
+                list_rows: list[RowSection] = [
                     RowSection.from_dict(
                         {
                             "id": option.postback_text,
@@ -926,7 +931,7 @@ class FormMessageContent(SerializableAttrs):
 
 
 @dataclass
-class FormMessage(SerializableAttrs):
+class FormMessage(SerializableAttrs, BaseMessageEventContent):
     msgtype: str = ib(default=None, metadata={"json": "msgtype"})
     body: str = ib(default="", metadata={"json": "body"})
     form_message: FormMessageContent = ib(
@@ -943,5 +948,15 @@ class FormMessage(SerializableAttrs):
 
 
 @dataclass
-class InteractiveResponseMessage(TextMessageEventContent):
-    interactive_message: dict = ib(factory=dict, metadata={"json": "interactive_message"})
+class FormMessageEvent(SerializableAttrs, BaseMessageEventContent):
+    msgtype: str = ib(default=None, metadata={"json": "msgtype"})
+    body: str = ib(default="", metadata={"json": "body"})
+    form_message: list = ib(factory=list, metadata={"json": "form_message"})
+
+    @classmethod
+    def from_dict(cls, data: dict):
+        return cls(
+            msgtype=data.get("msgtype", ""),
+            body=data.get("body", ""),
+            form_message=data.get("form_message", []),
+        )
