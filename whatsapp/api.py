@@ -739,6 +739,12 @@ class WhatsappClient:
         parameter_actions: list
             Actions that the template needs to be send, usually is used to send flows
         """
+        # Append the button to the template matrix
+        template_data["template_to_matrix"].append({
+            "type": "BUTTONS",
+            "buttons": component.get("buttons", [])
+        })
+
         for i, button in enumerate(component.get("buttons", [])):
             # Get the type of the button and its text
             button_type = button.get("type", "").lower()
@@ -784,8 +790,6 @@ class WhatsappClient:
                         "type": "coupon_code",
                         "coupon_code": variable,
                     }
-
-            template_data["template_to_matrix"].append(button)
 
             if not parameter:
                 continue

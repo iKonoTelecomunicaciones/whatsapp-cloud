@@ -7,7 +7,6 @@ from typing import TYPE_CHECKING, Any, cast
 
 from aiohttp import ClientConnectorError, ClientSession
 from asyncpg.exceptions import UniqueViolationError
-from markdown import markdown
 from mautrix.appservice import AppService, IntentAPI
 from mautrix.bridge import BasePortal
 from mautrix.types import (
@@ -32,13 +31,11 @@ from whatsapp.interactive_message import (
     EventInteractiveMessage,
     FormMessage,
     FormMessageEvent,
-    FormResponseMessage,
-    InteractiveResponseMessage,
+    FormResponseMessage
 )
 from whatsapp.types import WhatsappMessageID, WhatsappPhone, WsBusinessID
 from whatsapp_matrix.formatter.from_matrix import matrix_to_whatsapp
 from whatsapp_matrix.formatter.from_whatsapp import whatsapp_reply_to_matrix
-from whatsapp_matrix.util import format_body_message, json_to_yaml
 
 from .db import Message as DBMessage
 from .db import Portal as DBPortal
@@ -1131,44 +1128,6 @@ class Portal(DBPortal, BasePortal):
         """
         await self.main_intent.send_notice(self.mxid, message_error)
 
-    async def send_interactive_message_to_matrix(
-        self,
-        event_interactive_message: EventInteractiveMessage,
-    ) -> None:
-        """
-        Send interactive message to Matrix
-
-        Parameters
-        ----------
-        event_interactive_message : EventInteractiveMessage
-            The class that containt the data of the interactive message.
-
-        """
-        # Obtain the body of the message to send it to matrix
-        try:
-            message: dict = event_interactive_message.interactive_message.from_dict()
-        except KeyError as error:
-            message_type: str = event_interactive_message.interactive_message.type
-            self.log.error(f"Error, the key {error} does not exist in the {message_type} message")
-            await self.main_intent.send_notice(
-                self.mxid, f"Error getting the {message_type} message"
-            )
-            return
-
-        try:
-            msg = InteractiveResponseMessage(form_response=message, msgtype="m.form_response")
-            msg.interactive_message = event_interactive_message.interactive_message
-            msg.trim_reply_fallback()
-        except AttributeError as error:
-            self.log.error(error)
-            await self.main_intent.send_notice(
-                self.mxid, f"Error sending the interactive message: {error}"
-            )
-            return
-
-        # Send message in matrix format
-        await self.az.intent.send_message(self.mxid, msg)
-
     async def handle_interactive_message(
         self, sender: User, message: MessageEventContent, event_id: EventID
     ) -> None:
@@ -1241,10 +1200,6 @@ class Portal(DBPortal, BasePortal):
 
             # Send message in matrix format
             await self.az.intent.send_message(self.mxid, content_attachment)
-
-        await self.send_interactive_message_to_matrix(
-            event_interactive_message=event_interactive_message
-        )
 
         try:
             # Send the interactive message in whatsapp format

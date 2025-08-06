@@ -946,12 +946,6 @@ class FormMessage(SerializableAttrs, BaseMessageEventContent):
             form_message=FormMessageContent.from_dict(data.get("form_message", {})),
         )
 
-
-@dataclass
-class InteractiveResponseMessage(TextMessageEventContent):
-    form_response: dict = ib(factory=dict, metadata={"json": "interactive_message"})
-
-
 @dataclass
 class FormMessageEvent(SerializableAttrs, BaseMessageEventContent):
     msgtype: str = ib(default=None, metadata={"json": "msgtype"})
