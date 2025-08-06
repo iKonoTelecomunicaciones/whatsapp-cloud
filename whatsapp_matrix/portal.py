@@ -31,7 +31,7 @@ from whatsapp.interactive_message import (
     EventInteractiveMessage,
     FormMessage,
     FormMessageEvent,
-    FormResponseMessage
+    FormResponseMessage,
 )
 from whatsapp.types import WhatsappMessageID, WhatsappPhone, WsBusinessID
 from whatsapp_matrix.formatter.from_matrix import matrix_to_whatsapp
@@ -516,7 +516,6 @@ class Portal(DBPortal, BasePortal):
                 content_attachment = FormResponseMessage(
                     form_data=message_form, msgtype="m.form_response"
                 )
-                content_attachment.form_data = message_form
                 content_attachment.visible = message_form.get("visible", True)
 
         elif whatsapp_message_type == "button":
@@ -1288,7 +1287,6 @@ class Portal(DBPortal, BasePortal):
                     msgtype="m.form_message",
                 )
 
-            msg.form_data = form_message.form_message.flow_action.serialize()
             msg.trim_reply_fallback()
             msg_event_id = None
             for i in range(10):

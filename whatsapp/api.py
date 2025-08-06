@@ -683,7 +683,7 @@ class WhatsappClient:
         else:
             template_data["template_to_matrix"].append(component)
 
-    def get_button_url(self, button: dict, variables: list[str]) -> tuple[str, dict]:
+    def get_button_url(self, button: dict, variables: list[str]) -> dict[str, str] | None:
         """
         Validate if the button has a variable, if it has, replace the variable and add it to the
         parameter dictionary, else add the url of the button to the message.
@@ -740,10 +740,9 @@ class WhatsappClient:
             Actions that the template needs to be send, usually is used to send flows
         """
         # Append the button to the template matrix
-        template_data["template_to_matrix"].append({
-            "type": "BUTTONS",
-            "buttons": component.get("buttons", [])
-        })
+        template_data["template_to_matrix"].append(
+            {"type": "BUTTONS", "buttons": component.get("buttons", [])}
+        )
 
         for i, button in enumerate(component.get("buttons", [])):
             # Get the type of the button and its text
