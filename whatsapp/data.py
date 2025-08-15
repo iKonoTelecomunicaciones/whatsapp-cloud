@@ -1,9 +1,16 @@
 import json
 
 from attr import dataclass, ib
-from mautrix.types import SerializableAttrs
+from mautrix.types import BaseMessageEventContent, SerializableAttrs
 
 from .types import WhatsappMessageID, WhatsappPhone, WsBusinessID, WSPhoneID
+
+
+@dataclass
+class TemplateMessage(SerializableAttrs, BaseMessageEventContent):
+    msgtype: str = ib(default=None, metadata={"json": "msgtype"})
+    body: str = ib(default="", metadata={"json": "body"})
+    template_message: list = ib(factory=list, metadata={"json": "template_message"})
 
 
 @dataclass

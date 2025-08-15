@@ -7,7 +7,6 @@ from typing import TYPE_CHECKING, Any, cast
 
 from aiohttp import ClientConnectorError, ClientSession
 from asyncpg.exceptions import UniqueViolationError
-from markdown import markdown
 from mautrix.appservice import AppService, IntentAPI
 from mautrix.bridge import BasePortal
 from mautrix.types import (
@@ -27,17 +26,16 @@ from mautrix.types import (
 )
 
 from whatsapp.api import WhatsappClient
-from whatsapp.data import WhatsappContacts, WhatsappEvent, WhatsappReaction
+from whatsapp.data import TemplateMessage, WhatsappContacts, WhatsappEvent, WhatsappReaction
 from whatsapp.interactive_message import (
     EventInteractiveMessage,
     FormMessage,
+    FormMessageEvent,
     FormResponseMessage,
-    InteractiveResponseMessage,
 )
 from whatsapp.types import WhatsappMessageID, WhatsappPhone, WsBusinessID
 from whatsapp_matrix.formatter.from_matrix import matrix_to_whatsapp
 from whatsapp_matrix.formatter.from_whatsapp import whatsapp_reply_to_matrix
-from whatsapp_matrix.util import format_body_message, json_to_yaml
 
 from .db import Message as DBMessage
 from .db import Portal as DBPortal
@@ -425,44 +423,6 @@ class Portal(DBPortal, BasePortal):
         """
         await self.update()
 
-    def get_message_content(
-        self,
-        json_message: str,
-        message_type: str,
-        response_message: FormResponseMessage | InteractiveResponseMessage,
-        message: str | None = None,
-    ) -> FormResponseMessage | InteractiveResponseMessage:
-        """
-        Obtain the content of the message that will be send to Matrix
-
-        Parameters
-        ----------
-        message : str
-            Message that does not need to be converted to yaml.
-        json_message : str
-            Message that is in json format and will be converted to yaml.
-        message_type : str
-            The type of the message, like interactive, form, etc.
-        response_message: FormResponseMessage | InteractiveResponseMessage
-            The class that containt the data of the response message.
-        """
-        yaml_message: str = json_to_yaml(json_message)
-        formated_body = format_body_message(yaml_message=yaml_message)
-        body_message = f"```YAML\n{yaml_message}\n```"
-
-        if message:
-            body_message = message + body_message
-            formated_body = message + formated_body
-
-        content = response_message(
-            body=body_message,
-            msgtype=message_type,
-            formatted_body=formated_body,
-            format="org.matrix.custom.html",
-        )
-
-        return content
-
     async def handle_whatsapp_message(
         self, source: User, message: WhatsappEvent, sender: WhatsappContacts
     ) -> None:
@@ -553,12 +513,9 @@ class Portal(DBPortal, BasePortal):
             elif message_data.interactive.type == "nfm_reply":
                 message_type = "m.form_response"
                 message_form = message_data.interactive.nfm_reply.response_json
-                content_attachment = self.get_message_content(
-                    json_message=message_form,
-                    message_type=message_type,
-                    response_message=FormResponseMessage,
+                content_attachment = FormResponseMessage(
+                    form_data=message_form, msgtype="m.form_response"
                 )
-                content_attachment.form_data = message_form
                 content_attachment.visible = message_form.get("visible", True)
 
         elif whatsapp_message_type == "button":
@@ -1170,65 +1127,6 @@ class Portal(DBPortal, BasePortal):
         """
         await self.main_intent.send_notice(self.mxid, message_error)
 
-    def get_interactive_message(
-        self, event_interactive_message: EventInteractiveMessage, message: str
-    ) -> InteractiveResponseMessage:
-
-        if event_interactive_message.interactive_message.type == "form":
-            msg = self.get_message_content(
-                json_message=message,
-                message_type="m.form",
-                response_message=InteractiveResponseMessage,
-            )
-        else:
-            msg = TextMessageEventContent(
-                body=message,
-                msgtype=MessageType.TEXT,
-                formatted_body=markdown(message.replace("\n", "<br>")),
-                format=Format.HTML,
-            )
-
-        msg.interactive_message = event_interactive_message.interactive_message
-        msg.trim_reply_fallback()
-
-        return msg
-
-    async def send_interactive_message_to_matrix(
-        self,
-        event_interactive_message: EventInteractiveMessage,
-    ) -> None:
-        """
-        Send interactive message to Matrix
-
-        Parameters
-        ----------
-        event_interactive_message : EventInteractiveMessage
-            The class that containt the data of the interactive message.
-
-        """
-        # Obtain the body of the message to send it to matrix
-        try:
-            message: str = event_interactive_message.interactive_message.body_message()
-        except KeyError as error:
-            message_type: str = event_interactive_message.interactive_message.type
-            self.log.error(f"Error, the key {error} does not exist in the {message_type} message")
-            await self.main_intent.send_notice(
-                self.mxid, f"Error getting the {message_type} message"
-            )
-            return
-
-        try:
-            msg = self.get_interactive_message(event_interactive_message, message=message)
-        except AttributeError as error:
-            self.log.error(error)
-            await self.main_intent.send_notice(
-                self.mxid, f"Error sending the interactive message: {error}"
-            )
-            return
-
-        # Send message in matrix format
-        await self.az.intent.send_message(self.mxid, msg)
-
     async def handle_interactive_message(
         self, sender: User, message: MessageEventContent, event_id: EventID
     ) -> None:
@@ -1301,10 +1199,6 @@ class Portal(DBPortal, BasePortal):
 
             # Send message in matrix format
             await self.az.intent.send_message(self.mxid, content_attachment)
-
-        await self.send_interactive_message_to_matrix(
-            event_interactive_message=event_interactive_message
-        )
 
         try:
             # Send the interactive message in whatsapp format
@@ -1380,21 +1274,19 @@ class Portal(DBPortal, BasePortal):
                 self.log.exception(f"Error trying to send the media message: {e}")
                 return
 
-        if template_data["template_message"]:
+        if template_data["template_to_matrix"]:
             if form_message.form_message.flow_action:
-                msg = self.get_message_content(
-                    message=template_data["template_message"],
-                    json_message=form_message.form_message.flow_action.serialize(),
-                    message_type="m.form",
-                    response_message=FormResponseMessage,
+                msg = FormResponseMessage(
+                    form_data=form_message.form_message.flow_action.serialize(),
+                    msgtype="m.form_response",
                 )
             else:
                 # Format the message to send to Matrix
-                msg = TextMessageEventContent(
-                    body=template_data["template_message"], msgtype=MessageType.TEXT
+                msg = FormMessageEvent(
+                    form_message=template_data["template_to_matrix"],
+                    msgtype="m.form_message",
                 )
 
-            msg.form_data = form_message.form_message.flow_action.serialize()
             msg.trim_reply_fallback()
             msg_event_id = None
             for i in range(10):
@@ -1552,28 +1444,25 @@ class Portal(DBPortal, BasePortal):
             )
 
     async def send_template_message(
-        self, template_message: str
-    ) -> tuple[EventID, MessageEventContent]:
+        self, template_message: list[dict]
+    ) -> tuple[EventID, TemplateMessage]:
         """
         Send a template message to Matrix.
 
         Parameters
         ----------
-        template_message : str
+        template_message : dict
             The template message to send.
 
         Returns
         -------
-        tuple[EventID, MessageEventContent]
+        tuple[EventID, TemplateMessage]
             The event id and the message content.
         """
         # Format the message to send to Matrix
-        formated_body, template_message = whatsapp_to_matrix(template_message)
-        msg: MessageEventContent = TextMessageEventContent(
-            body=template_message,
-            msgtype=MessageType.TEXT,
-            formatted_body=formated_body,
-            format=Format.HTML,
+        msg: TemplateMessage = TemplateMessage(
+            msgtype="m.template_message",
+            template_message=template_message,
         )
         msg.trim_reply_fallback()
         msg_event_id = None
@@ -1628,7 +1517,7 @@ class Portal(DBPortal, BasePortal):
             parameter_actions=parameter_actions,
         )
 
-        if not template_data["template_message"] and not template_data["media_type"]:
+        if not template_data["template_to_matrix"] and not template_data["media_type"]:
             raise ValueError(f"The template {template_name} does not exist")
 
         # If the template has media, download it and send it to Matrix
@@ -1639,9 +1528,9 @@ class Portal(DBPortal, BasePortal):
                 media_ids=media_ids,
             )
 
-        if template_data["template_message"]:
+        if template_data["template_to_matrix"]:
             msg_event_id, msg = await self.send_template_message(
-                template_message=template_data["template_message"]
+                template_message=template_data["template_to_matrix"]
             )
 
         if template_data["template_status"] == "APPROVED":

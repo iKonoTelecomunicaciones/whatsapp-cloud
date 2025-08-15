@@ -465,7 +465,7 @@ class WhatsappClient:
                 example:
                 {
                     "template_name": template_name,
-                    "template_message": "Hi, this is a template message",
+                    "template_to_matrix": [],
                     "media_type": "",
                     "media_url": [],
                     "template_status": "APPROVED",
@@ -615,9 +615,13 @@ class WhatsappClient:
         named_params = component_example.get(f"{component_type}_text_named_params")
 
         # If the template has variables, replace the variable and add it to the message
-        template_data[
-            "template_message"
-        ] += f"{message.format(*variables[:total_message_variables])}\n"
+        replaced_component = copy(component)
+        try:
+            replaced_component["text"] = message.format(*variables[:total_message_variables])
+        except KeyError:
+            pass
+
+        template_data["template_to_matrix"].append(replaced_component)
 
         # Save the variables of the template to send it to Whatsapp API Cloud
         parameters_data = [
@@ -665,6 +669,9 @@ class WhatsappClient:
                 "the template has body with variables, but the variables are not provided"
             )
 
+        if template_data.get("template_to_matrix") is None:
+            template_data["template_to_matrix"] = []
+
         # If the template has variables, replace the variable and add it to the message
         if message_variables:
             self.get_template_variables(
@@ -674,11 +681,9 @@ class WhatsappClient:
                 variables=variables,
             )
         else:
-            template_data["template_message"] += (
-                f"{component.get('text')}\n" if component.get("text") else ""
-            )
+            template_data["template_to_matrix"].append(component)
 
-    def get_button_url(self, button: dict, variables: list[str]) -> tuple[str, dict]:
+    def get_button_url(self, button: dict, variables: list[str]) -> dict[str, str] | None:
         """
         Validate if the button has a variable, if it has, replace the variable and add it to the
         parameter dictionary, else add the url of the button to the message.
@@ -701,20 +706,15 @@ class WhatsappClient:
         # The parameter is not set by default because if the button has not a variable, the
         # parameter is not needed
         parameter = None
-        message = f"{button.get('text')}: "
 
-        if not has_button_variables:
-            message += f"{button.get('url')}\n"
-        else:
+        if has_button_variables:
             variable = variables.pop(0)
             # Replace the variables standar of Meta Template ( {{name}}, {{1}} ) with our standar
             # ( {} ), this is because the variables of the template are in a list and we need to
             # replace it in the message.
-            url = re.sub(r"\{\{\d+\}\}", "{}", button.get("url"))
-            message += f"{url.format(variable)}\n"
             parameter = {"type": "text", "text": variable}
 
-        return message, parameter
+        return parameter
 
     def get_buttons_component(
         self,
@@ -739,10 +739,14 @@ class WhatsappClient:
         parameter_actions: list
             Actions that the template needs to be send, usually is used to send flows
         """
+        # Append the button to the template matrix
+        template_data["template_to_matrix"].append(
+            {"type": "BUTTONS", "buttons": component.get("buttons", [])}
+        )
+
         for i, button in enumerate(component.get("buttons", [])):
             # Get the type of the button and its text
             button_type = button.get("type", "").lower()
-            message = f"{button.get('text')}\n"
             # Set the default parameters of the button
             parameter: dict = {"type": "text", "text": button.get("text")}
 
@@ -764,7 +768,7 @@ class WhatsappClient:
 
                 # If the template has a url button, validate if the button has a variable or not
                 case "url":
-                    message, parameter = self.get_button_url(
+                    parameter = self.get_button_url(
                         button=button,
                         variables=variables,
                     )
@@ -772,9 +776,6 @@ class WhatsappClient:
                 # If the template has a button with a number, add it to the message
                 case "phone_number":
                     button_type = "voice_call"
-                    message = (
-                        f"{button.get('text')}: {button.get('phone_number').replace('+', '')}\n"
-                    )
                     parameter = {
                         "type": "text",
                         "text": button.get("phone_number", ""),
@@ -788,9 +789,6 @@ class WhatsappClient:
                         "type": "coupon_code",
                         "coupon_code": variable,
                     }
-                    message = f"{button.get('text')}: {variable}\n"
-
-            template_data["template_message"] += message
 
             if not parameter:
                 continue
@@ -884,7 +882,7 @@ class WhatsappClient:
                 example:
                 {
                     "template_name": template_name,
-                    "template_message": "Hi, this is a template message",
+                    "template_to_matrix": [],
                     "media_type": "",
                     "media_url": [],
                     "template_status": "APPROVED",
@@ -899,7 +897,7 @@ class WhatsappClient:
         # body data, and buttons data
         template_data = {
             "template_name": template_name,
-            "template_message": "",
+            "template_to_matrix": [],
             "media_type": "",
             "media_url": [],
             "template_status": "",
@@ -935,7 +933,7 @@ class WhatsappClient:
             f"""
             Getting the message of the template: {template_name},
             status: {template_data['template_status']},
-            message: {template_data['template_message']}
+            message: {template_data['template_to_matrix']}
             """
         )
 
