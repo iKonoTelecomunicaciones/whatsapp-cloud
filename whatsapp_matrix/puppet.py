@@ -143,6 +143,7 @@ class Puppet(DBPuppet, BasePuppet):
                 self.log.exception("Failed to update displayname")
                 self.name_set = False
             return True
+        return False
 
     @classmethod
     def get_mxid_from_phone_id(cls, phone_id: WhatsappPhone) -> UserID:
