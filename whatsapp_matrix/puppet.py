@@ -128,20 +128,21 @@ class Puppet(DBPuppet, BasePuppet):
         # If the puppet already exists, validate if the name is the same as the one in the database,
         # like user_name (WB), because the _get_displayname function will return user_name (WB) (WB)
         # and the display_name will be updated.
-        if info.get("profile"):
-            if info.profile.name == self.display_name:
-                return False
-            name = self._get_displayname(info)
-            if name != self.display_name:
-                self.display_name = name
-                try:
-                    await self.default_mxid_intent.set_displayname(self.display_name)
-                    self.name_set = True
-                except Exception:
-                    self.log.exception("Failed to update displayname")
-                    self.name_set = False
-                return True
-        return False
+        if not info.get("profile"):
+            return False
+
+        if info.profile.name == self.display_name:
+            return False
+        name = self._get_displayname(info)
+        if name != self.display_name:
+            self.display_name = name
+            try:
+                await self.default_mxid_intent.set_displayname(self.display_name)
+                self.name_set = True
+            except Exception:
+                self.log.exception("Failed to update displayname")
+                self.name_set = False
+            return True
 
     @classmethod
     def get_mxid_from_phone_id(cls, phone_id: WhatsappPhone) -> UserID:
