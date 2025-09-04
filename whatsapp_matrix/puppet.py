@@ -128,6 +128,9 @@ class Puppet(DBPuppet, BasePuppet):
         # If the puppet already exists, validate if the name is the same as the one in the database,
         # like user_name (WB), because the _get_displayname function will return user_name (WB) (WB)
         # and the display_name will be updated.
+        if not info.get("profile"):
+            return False
+
         if info.profile.name == self.display_name:
             return False
         name = self._get_displayname(info)
