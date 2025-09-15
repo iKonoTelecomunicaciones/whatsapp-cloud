@@ -14,7 +14,7 @@ from mautrix.types import (
 )
 from mautrix.util.logging import TraceLogger
 
-from whatsapp.interactive_message import InteractiveMessage
+from whatsapp.data import InteractiveMessage, TemplateMessage
 
 from ..db import Message
 from ..puppet import Puppet
@@ -121,8 +121,13 @@ async def _add_reply_header(
     try:
         event: MessageEvent = await main_intent.get_event(msg.room_id, msg.event_mxid)
         # If the message is an interactive message, we need to convert it to a text message
-        if event.content.msgtype == "m.interactive_message":
-            event.content = create_text_body(event)
+        if event.content.msgtype in ["m.interactive_message", "m.template_message"]:
+            message_type = (
+                "interactive_message"
+                if event.content.msgtype == "m.interactive_message"
+                else "template_message"
+            )
+            event.content = create_text_body(event, message_type)
 
         if isinstance(event.content, TextMessageEventContent):
             event.content.trim_reply_fallback()
@@ -133,20 +138,36 @@ async def _add_reply_header(
         pass
 
 
-def create_text_body(event: MessageEvent) -> MessageEvent:
+def create_text_body(event: MessageEvent, message_type: str) -> MessageEvent:
     """
-    Converts an interactive body message to a text body message
+    Converts an interactive body message or template message to a text body message
 
-    Obtain the body of the interactive message event and convert it to a text body message for send
+    Obtain the body of the message event and convert it to a text body message for send
     it to Matrix
 
     Parameters:
     -----------
     event: MessageEvent - MessageEvent
+        Event that contains the interactive message or template message
+    message_type: str - str
+        Type of message, can be "interactive_message" or "template_message"
     """
-    message = InteractiveMessage.from_dict(event.content.get("interactive_message", {}))
+    message = {}
+    body: str = ""
 
-    body = message.button_message if message.type == "button" else message.list_message
+    match message_type:
+        case "interactive_message":
+            message = InteractiveMessage.from_dict(event.content.get(message_type, {}))
+            body = (
+                message.button_reply.title
+                if message.type == "button"
+                else message.list_reply.title
+            )
+        case "template_message":
+            template_message = TemplateMessage(**event.content.serialize()).template_message
+            body = next(
+                (item["text"] for item in template_message if item.get("type") == "BODY"), ""
+            )
 
     event.content = TextMessageEventContent(
         body=body,

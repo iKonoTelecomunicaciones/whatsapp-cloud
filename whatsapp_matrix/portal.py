@@ -464,7 +464,7 @@ class Portal(DBPortal, BasePortal):
         caption = None
         messasge_reply = {}
 
-        if message_data.context and not whatsapp_message_type in ["interactive", "button"]:
+        if message_data.context and not whatsapp_message_type == "interactive":
             reply_message_id = message_data.context.id
             messasge_reply: DBMessage = await DBMessage.get_by_whatsapp_message_id(
                 reply_message_id
