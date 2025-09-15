@@ -821,7 +821,7 @@ class Portal(DBPortal, BasePortal):
             except ValueError as error:
                 self.log.error(f"Error sending the message: {error}")
                 await self.main_intent.send_notice(
-                    self.mxid, "Error sending the message, verify that the token is correct"
+                    self.mxid, f"Error sending the message: {error}"
                 )
                 return
 
@@ -859,7 +859,7 @@ class Portal(DBPortal, BasePortal):
             except ValueError as error:
                 self.log.error(f"Error sending the message: {error}")
                 await self.main_intent.send_notice(
-                    self.mxid, "Error sending the message, verify that the token is correct"
+                    self.mxid, f"Error sending the message: {error}"
                 )
                 return
 
