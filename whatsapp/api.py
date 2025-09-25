@@ -37,7 +37,7 @@ class WhatsappClient:
         phone_id: WhatsappPhone,
         message_type: MessageType,
         message: str | None = None,
-        url: str | None = None,
+        media_id: str | None = None,
         location: tuple | None = None,
         file_name: str | None = None,
         aditional_data: dict | None = None,
@@ -56,8 +56,8 @@ class WhatsappClient:
         message_type: MessageType
             The type of the message that will be sent to the user.
 
-        url: str
-            The url of the file that will be sent to the user.
+        media_id: str | None
+            The media id of the file that will be sent to the user.
 
         location: tuple
             The location of the user, contains the latitude and longitude.
@@ -94,16 +94,16 @@ class WhatsappClient:
                 message_data = {"preview_url": False, "body": message}
             case MessageType.IMAGE:
                 type_message = "image"
-                message_data = {"link": url, "caption": message}
+                message_data = {"id": media_id, "caption": message}
             case MessageType.FILE:
                 type_message = "document"
-                message_data = {"link": url, "filename": file_name, "caption": message}
+                message_data = {"id": media_id, "filename": file_name, "caption": message}
             case MessageType.VIDEO:
                 type_message = "video"
-                message_data = {"link": url, "caption": message}
+                message_data = {"id": media_id, "caption": message}
             case MessageType.AUDIO:
                 type_message = "audio"
-                message_data = {"link": url}
+                message_data = {"id": media_id}
             case MessageType.LOCATION:
                 type_message = "location"
                 message_data = {"latitude": location[0], "longitude": location[1]}
