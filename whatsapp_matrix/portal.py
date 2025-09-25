@@ -7,26 +7,26 @@ from typing import TYPE_CHECKING, Any, cast
 
 from aiohttp import ClientConnectorError, ClientSession
 from asyncpg.exceptions import UniqueViolationError
-from mautrix.api import MediaPath, Method, ClientPath
-from mautrix.util import magic
+from mautrix.api import ClientPath, MediaPath, Method
 from mautrix.appservice import AppService, IntentAPI
 from mautrix.bridge import BasePortal
 from mautrix.types import (
     EventID,
     EventType,
     FileInfo,
-    Obj,
     Format,
     LocationMessageEventContent,
     MediaMessageEventContent,
     MessageEventContent,
     MessageType,
+    Obj,
     PowerLevelStateEventContent,
     ReactionEventContent,
     RoomID,
     TextMessageEventContent,
     UserID,
 )
+from mautrix.util import magic
 
 from whatsapp.api import WhatsappClient
 from whatsapp.data import TemplateMessage, WhatsappContacts, WhatsappEvent, WhatsappReaction
@@ -806,7 +806,8 @@ class Portal(DBPortal, BasePortal):
         media_type = magic.mimetype(data)
 
         if not media_name:
-            media_name = f"file.{media_type}"
+            ext = media_type.split("/")[-1]
+            media_name = f"file.{ext}"
 
         response = await self.whatsapp_client.upload_media(
             data, messaging_product="whatsapp", file_type=media_type, file_name=media_name
