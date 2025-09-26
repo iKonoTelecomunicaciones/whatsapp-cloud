@@ -7,6 +7,7 @@ from typing import TYPE_CHECKING, Any, cast
 
 from aiohttp import ClientConnectorError, ClientSession
 from asyncpg.exceptions import UniqueViolationError
+from mautrix.api import ClientPath, MediaPath, Method
 from mautrix.appservice import AppService, IntentAPI
 from mautrix.bridge import BasePortal
 from mautrix.types import (
@@ -18,12 +19,14 @@ from mautrix.types import (
     MediaMessageEventContent,
     MessageEventContent,
     MessageType,
+    Obj,
     PowerLevelStateEventContent,
     ReactionEventContent,
     RoomID,
     TextMessageEventContent,
     UserID,
 )
+from mautrix.util import magic
 
 from whatsapp.api import WhatsappClient
 from whatsapp.data import TemplateMessage, WhatsappContacts, WhatsappEvent, WhatsappReaction
@@ -88,6 +91,7 @@ class Portal(DBPortal, BasePortal):
         self._relay_user = None
         self.error_codes = self.config["whatsapp.error_codes"]
         self.homeserver_address = self.config["homeserver.public_address"]
+        self.as_token = self.config["appservice.as_token"]
         self.google_maps_url = self.config["bridge.whatsapp_cloud.google_maps_url"]
         self.openstreetmap_url = self.config["bridge.whatsapp_cloud.openstreetmap_url"]
         self.whatsapp_client: WhatsappClient = WhatsappClient(
@@ -546,18 +550,26 @@ class Portal(DBPortal, BasePortal):
                 data = await media_data.read()
 
                 try:
-                    # Upload the message media to Matrix
-                    attachment = await self.main_intent.upload_media(data=data)
+                    attachment, media_type = await self.get_media_url(data)
                 except Exception as e:
                     self.log.exception(f"Message not receive, error: {e}")
                     return
 
             # Create the content of the message media for send to Matrix
+            media_name = file_name
+
+            if not media_name and media_type:
+                ext = media_type.split("/")[-1]
+                media_name = f"Media.{ext}"
+
             content_attachment = MediaMessageEventContent(
-                body=file_name,
+                body=media_name,
                 msgtype=message_type,
                 url=attachment,
-                info=FileInfo(size=len(data)),
+                info=Obj(
+                    size=len(data),
+                    mimetype=media_type,
+                ),
             )
 
         elif message_type == MessageType.LOCATION:
@@ -743,6 +755,69 @@ class Portal(DBPortal, BasePortal):
         if self.is_direct or not await user.is_logged_in():
             return
 
+    async def get_media(self, mxc: str) -> tuple[bytes, str]:
+        """
+        Given a mxc url, it gets the media from the mxc server.
+
+        Parameters
+        ----------
+        mxc : str
+            The mxc url of the media.
+
+        Returns
+        -------
+        tuple[bytes, str]
+            The media file and its name.
+        """
+        server_name, media_matrix_id = self.main_intent.api.parse_mxc_uri(mxc)
+        path = ClientPath.v1.media.download[server_name][media_matrix_id]
+        url = f"{self.homeserver_address}/{path.__str__()}"
+        method = Method.GET
+        headers = {
+            "Authorization": f"Bearer {self.as_token}",
+        }
+        response = await self.main_intent.api.session.request(str(method), url, headers=headers)
+
+        if response.status != 200:
+            raise Exception(f"Failed to download media: {response.status}")
+
+        file_name = response.headers.get("Content-Disposition", "file")
+        media_name = file_name.split("filename=")[-1] if "filename=" in file_name else None
+        data = await response.read()
+
+        return data, media_name
+
+    async def get_media_id(self, mxc: str) -> str:
+        """
+        Given a mxc url, it gets the media and update it to meta to get an id.
+
+        Parameters
+        ----------
+        mxc : str
+            The mxc url of the media.
+        Returns
+        -------
+        str
+            The id of the media.
+        """
+        # We get the media file
+        data, media_name = await self.get_media(mxc)
+
+        media_type = magic.mimetype(data)
+
+        if not media_name:
+            ext = media_type.split("/")[-1]
+            media_name = f"file.{ext}"
+
+        response = await self.whatsapp_client.upload_media(
+            data, messaging_product="whatsapp", file_type=media_type, file_name=media_name
+        )
+
+        if not response or "id" not in response:
+            raise Exception(f"Failed to get the media id, no id in response {response}")
+
+        return response["id"]
+
     async def handle_matrix_message(
         self,
         sender: "User",
@@ -831,12 +906,12 @@ class Portal(DBPortal, BasePortal):
             MessageType.AUDIO,
             MessageType.FILE,
         ):
-            # We get the url of the media message. Message.url is something like mxc://xyz, so we
-            # remove the first 6 characters to get the media hash
-            media_mxc = message.url
-            media_hash = media_mxc[6:]
-            # We get the url of the media message
-            url = f"{self.homeserver_address}/_matrix/media/r0/download/{media_hash}"
+            try:
+                media_id = await self.get_media_id(message.url)
+            except Exception as e:
+                self.log.error(f"Error getting the media id: {e}")
+                await self.main_intent.send_notice(self.mxid, f"Error getting media id: {e}")
+                return
 
             # We send the media message to the Whatsapp API
             try:
@@ -844,7 +919,7 @@ class Portal(DBPortal, BasePortal):
                     phone_id=self.phone_id,
                     message_type=message.msgtype,
                     message=message.body,
-                    url=url,
+                    media_id=media_id,
                     file_name=self.config["whatsapp.file_name"],
                     aditional_data=aditional_data,
                 )
@@ -1371,6 +1446,62 @@ class Portal(DBPortal, BasePortal):
             media=[template_data["media_type"], media_ids],
         )
 
+    async def get_content_uri(self, data: bytes) -> str:
+        """
+        Upload the media to synapse and get the mxc from synapse
+
+        Parameters
+        ----------
+        data: bytes
+            The data containing the ids of the media that whatsapp cloud api returns
+
+        Returns
+        -------
+            The mxc url of the media
+        """
+        # Upload the message media to Matrix
+        path = MediaPath.v1.create
+        method = Method.POST
+        mime_type = None
+        headers = {}
+
+        if isinstance(data, bytes):
+            mime_type = magic.mimetype(data)
+
+        if mime_type:
+            headers["Content-Type"] = mime_type
+
+        response = await self.main_intent.api.request(method, path, content=data, headers=headers)
+        attachment = response.get("content_uri")
+
+        return attachment
+
+    async def get_media_url(self, data: bytes) -> tuple[str, str]:
+        """
+        Upload the media to synapse and get the mxc from synapse
+
+        Parameters
+        ----------
+        data: bytes
+            The data containing the ids of the media that whatsapp cloud api returns
+
+        Returns
+        -------
+            The mxc url of the media and the type of the media
+        """
+        headers = {}
+        if isinstance(data, bytes):
+            message_type = magic.mimetype(data)
+            headers["Content-Type"] = message_type
+
+        attachment = await self.get_content_uri(data)
+        server_name, media_matrix_id = self.main_intent.api.parse_mxc_uri(attachment)
+        path = MediaPath.v3.upload[server_name][media_matrix_id]
+        method = Method.PUT
+        await self.main_intent.api.request(method, path, content=data, headers=headers)
+
+        return attachment, message_type
+
     async def get_and_send_media(self, media_type: str, media_url: str, media_ids: list) -> None:
         """
         Download the media and send it to Matrix
@@ -1423,18 +1554,22 @@ class Portal(DBPortal, BasePortal):
             media_ids.append(response_upload_media.get("id"))
 
             try:
-                # Upload the message media to Matrix
-                attachment = await self.main_intent.upload_media(data=data)
+                attachment, media_type = await self.get_media_url(data)
             except Exception as e:
                 self.log.exception(f"Message not receive, error: {e}")
                 return
 
             # Create the content of the message media for send to Matrix
+            media_name = filename
+            if not media_name and media_type:
+                ext = media_type.split("/")[-1]
+                media_name = f"Media.{ext}"
+
             content_attachment = MediaMessageEventContent(
-                body=filename,
+                body=media_name,
                 msgtype=message_type,
                 url=attachment,
-                info=FileInfo(size=len(data)),
+                info=FileInfo(size=len(data), mimetype=media_type),
             )
 
             # Send the message media to Matrix
