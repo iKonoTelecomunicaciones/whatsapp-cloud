@@ -1324,10 +1324,7 @@ class Portal(DBPortal, BasePortal):
             The event id of the message.
         """
         # If the template has media, download it and send it to Matrix
-        if (
-            template_data["media_type"]
-            and template_data["media_url"]
-        ):
+        if template_data["media_type"] and template_data["media_url"]:
             send_to_matrix = False
             if template_data["media_type"] == "document":
                 send_to_matrix = True
@@ -1656,10 +1653,7 @@ class Portal(DBPortal, BasePortal):
             raise ValueError(f"The template {template_name} does not exist")
 
         # If the template has media, download it and send it to Matrix
-        if (
-            template_data["media_type"]
-            and template_data["media_url"]
-        ):
+        if template_data["media_type"] and template_data["media_url"]:
             send_to_matrix = False
             if template_data["media_type"] == "document":
                 send_to_matrix = True
