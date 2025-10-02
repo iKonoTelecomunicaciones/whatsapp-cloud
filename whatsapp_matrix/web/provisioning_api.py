@@ -4,7 +4,6 @@ import json
 from asyncio import AbstractEventLoop, get_event_loop
 from json import JSONDecodeError
 from logging import Logger, getLogger
-import stat
 
 from aiohttp import ClientResponse, ClientSession, web
 from mautrix.types import UserID
