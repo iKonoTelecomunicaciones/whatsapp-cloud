@@ -1239,8 +1239,7 @@ class Portal(DBPortal, BasePortal):
         if event_interactive_message.interactive_message.header:
             header_type = event_interactive_message.interactive_message.header.type
 
-        if header_type and header_type in ("image", "document", "video"):
-            file_name = event_interactive_message.interactive_message.header.get_media_name()
+        if header_type and header_type in ("document"):
             url = event_interactive_message.interactive_message.header.get_media_link()
             message_type = event_interactive_message.interactive_message.header.get_media_type()
 
@@ -1252,28 +1251,15 @@ class Portal(DBPortal, BasePortal):
                 return
 
             # Obtain the data of the message media
-            response = await self.az.http_session.get(url)
-            data = await response.read()
-
             try:
-                # Upload the message media to Matrix
-                attachment = await self.main_intent.upload_media(data=data)
-            except Exception as e:
-                self.log.exception(
-                    f"Error uploading the media header of the interactive message: {e}"
+                await self.get_and_send_media(
+                    media_type=message_type,
+                    media_url=[url],
+                    media_ids=[],
                 )
+            except Exception as e:
+                self.log.exception(f"Error trying to send the media message: {e}")
                 return
-
-            # Create the content of the message media for send to Matrix
-            content_attachment = MediaMessageEventContent(
-                body=file_name,
-                msgtype=message_type,
-                url=attachment,
-                info=FileInfo(size=len(data)),
-            )
-
-            # Send message in matrix format
-            await self.az.intent.send_message(self.mxid, content_attachment)
 
         try:
             # Send the interactive message in whatsapp format
@@ -1339,11 +1325,15 @@ class Portal(DBPortal, BasePortal):
         """
         # If the template has media, download it and send it to Matrix
         if template_data["media_type"] and template_data["media_url"]:
+            send_to_matrix = False
+            if template_data["media_type"] == "document":
+                send_to_matrix = True
             try:
                 await self.get_and_send_media(
                     media_type=template_data["media_type"],
                     media_url=template_data["media_url"],
                     media_ids=media_ids,
+                    send_to_matrix=send_to_matrix,
                 )
             except Exception as e:
                 self.log.exception(f"Error trying to send the media message: {e}")
@@ -1404,7 +1394,7 @@ class Portal(DBPortal, BasePortal):
                 template_name=form_message.form_message.template_name,
                 variables=variables,
                 language=form_message.form_message.language,
-                parameter_actions=[form_message.form_message.flow_action.serialize()],
+                parameter_actions=form_message.form_message.flow_action.serialize(),
             )
 
         except Exception as e:
@@ -1502,7 +1492,9 @@ class Portal(DBPortal, BasePortal):
 
         return attachment, message_type
 
-    async def get_and_send_media(self, media_type: str, media_url: str, media_ids: list) -> None:
+    async def get_and_send_media(
+        self, media_type: str, media_url: str, media_ids: list, send_to_matrix: bool = True
+    ) -> None:
         """
         Download the media and send it to Matrix
 
@@ -1516,6 +1508,8 @@ class Portal(DBPortal, BasePortal):
             The url of the media
         media_ids: list
             The list of the ids of the media that whatsapp cloud api returns
+        send_to_matrix: bool
+            If True, send the media to Matrix. If False, only upload the media to Whatsapp Cloud API
         """
         # Set the message type
         message_type = (
@@ -1552,6 +1546,9 @@ class Portal(DBPortal, BasePortal):
 
             # Add the media_id to the list
             media_ids.append(response_upload_media.get("id"))
+
+            if not send_to_matrix:
+                continue
 
             try:
                 attachment, media_type = await self.get_media_url(data)
@@ -1657,10 +1654,15 @@ class Portal(DBPortal, BasePortal):
 
         # If the template has media, download it and send it to Matrix
         if template_data["media_type"] and template_data["media_url"]:
+            send_to_matrix = False
+            if template_data["media_type"] == "document":
+                send_to_matrix = True
+
             await self.get_and_send_media(
                 media_type=template_data["media_type"],
                 media_url=template_data["media_url"],
                 media_ids=media_ids,
+                send_to_matrix=send_to_matrix,
             )
 
         if template_data["template_to_matrix"]:

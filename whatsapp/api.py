@@ -756,12 +756,14 @@ class WhatsappClient:
 
                 case "flow":
                     parameter = {"type": "action", "action": {}}
-
-                    if parameter_actions:
-                        parameter = {
-                            "type": "action",
-                            "action": {"flow_action_data": parameter_actions.pop()},
-                        }
+                    parameter = {
+                        "type": "action",
+                        "action": {
+                            "flow_action_data": (
+                                parameter_actions.pop() if len(parameter_actions) > 0 else {}
+                            )
+                        },
+                    }
 
                 case "catalog":
                     parameter = {"type": "action", "action": {}}
