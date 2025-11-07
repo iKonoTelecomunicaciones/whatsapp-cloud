@@ -470,6 +470,7 @@ class ContactAddress(SerializableAttrs):
     - type: The type of the address.
 
     """
+
     street: str = ib(metadata={"json": "street"}, default="")
     type: str = ib(metadata={"json": "type"}, default="")
 
@@ -569,6 +570,7 @@ class ContactURL(SerializableAttrs):
     - type: The type of the url.
 
     """
+
     url: str = ib(metadata={"json": "url"}, default="")
     type: str = ib(metadata={"json": "type"}, default="")
 

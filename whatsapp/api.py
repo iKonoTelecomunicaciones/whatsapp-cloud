@@ -2,6 +2,7 @@ import json
 import logging
 import re
 from copy import copy
+from io import BytesIO
 
 from aiohttp import ClientConnectorError, ClientSession, FormData
 from mautrix.types import MessageType
@@ -10,7 +11,6 @@ from whatsapp.data import WhatsappContact, WhatsappMediaData
 from whatsapp_matrix.config import Config
 
 from .types import WhatsappMediaID, WhatsappMessageID, WhatsappPhone, WsBusinessID, WSPhoneID
-from io import BytesIO
 
 
 class WhatsappClient:
@@ -979,10 +979,10 @@ class WhatsappClient:
 
             for phone in contact.phones:
                 phone_type = phone.type.upper() if phone.type else "Mobile"
-                vcard_str += f'TEL;TYPE={phone_type};waid={phone.wa_id}:{phone.phone}\n'
+                vcard_str += f"TEL;TYPE={phone_type};waid={phone.wa_id}:{phone.phone}\n"
 
             for url in contact.urls:
-                vcard_str += f'URL;TYPE={url.type}:{url.url}\n'
+                vcard_str += f"URL;TYPE={url.type}:{url.url}\n"
 
             for address in contact.addresses:
                 vcard_str += f"ADR;TYPE={address.type}:;;{address.street};;;;\n"
