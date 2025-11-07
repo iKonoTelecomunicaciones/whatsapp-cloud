@@ -435,6 +435,194 @@ class WhatsappContext(SerializableAttrs):
 
 
 @dataclass
+class WhatsappContactPhone(SerializableAttrs):
+    """
+    Contain the phone number of the contact.
+
+    - phone: The phone number of the contact.
+
+    - type: The type of the phone number.
+
+    - wa_id: The whatsapp id of the contact.
+
+    """
+
+    phone: str = ib(metadata={"json": "phone"}, default="")
+    type: str = ib(metadata={"json": "type"}, default="")
+    wa_id: str = ib(metadata={"json": "wa_id"}, default="")
+
+    @classmethod
+    def from_dict(cls, data: dict):
+        return cls(
+            phone=data.get("phone", ""),
+            type=data.get("type", ""),
+            wa_id=data.get("wa_id", ""),
+        )
+
+
+@dataclass
+class ContactAddress(SerializableAttrs):
+    """
+    Contain the address of the contact.
+
+    - street: The address street of the contact.
+
+    - type: The type of the address.
+
+    """
+    street: str = ib(metadata={"json": "street"}, default="")
+    type: str = ib(metadata={"json": "type"}, default="")
+
+    @classmethod
+    def from_dict(cls, data: dict):
+        return cls(
+            street=data.get("street", ""),
+            type=data.get("type", ""),
+        )
+
+
+@dataclass
+class ContactEmail(SerializableAttrs):
+    """
+    Contain the email of the contact.
+
+    - email: The email of the contact.
+
+    - type: The type of the email.
+
+    """
+
+    email: str = ib(metadata={"json": "email"}, default="")
+    type: str = ib(metadata={"json": "type"}, default="")
+
+    @classmethod
+    def from_dict(cls, data: dict):
+        return cls(
+            email=data.get("email", ""),
+            type=data.get("type", ""),
+        )
+
+
+@dataclass
+class WhatsappContactName(SerializableAttrs):
+    """
+    Contain the name of the contact.
+
+    - formatted_name: The formatted name of the contact.
+
+    - first_name: The first name of the contact.
+
+    - middle_name: The middle name of the contact.
+
+    - last_name: The last name of the contact.
+
+    - suffix: The suffix of the contact.
+
+    """
+
+    formatted_name: str = ib(metadata={"json": "formatted_name"}, default="")
+    first_name: str = ib(metadata={"json": "first_name"}, default="")
+    middle_name: str = ib(metadata={"json": "middle_name"}, default="")
+    last_name: str = ib(metadata={"json": "last_name"}, default="")
+    suffix: str = ib(metadata={"json": "suffix"}, default="")
+
+    @classmethod
+    def from_dict(cls, data: dict):
+        return cls(
+            formatted_name=data.get("formatted_name", ""),
+            first_name=data.get("first_name", ""),
+            middle_name=data.get("middle_name", ""),
+            last_name=data.get("last_name", ""),
+            suffix=data.get("suffix", ""),
+        )
+
+
+@dataclass
+class ContactOrganization(SerializableAttrs):
+    """
+    Contain the organization of the contact.
+
+    - company: The company of the contact.
+
+    - title: The title of the contact.
+
+    """
+
+    company: str = ib(metadata={"json": "company"}, default="")
+    title: str = ib(metadata={"json": "title"}, default="")
+
+    @classmethod
+    def from_dict(cls, data: dict):
+        return cls(
+            company=data.get("company", ""),
+            title=data.get("title", ""),
+        )
+
+
+@dataclass
+class ContactURL(SerializableAttrs):
+    """
+    Contain the url of the contact.
+
+    - url: The url of the contact.
+
+    - type: The type of the url.
+
+    """
+    url: str = ib(metadata={"json": "url"}, default="")
+    type: str = ib(metadata={"json": "type"}, default="")
+
+    @classmethod
+    def from_dict(cls, data: dict):
+        return cls(
+            url=data.get("url", ""),
+            type=data.get("type", ""),
+        )
+
+
+@dataclass
+class WhatsappContact(SerializableAttrs):
+    """
+    Contain the information of the contact.
+
+    - addresses: The list of addresses of the contact.
+
+    - birthday: The birthday of the contact.
+
+    - emails: The list of emails of the contact.
+
+    - name: The name of the contact.
+
+    - org: The organization of the contact.
+
+    - phones: The list of phone numbers of the contact.
+
+    - urls: The list of urls of the contact.
+
+    """
+
+    addresses: list[ContactAddress] = ib(metadata={"json": "addresses"}, default=[])
+    birthday: str = ib(metadata={"json": "birthday"}, default="")
+    emails: list[ContactEmail] = ib(metadata={"json": "emails"}, default=[])
+    name: WhatsappContactName = ib(metadata={"json": "name"}, default="")
+    org: ContactOrganization = ib(metadata={"json": "org"}, default={})
+    phones: list[WhatsappContactPhone] = ib(metadata={"json": "phones"}, default=[])
+    urls: list[ContactURL] = ib(metadata={"json": "urls"}, default=[])
+
+    @classmethod
+    def from_dict(cls, data: dict):
+        return cls(
+            addresses=[ContactAddress.from_dict(address) for address in data.get("addresses", [])],
+            birthday=data.get("birthday", ""),
+            emails=[ContactEmail.from_dict(email) for email in data.get("emails", [])],
+            name=WhatsappContactName.from_dict(data.get("name", {})),
+            org=ContactOrganization.from_dict(data.get("org", {})),
+            phones=[WhatsappContactPhone.from_dict(phone) for phone in data.get("phones", [])],
+            urls=[ContactURL.from_dict(url) for url in data.get("urls", [])],
+        )
+
+
+@dataclass
 class WhatsappMessages(SerializableAttrs):
     """
     Contain the information of the message.
@@ -484,6 +672,7 @@ class WhatsappMessages(SerializableAttrs):
     reaction: WhatsappReaction = ib(metadata={"json": "reaction"}, default={})
     interactive: InteractiveMessage = ib(metadata={"json": "interactive"}, default={})
     button: ButtonMessage = ib(metadata={"json": "button"}, default={})
+    contacts: list[WhatsappContact] = ib(metadata={"json": "contacts"}, default=[])
 
     @classmethod
     def from_dict(cls, data: dict):
@@ -496,6 +685,7 @@ class WhatsappMessages(SerializableAttrs):
         document_obj = None
         interactive_obj = None
         button_obj = None
+        contacts_obj = []
 
         if data.get("context", {}):
             context_obj = WhatsappContext.from_dict(data.get("context", {}))
@@ -524,6 +714,10 @@ class WhatsappMessages(SerializableAttrs):
         elif data.get("button", ""):
             button_obj = ButtonMessage.from_dict(data.get("button", {}))
 
+        elif data.get("contacts", []):
+            for contact in data.get("contacts", []):
+                contacts_obj.append(WhatsappContact.from_dict(contact))
+
         return cls(
             from_number=data.get("from", ""),
             id=data.get("id", ""),
@@ -540,6 +734,7 @@ class WhatsappMessages(SerializableAttrs):
             reaction=WhatsappReaction(**data.get("reaction", {})),
             interactive=interactive_obj,
             button=button_obj,
+            contacts=contacts_obj,
         )
 
 
