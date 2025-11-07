@@ -180,7 +180,7 @@ bridge:
 whatsapp:
     # Whatsapp base URL
     base_url: https://graph.facebook.com
-    version: v21.0
+    version: v24.0
     # Path prefix for webhook endpoints. Subpaths are /status and /receive.
     # Note that the webhook must be put behind a reverse proxy with https.
     webhook_path: /cloud
