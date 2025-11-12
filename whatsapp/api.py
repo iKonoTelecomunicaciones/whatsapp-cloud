@@ -2,12 +2,12 @@ import json
 import logging
 import re
 from copy import copy
-from typing import Optional
+from io import BytesIO
 
 from aiohttp import ClientConnectorError, ClientSession, FormData
 from mautrix.types import MessageType
 
-from whatsapp.data import WhatsappMediaData
+from whatsapp.data import WhatsappContact, WhatsappMediaData
 from whatsapp_matrix.config import Config
 
 from .types import WhatsappMediaID, WhatsappMessageID, WhatsappPhone, WsBusinessID, WSPhoneID
@@ -940,3 +940,61 @@ class WhatsappClient:
         )
 
         return template_data
+
+    def generate_vcard(self, contacts: list[WhatsappContact]) -> tuple[str, bytes]:
+        """
+        Generate a vCard from a list of WhatsappContact.
+
+        Parameters
+        ----------
+        contacts: list[WhatsappContact]
+            A list of WhatsappContact.
+
+        Returns
+        -------
+            A tuple with the filename and the vCard in bytes.
+        """
+
+        vcard_str = "BEGIN:VCARD\nVERSION:3.0\n"
+        file_name = "contacts.vcf"
+
+        if len(contacts) == 1:
+            file_name = f"{contacts[0].name.formatted_name}.vcf"
+
+        for contact in contacts:
+            full_name = contact.name.formatted_name or ""
+            name = (
+                f"{contact.name.last_name};{contact.name.first_name};"
+                f"{contact.name.middle_name};;{contact.name.suffix}"
+            )
+            vcard_str += f"N:{name}\n"
+            vcard_str += f"FN:{full_name}\n"
+
+            if contact.org.company:
+                vcard_str += f"ORG:{contact.org.company}\n"
+                vcard_str += f"TITLE:{contact.org.title}\n"
+
+            for data in contact.emails:
+                vcard_str += f"EMAIL;TYPE={data.type.capitalize()}:{data.email}\n"
+
+            for phone in contact.phones:
+                phone_type = phone.type.upper() if phone.type else "Mobile"
+                vcard_str += f"TEL;TYPE={phone_type};waid={phone.wa_id}:{phone.phone}\n"
+
+            for url in contact.urls:
+                vcard_str += f"URL;TYPE={url.type}:{url.url}\n"
+
+            for address in contact.addresses:
+                vcard_str += f"ADR;TYPE={address.type}:;;{address.street};;;;\n"
+
+            if contact.birthday:
+                vcard_str += f"BDAY;value=date:{contact.birthday}\n"
+
+        vcard_str += "END:VCARD\n"
+
+        # Simulate writing to a file in memory and return the bytes
+        vcard_bytes = vcard_str.encode("utf-8")
+        buffer = BytesIO()
+        buffer.write(vcard_bytes)
+        buffer.seek(0)
+        return file_name, buffer.getvalue()

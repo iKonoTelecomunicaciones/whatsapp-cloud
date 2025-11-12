@@ -526,6 +526,10 @@ class Portal(DBPortal, BasePortal):
             message_type = MessageType.TEXT
             attachment = message_data.button.text
 
+        elif whatsapp_message_type == "contacts":
+            message_type = whatsapp_message_type
+            attachment = message_data.contacts
+
         else:
             self.log.error(f"Unsupported message type: {whatsapp_message_type}")
             await self.az.intent.send_notice(self.mxid, "Error getting the message")
@@ -599,6 +603,26 @@ class Portal(DBPortal, BasePortal):
 
             content_attachment["format"] = str(Format.HTML)
             content_attachment["formatted_body"] = f"Location: <a href='{url}'>{body}</a>"
+
+        elif message_type == "contacts":
+            message_type = MessageType.FILE
+            file_name, contacts_file = self.whatsapp_client.generate_vcard(attachment)
+
+            try:
+                mxc, media_type = await self.get_media_url(contacts_file)
+            except Exception as e:
+                self.log.exception(f"Message not receive, error: {e}")
+                return
+
+            content_attachment = MediaMessageEventContent(
+                body=file_name,
+                msgtype=MessageType.FILE,
+                url=mxc,
+                info=Obj(
+                    size=len(contacts_file),
+                    mime_type=media_type,
+                ),
+            )
 
         has_been_sent = await self.send_data_message(
             content_attachment=content_attachment,
