@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from asyncio import Lock, sleep, Queue, create_task
+from asyncio import Lock, Queue, create_task, sleep
 from datetime import datetime
 from string import Template
 from typing import TYPE_CHECKING, Any, cast
