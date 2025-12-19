@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from asyncio import Lock, sleep
+from asyncio import Lock, sleep, Queue, create_task
 from datetime import datetime
 from string import Template
 from typing import TYPE_CHECKING, Any, cast
@@ -60,6 +60,7 @@ Invitelist = UserID | list[UserID]
 class Portal(DBPortal, BasePortal):
     by_mxid: dict[RoomID, "Portal"] = {}
     by_app_and_phone_id: dict[(WhatsappPhone, WsBusinessID), "Portal"] = {}
+    message_queue: dict[(WhatsappPhone, WsBusinessID), Queue] = {}
 
     message_template: Template
     federate_rooms: bool
@@ -97,6 +98,7 @@ class Portal(DBPortal, BasePortal):
         self.whatsapp_client: WhatsappClient = WhatsappClient(
             config=self.config, session=self.session
         )
+        self.process_event_task: bool = False
 
     @property
     def main_intent(self) -> IntentAPI:
@@ -194,7 +196,7 @@ class Portal(DBPortal, BasePortal):
         except KeyError:
             pass
         # Search if the phone_id is in the database
-        portal = cast(
+        portal: Portal = cast(
             cls, await super().get_by_phone_id(phone_id=phone_id, app_business_id=app_business_id)
         )
         if portal:
@@ -426,6 +428,88 @@ class Portal(DBPortal, BasePortal):
         Update the information of the portal
         """
         await self.update()
+
+    async def publish_whatsapp_event(
+        self, event: WhatsappEvent, user: User, sender: WhatsappContacts
+    ) -> None:
+        """
+        Publish the whatsapp event to the portal
+
+        Parameters
+        ----------
+        event : WhatsappEvent
+            The class that containt the data of the event.
+
+        user : User
+            The class that will be used to specify who receives the message.
+
+        sender : dict
+            dictionary that contains the data of who sends the message.
+        """
+        queue = self.message_queue.get((self.phone_id, self.app_business_id))
+
+        if not queue:
+            self.log.error(
+                f"Error publishing event, no queue for user {user.mxid} and phone {self.phone_id}"
+            )
+            return
+
+        if not self.process_event_task:
+            self.log.warning(
+                f"Portal for {self.phone_id} with business id {self.app_business_id} has not a "
+                "process_event_task. Creating a new process message."
+            )
+            create_task(
+                self.process_event_queue(user=user, sender=sender),
+                name=f"process_event_{self.phone_id}_{self.app_business_id}",
+            )
+
+        self.log.debug(f"Publishing event to queue for user {user.mxid} and phone {self.phone_id}")
+        await queue.put(event)
+
+    async def process_event_queue(self, user: User, sender: WhatsappContacts) -> None:
+        """
+        Process the message for a specific user and sender.
+
+        Parameters
+        ----------
+        user : User
+            The user who will receive the message.
+
+        sender : WhatsappContacts
+            The sender of the message.
+        """
+        self.log.debug(
+            f"Starting event processing task for portal with phone id {self.phone_id} and "
+            f"business id {self.app_business_id}..."
+        )
+
+        if self.process_event_task:
+            self.log.debug(
+                f"Event processing task is already running for portal {self.mxid}, skipping..."
+            )
+            return
+
+        self.process_event_task = True
+        try:
+            queue = self.message_queue[(self.phone_id, self.app_business_id)]
+        except KeyError:
+            self.log.error(
+                f"Error processing event, no queue for user {self.phone_id} "
+                f"and app {self.app_business_id}"
+            )
+            self.process_event_task = False
+            return
+
+        while True:
+            event = await queue.get()
+
+            if event.entry.changes.value.messages.type == "reaction":
+                await self.handle_whatsapp_reaction(event, sender.wa_id)
+            else:
+                await self.handle_whatsapp_message(user, event, sender)
+
+            queue.task_done()
 
     async def handle_whatsapp_message(
         self, source: User, message: WhatsappEvent, sender: WhatsappContacts
@@ -1208,6 +1292,7 @@ class Portal(DBPortal, BasePortal):
 
         if self.phone_id and self.app_business_id:
             self.by_app_and_phone_id[(self.phone_id, self.app_business_id)] = self
+            self.message_queue[(self.phone_id, self.app_business_id)] = Queue()
 
         if self.is_direct:
             puppet = await self.get_dm_puppet()
