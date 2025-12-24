@@ -1230,6 +1230,11 @@ class Portal(DBPortal, BasePortal):
         message_error : str
             The message error that whatsapp return.
         """
+        if not self.mxid:
+            self.log.error(
+                f"No mxid found when handling whatsapp error, message error: {message_error}"
+            )
+            return
         await self.main_intent.send_notice(self.mxid, message_error)
 
     async def handle_interactive_message(
