@@ -316,7 +316,7 @@ class Portal(DBPortal, BasePortal):
 
         invites = [source.mxid]
         creation_content = {}
-        displayname = f"{sender.profile.name}" if sender.profile else f"user_{sender.wa_id}"
+        displayname = sender.profile.name if sender.profile else f"user_{sender.wa_id}"
         room_name_variables = {
             "userid": sender.wa_id,
             "displayname": displayname,
@@ -782,7 +782,7 @@ class Portal(DBPortal, BasePortal):
                 self.log.error(f"Whatsapp API sent an error: {err}")
                 await self.main_intent.send_notice(
                     self.mxid,
-                    f"Whatsapp API response an error.\n Title: {err.title}, message: {err.message}",
+                    f"Whatsapp API returned an error.\n Title: {err.title}, message: {err.message}",
                 )
 
     async def get_media(self, mxc: str) -> tuple[bytes, str]:
