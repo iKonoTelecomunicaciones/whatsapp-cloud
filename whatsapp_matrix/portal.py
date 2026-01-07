@@ -201,7 +201,8 @@ class Portal(DBPortal, BasePortal):
                 pass
             # Search if the phone_id is in the database
             portal = cast(
-                cls, await super().get_by_phone_id(phone_id=phone_id, app_business_id=app_business_id)
+                cls,
+                await super().get_by_phone_id(phone_id=phone_id, app_business_id=app_business_id),
             )
             if portal:
                 await portal.postinit()
