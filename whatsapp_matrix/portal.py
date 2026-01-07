@@ -72,7 +72,7 @@ class Portal(DBPortal, BasePortal):
     session: ClientSession
 
     _main_intent: IntentAPI | None
-    _create_room_lock: Lock
+    _create_room_lock: dict[(WhatsappPhone, WsBusinessID), Lock] = {}
     _send_lock: Lock
 
     def __init__(
@@ -84,7 +84,6 @@ class Portal(DBPortal, BasePortal):
     ) -> None:
         super().__init__(phone_id, app_business_id, mxid, relay_user_id)
         BasePortal.__init__(self)
-        self._create_room_lock = Lock()
         self._send_lock = Lock()
         self.log = self.log.getChild(self.phone_id or self.mxid)
         self._main_intent: IntentAPI = None
@@ -97,6 +96,9 @@ class Portal(DBPortal, BasePortal):
         self.whatsapp_client: WhatsappClient = WhatsappClient(
             config=self.config, session=self.session
         )
+
+        if not self._create_room_lock.get((phone_id, app_business_id)):
+            self._create_room_lock[(phone_id, app_business_id)] = Lock()
 
     @property
     def main_intent(self) -> IntentAPI:
@@ -188,41 +190,45 @@ class Portal(DBPortal, BasePortal):
         create: bool
             Variable that indicates if the portal it will be create if not exist.
         """
-        try:
-            # Search if the phone_id is in the cache
-            return cls.by_app_and_phone_id[(phone_id, app_business_id)]
-        except KeyError:
-            pass
-        # Search if the phone_id is in the database
-        portal = cast(
-            cls, await super().get_by_phone_id(phone_id=phone_id, app_business_id=app_business_id)
-        )
-        if portal:
-            await portal.postinit()
-            return portal
+        if not cls._create_room_lock.get((phone_id, app_business_id)):
+            cls._create_room_lock[(phone_id, app_business_id)] = Lock()
 
-        # If the phone_id is not in the database, it is created if the variable create is True
-        if create:
+        async with cls._create_room_lock[(phone_id, app_business_id)]:
             try:
-                portal = cls(phone_id=phone_id, app_business_id=app_business_id)
-                await portal.insert()
-            except UniqueViolationError as e:
-                cls.log.exception(f"Failed to create portal {phone_id}: {e}")
-                portal = cast(
-                    cls,
-                    await super().get_by_phone_id(
-                        phone_id=phone_id, app_business_id=app_business_id
-                    ),
-                )
+                # Search if the phone_id is in the cache
+                return cls.by_app_and_phone_id[(phone_id, app_business_id)]
+            except KeyError:
+                pass
+            # Search if the phone_id is in the database
+            portal = cast(
+                cls, await super().get_by_phone_id(phone_id=phone_id, app_business_id=app_business_id)
+            )
+            if portal:
+                await portal.postinit()
+                return portal
 
-            if not portal:
-                cls.log.error(f"Failed to create portal {phone_id}")
-                return None
+            # If the phone_id is not in the database, it is created if the variable create is True
+            if create:
+                try:
+                    portal = cls(phone_id=phone_id, app_business_id=app_business_id)
+                    await portal.insert()
+                except UniqueViolationError as e:
+                    cls.log.exception(f"Failed to create portal {phone_id}: {e}")
+                    portal = cast(
+                        cls,
+                        await super().get_by_phone_id(
+                            phone_id=phone_id, app_business_id=app_business_id
+                        ),
+                    )
 
-            await portal.postinit()
-            return portal
+                if not portal:
+                    cls.log.error(f"Failed to create portal {phone_id}")
+                    return None
 
-        return None
+                await portal.postinit()
+                return portal
+
+            return None
 
     def send_text_message(self, message: str) -> EventID | None:
         """
@@ -264,9 +270,9 @@ class Portal(DBPortal, BasePortal):
             Show and error if the portal does not create.
         """
         # Validate if the matrix room exists, if not, it is created
-        if self.mxid:
-            return self.mxid
-        async with self._create_room_lock:
+        async with self._create_room_lock[(self.phone_id, self.app_business_id)]:
+            if self.mxid:
+                return self.mxid
             try:
                 self.phone_id = sender.wa_id
                 return await self._create_matrix_room(source=source, sender=sender)
