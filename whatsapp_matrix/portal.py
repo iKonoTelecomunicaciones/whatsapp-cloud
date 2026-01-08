@@ -29,7 +29,13 @@ from mautrix.types import (
 from mautrix.util import magic
 
 from whatsapp.api import WhatsappClient
-from whatsapp.data import TemplateMessage, WhatsappContacts, WhatsappEvent, WhatsappReaction
+from whatsapp.data import (
+    TemplateMessage,
+    WhatsappContacts,
+    WhatsappErrors,
+    WhatsappEvent,
+    WhatsappReaction,
+)
 from whatsapp.interactive_message import (
     EventInteractiveMessage,
     FormMessage,
@@ -317,9 +323,10 @@ class Portal(DBPortal, BasePortal):
 
         invites = [source.mxid]
         creation_content = {}
+        displayname = sender.profile.name if sender.profile else f"user_{sender.wa_id}"
         room_name_variables = {
             "userid": sender.wa_id,
-            "displayname": f"{sender.profile.name}",
+            "displayname": displayname,
         }
         room_name_template: str = self.config["bridge.whatsapp_cloud.room_name_template"]
 
@@ -786,6 +793,29 @@ class Portal(DBPortal, BasePortal):
         if self.is_direct or not await user.is_logged_in():
             return
 
+    async def handle_whatsapp_errors(self, errors: list[WhatsappErrors]) -> None:
+        """
+        Handle errors from Whatsapp API.
+        Parameters
+        ----------
+        error : WhatsappErrors
+            The error object containing error details.
+        """
+        if not self.mxid:
+            self.log.error(
+                f"Error handling the error events, not portal found.\n Errors: {errors}"
+            )
+            return
+
+        async with self._send_lock:
+            for err in errors:
+                self.log.error(f"Whatsapp API sent an error: {err}")
+                await self.main_intent.send_notice(
+                    self.mxid,
+                    f"Whatsapp API returned an error.\n Title: {err.title}, message: {err.message}",
+                )
+
+
     async def get_media(self, mxc: str) -> tuple[bytes, str]:
         """
         Given a mxc url, it gets the media from the mxc server.
@@ -1231,6 +1261,11 @@ class Portal(DBPortal, BasePortal):
         message_error : str
             The message error that whatsapp return.
         """
+        if not self.mxid:
+            self.log.error(
+                f"No mxid found when handling whatsapp error, message error: {message_error}"
+            )
+            return
         await self.main_intent.send_notice(self.mxid, message_error)
 
     async def handle_interactive_message(

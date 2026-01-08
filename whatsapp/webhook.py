@@ -129,10 +129,14 @@ class WhatsappHandler:
         portal: Portal = await Portal.get_by_app_and_phone_id(
             phone_id=sender.wa_id, app_business_id=business_id
         )
-        if data.entry.changes.value.messages.type == "reaction":
+
+        if data.entry.changes.value.messages.errors:
+            await portal.handle_whatsapp_errors(data.entry.changes.value.messages.errors)
+        elif data.entry.changes.value.messages.type == "reaction":
             await portal.handle_whatsapp_reaction(data, sender.wa_id)
         else:
             await portal.handle_whatsapp_message(user, data, sender)
+
         return web.Response(status=200)
 
     async def read_event(self, data: WhatsappEvent) -> web.Response:
