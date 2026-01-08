@@ -657,6 +657,8 @@ class WhatsappMessages(SerializableAttrs):
     - interactive: Interactive object that contains the information of the interactive message that the user sent.
 
     - button: Button object that contains the information of the button message that the user sent.
+
+    - errors: List of error objects that contain the information of the errors that occurred.
     """
 
     from_number: str = ib(metadata={"json": "from"}, default="")
@@ -675,6 +677,7 @@ class WhatsappMessages(SerializableAttrs):
     interactive: InteractiveMessage = ib(metadata={"json": "interactive"}, default={})
     button: ButtonMessage = ib(metadata={"json": "button"}, default={})
     contacts: list[WhatsappContact] = ib(metadata={"json": "contacts"}, default=[])
+    errors: list[WhatsappErrors] = ib(metadata={"json": "errors"}, default=[])
 
     @classmethod
     def from_dict(cls, data: dict):
@@ -688,6 +691,7 @@ class WhatsappMessages(SerializableAttrs):
         interactive_obj = None
         button_obj = None
         contacts_obj = []
+        error_obj = None
 
         if data.get("context", {}):
             context_obj = WhatsappContext.from_dict(data.get("context", {}))
@@ -720,6 +724,9 @@ class WhatsappMessages(SerializableAttrs):
             for contact in data.get("contacts", []):
                 contacts_obj.append(WhatsappContact.from_dict(contact))
 
+        if data.get("errors"):
+            error_obj = [WhatsappErrors.from_dict(error) for error in data.get("errors")]
+
         return cls(
             from_number=data.get("from", ""),
             id=data.get("id", ""),
@@ -737,6 +744,7 @@ class WhatsappMessages(SerializableAttrs):
             interactive=interactive_obj,
             button=button_obj,
             contacts=contacts_obj,
+            errors=error_obj,
         )
 
 
