@@ -815,7 +815,6 @@ class Portal(DBPortal, BasePortal):
                     f"Whatsapp API returned an error.\n Title: {err.title}, message: {err.message}",
                 )
 
-
     async def get_media(self, mxc: str) -> tuple[bytes, str]:
         """
         Given a mxc url, it gets the media from the mxc server.
