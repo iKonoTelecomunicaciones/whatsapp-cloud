@@ -1,4 +1,5 @@
 import json
+from math import e
 
 from attr import dataclass, ib
 from mautrix.types import BaseMessageEventContent, SerializableAttrs
@@ -800,6 +801,96 @@ class WhatsappMetaData(SerializableAttrs):
 
 
 @dataclass
+class WhatsappMessageEcho(SerializableAttrs):
+    """
+    Contain the information of a message echo (sent by the customer in WhatsApp).
+
+    - from_number: The number of the sender (business phone).
+
+    - to: The number of the recipient.
+
+    - id: The id of the message.
+
+    - timestamp: The time when the message was sent.
+
+    - text: Contains message text if it's a text message.
+
+    - type: The type of the message.
+
+    - image: Image object if it's an image message.
+
+    - video: Video object if it's a video message.
+
+    - audio: Audio object if it's an audio message.
+
+    - document: Document object if it's a document message.
+
+    - sticker: Sticker object if it's a sticker message.
+
+    - location: Location object if it's a location message.
+
+    - contacts: List of contact objects if it's a contact message.
+    """
+
+    from_number: str = ib(metadata={"json": "from"}, default="")
+    to: str = ib(metadata={"json": "to"}, default="")
+    id: WhatsappMessageID = ib(metadata={"json": "id"}, default="")
+    timestamp: str = ib(metadata={"json": "timestamp"}, default="")
+    text: WhatsappText = ib(metadata={"json": "text"}, default={})
+    type: str = ib(metadata={"json": "type"}, default="")
+    image: WhatsappImage = ib(metadata={"json": "image"}, default={})
+    video: WhatsappVideo = ib(metadata={"json": "video"}, default={})
+    audio: WhatsappAudio = ib(metadata={"json": "audio"}, default={})
+    sticker: WhatsappSticker = ib(metadata={"json": "sticker"}, default={})
+    document: WhatsappDocument = ib(metadata={"json": "document"}, default={})
+    location: WhatsappLocation = ib(metadata={"json": "location"}, default={})
+    contacts: list[WhatsappContact] = ib(metadata={"json": "contacts"}, default=[])
+
+    @classmethod
+    def from_dict(cls, data: dict):
+        text_obj = None
+        image_obj = None
+        video_obj = None
+        audio_obj = None
+        sticker_obj = None
+        document_obj = None
+        contacts_obj = None
+
+        if data.get("text", ""):
+            text_obj = WhatsappText(**data.get("text", {}))
+        elif data.get("image", ""):
+            image_obj = WhatsappImage.from_dict(data.get("image", {}))
+        elif data.get("video", ""):
+            video_obj = WhatsappVideo.from_dict(data.get("video", {}))
+        elif data.get("audio", ""):
+            audio_obj = WhatsappAudio.from_dict(data.get("audio", {}))
+        elif data.get("sticker", ""):
+            sticker_obj = WhatsappSticker.from_dict(data.get("sticker", {}))
+        elif data.get("document", ""):
+            document_obj = WhatsappDocument.from_dict(data.get("document", {}))
+        elif data.get("contacts", []):
+            contacts_obj = []
+            for contact in data.get("contacts", []):
+                contacts_obj.append(WhatsappContact.from_dict(contact))
+
+        return cls(
+            from_number=data.get("from", ""),
+            to=data.get("to", ""),
+            id=data.get("id", ""),
+            timestamp=data.get("timestamp", ""),
+            text=text_obj,
+            type=data.get("type", ""),
+            image=image_obj,
+            video=video_obj,
+            audio=audio_obj,
+            sticker=sticker_obj,
+            document=document_obj,
+            location=WhatsappLocation(**data.get("location", {})),
+            contacts=contacts_obj,
+        )
+
+
+@dataclass
 class WhatsappValue(SerializableAttrs):
     """
     Contain the information of the message, the user and the business account.
@@ -812,6 +903,8 @@ class WhatsappValue(SerializableAttrs):
 
     - messages: The data of the message.
 
+    - message_echoes: The data of messages sent by the customer in WhatsApp
+
     """
 
     messaging_product: str = ib(metadata={"json": "messaging_product"}, default="")
@@ -819,6 +912,7 @@ class WhatsappValue(SerializableAttrs):
     contacts: WhatsappContacts = ib(metadata={"json": "contacts"}, default={})
     messages: WhatsappMessages = ib(metadata={"json": "messages"}, default={})
     statuses: WhatsappStatusesEvent = ib(metadata={"json": "statuses"}, default={})
+    message_echoes: list[WhatsappMessageEcho] = ib(metadata={"json": "message_echoes"}, default=[])
 
     @classmethod
     def from_dict(cls, data: dict):
@@ -826,6 +920,7 @@ class WhatsappValue(SerializableAttrs):
         contacts_obj = None
         messages_obj = None
         statuses_obj = None
+        message_echoes_obj = []
 
         if data.get("metadata"):
             metadata_obj = WhatsappMetaData(**data.get("metadata", {}))
@@ -845,12 +940,20 @@ class WhatsappValue(SerializableAttrs):
         except IndexError:
             statuses_obj = {}
 
+        try:
+            message_echoes_obj = [
+                WhatsappMessageEcho.from_dict(echo) for echo in data["message_echoes"]
+            ]
+        except KeyError:
+            message_echoes_obj = []
+
         return cls(
             messaging_product=data.get("messaging_product", ""),
             metadata=metadata_obj,
             contacts=WhatsappContacts.from_dict(contacts_obj),
             messages=WhatsappMessages.from_dict(messages_obj),
             statuses=WhatsappStatusesEvent.from_dict(statuses_obj),
+            message_echoes=message_echoes_obj,
         )
 
 
