@@ -1,5 +1,4 @@
 import json
-from math import e
 
 from attr import dataclass, ib
 from mautrix.types import BaseMessageEventContent, SerializableAttrs
