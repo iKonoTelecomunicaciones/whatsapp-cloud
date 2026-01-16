@@ -95,6 +95,9 @@ class WhatsappHandler:
         if wb_value.get("messages"):
             return await self.message_event(WhatsappEvent.from_dict(data))
 
+        elif "message_echoes" in wb_value:
+            return await self.send_echo_event(data)
+
         # If the event is a read, we send a read event to matrix
         elif wb_value.get("statuses") and wb_value.get("statuses")[0].get("status") == "read":
             return await self.read_event(WhatsappEvent.from_dict(data))
@@ -160,3 +163,55 @@ class WhatsappHandler:
         else:
             self.log.error(f"Portal not found.")
             return web.Response(status=406)
+
+    async def send_echo_event(self, data: dict) -> web.Response:
+        """
+        Validates the incoming request, fetches the portal associated with the sender,
+        and then sends the echo event to the portal for handling
+
+        Params
+        ------
+        data: The incoming echo event data, usually contains the message sent by the customer
+        in WhatsApp and the sender information
+
+        Returns
+        -------
+        web.Response: The response to be sent back to the WhatsApp Cloud
+        """
+        self.log.debug(f"Received Whatsapp Cloud echo event: {data}")
+
+        # Parse the data using WhatsappEvent structure
+        wb_event = WhatsappEvent.from_dict(data)
+        wb_value = wb_event.entry.changes.value
+        business_id = wb_event.entry.id
+
+        # Get the user associated with this business account
+        user: User = await User.get_by_business_id(business_id)
+        if not user:
+            self.log.error(f"No user found for business_id {business_id}")
+            return web.Response(status=200)
+
+        # Process each echo message
+        if not wb_value.message_echoes:
+            self.log.warning(f"No message echoes found in the event for business_id {business_id}")
+            return web.Response(status=200)
+
+        for echo_message in wb_value.message_echoes:
+            # The 'to' field contains the recipient's phone (the customer)
+            customer_phone = echo_message.to
+
+            # Get the portal for this conversation
+            portal: Portal = await Portal.get_by_app_and_phone_id(
+                phone_id=customer_phone, app_business_id=business_id, create=False
+            )
+
+            if not portal:
+                self.log.warning(
+                    f"Portal not found for phone_id {customer_phone} and business_id {business_id}"
+                )
+                continue
+
+            # Handle the echo message using the portal
+            await portal.handle_whatsapp_echo(user=user, echo_message=echo_message)
+
+        return web.Response(status=200)

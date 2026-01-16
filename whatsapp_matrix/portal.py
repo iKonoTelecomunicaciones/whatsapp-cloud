@@ -34,6 +34,9 @@ from whatsapp.data import (
     WhatsappContacts,
     WhatsappErrors,
     WhatsappEvent,
+    WhatsappLocation,
+    WhatsappMessageEcho,
+    WhatsappMessages,
     WhatsappReaction,
 )
 from whatsapp.interactive_message import (
@@ -441,6 +444,200 @@ class Portal(DBPortal, BasePortal):
         """
         await self.update()
 
+    def get_whatsapp_message_type(
+        self, whatsapp_message_type: str, message_data: WhatsappMessages
+    ) -> tuple[MessageType, str | None]:
+        """
+        Parse the Whatsapp message and obtain the type of message, the attachment and also the
+        data retrieved from the media messages like media_id, caption and file_name.
+
+        Parameters
+        ----------
+        whatsapp_message_type : str
+            The type of the Whatsapp message.
+        message_data : WhatsappMessages
+            The data of the Whatsapp message.
+
+        Returns
+        -------
+        tuple[MessageType, str | None]
+            message_type, attachment, media_id, caption, file_name.
+        """
+        message_type: MessageType = None
+        media_id = None
+        attachment = None
+        caption = None
+        file_name = None
+
+        # Validate what kind of message is and obtain the id of the message
+        if whatsapp_message_type == "text":
+            message_type = MessageType.TEXT
+            attachment = message_data.text.body
+
+        elif whatsapp_message_type in ("image", "video", "audio", "document"):
+            whatsapp_type = (
+                "FILE" if whatsapp_message_type == "document" else whatsapp_message_type.upper()
+            )
+            message_type = getattr(MessageType, whatsapp_type)
+            media_data = getattr(message_data, whatsapp_message_type)
+            media_id = media_data.id
+            caption = media_data.caption if hasattr(media_data, "caption") else None
+            file_name = None
+
+            if hasattr(media_data, "voice"):
+                # This is to distinguish between a voice message and an audio message
+                file_name = "Voice Audio" if media_data.voice else "Audio"
+            elif hasattr(media_data, "filename"):
+                file_name = media_data.filename
+
+        elif whatsapp_message_type == "sticker":
+            message_type = MessageType.IMAGE
+            media_id = message_data.sticker.id
+
+        elif whatsapp_message_type == "location":
+            message_type = MessageType.LOCATION
+
+        elif whatsapp_message_type == "interactive":
+            message_type = MessageType.TEXT
+            if message_data.interactive.type == "button_reply":
+                attachment = message_data.interactive.button_reply.id
+            elif message_data.interactive.type == "list_reply":
+                attachment = message_data.interactive.list_reply_message
+            elif message_data.interactive.type == "nfm_reply":
+                message_type = "m.form_response"
+                message_form = message_data.interactive.nfm_reply.response_json
+                content_attachment = FormResponseMessage(
+                    form_data=message_form, msgtype="m.form_response"
+                )
+                content_attachment.visible = message_form.get("visible", True)
+
+        elif whatsapp_message_type == "button":
+            message_type = MessageType.TEXT
+            attachment = message_data.button.text
+
+        elif whatsapp_message_type == "contacts":
+            message_type = whatsapp_message_type
+            attachment = message_data.contacts
+
+        else:
+            raise ValueError(f"Unsupported message type: {whatsapp_message_type}")
+
+        return message_type, attachment, media_id, caption, file_name
+
+    async def get_whatsapp_content_message(
+        self,
+        message_type: MessageType,
+        attachment: str | None,
+        file_name: str | None,
+        media_id: str | None,
+        location: WhatsappLocation | None = None,
+    ) -> TextMessageEventContent | MediaMessageEventContent | LocationMessageEventContent:
+        """
+        Get the content message from the Whatsapp event.
+
+        Parameters
+        ----------
+        message_type: MessageType
+            The type of the Whatsapp message.
+        attachment: str | None
+            The attachment of the Whatsapp message.
+        file_name : str | None
+            The file name of the media.
+        media_id : str | None
+            The media id of the Whatsapp message.
+        location : WhatsappLocation | None
+            The location of the Whatsapp message.
+
+        Returns
+        -------
+        TextMessageEventContent | MediaMessageEventContent | LocationMessageEventContent
+            The content message of the Whatsapp event.
+
+        Raises
+        ------
+        ValueError
+            If the message type is not supported or the media is not found.
+        """
+        if message_type == MessageType.TEXT:
+            return TextMessageEventContent(msgtype=message_type, body=attachment)
+
+        if isinstance(message_type, MessageType) and message_type.is_media:
+            if media_id:
+                # Obtain the url of the file from Whatsapp API
+                media_data = await self.whatsapp_client.get_media(media_id=media_id)
+
+                if not media_data:
+                    raise ValueError("Error getting the data of the media")
+
+                # Obtain the media file
+                data = await media_data.read()
+                attachment, media_type = await self.get_media_url(data)
+
+            # Create the content of the message media for send to Matrix
+            media_name = file_name
+
+            if not media_name and media_type:
+                ext = media_type.split("/")[-1]
+                media_name = f"Media.{ext}"
+
+            return MediaMessageEventContent(
+                body=media_name,
+                msgtype=message_type,
+                url=attachment,
+                info=Obj(
+                    size=len(data),
+                    mimetype=media_type,
+                ),
+            )
+
+        if message_type == MessageType.LOCATION:
+            longitude = location.longitude
+            latitude = location.latitude
+            long_direction = "E" if longitude > 0 else "W"
+            lat_direction = "N" if latitude > 0 else "S"
+
+            # Create the body of the location message
+            body = (
+                f"{location.name} - {round(abs(latitude), 4)}° {lat_direction}, "
+                f"{round(abs(longitude), 4)}° {long_direction}"
+            )
+
+            # Create the url of the location message
+            url = f"{self.openstreetmap_url}{latitude}/{longitude}"
+
+            # create the content of the location message
+            content_attachment = LocationMessageEventContent(
+                body=f"{location.name} {location.address}",
+                msgtype=message_type,
+                geo_uri=f"geo:{latitude},{longitude}",
+                external_url=f"{self.google_maps_url}?q={latitude},{longitude}",
+            )
+
+            content_attachment["format"] = str(Format.HTML)
+            content_attachment["formatted_body"] = f"Location: <a href='{url}'>{body}</a>"
+
+            return content_attachment
+
+        if message_type == "contacts":
+            message_type = MessageType.FILE
+            file_name, contacts_file = self.whatsapp_client.generate_vcard(attachment)
+
+            try:
+                mxc, media_type = await self.get_media_url(contacts_file)
+            except Exception as e:
+                self.log.exception(f"Message not receive, error: {e}")
+                return
+
+            return MediaMessageEventContent(
+                body=file_name,
+                msgtype=MessageType.FILE,
+                url=mxc,
+                info=Obj(
+                    size=len(contacts_file),
+                    mime_type=media_type,
+                ),
+            )
+
     async def handle_whatsapp_message(
         self, source: User, message: WhatsappEvent, sender: WhatsappContacts
     ) -> None:
@@ -488,155 +685,29 @@ class Portal(DBPortal, BasePortal):
                 reply_message_id
             )
 
-        message_type: MessageType = None
-        # Validate what kind of message is and obtain the id of the message
-        if whatsapp_message_type == "text":
-            message_type = MessageType.TEXT
-            attachment = message_data.text.body
-
-        elif whatsapp_message_type == "image":
-            message_type = MessageType.IMAGE
-            media_id = message_data.image.id
-            caption = message_data.image.caption
-
-        elif whatsapp_message_type == "video":
-            message_type = MessageType.VIDEO
-            media_id = message_data.video.id
-            caption = message_data.video.caption
-
-        elif whatsapp_message_type == "audio":
-            message_type = MessageType.AUDIO
-            media_id = message_data.audio.id
-            # This is to distinguish between a voice message and an audio message
-            file_name = "Voice Audio" if message_data.audio.voice else "Audio"
-
-        elif whatsapp_message_type == "sticker":
-            message_type = MessageType.IMAGE
-            media_id = message_data.sticker.id
-
-        elif whatsapp_message_type == "document":
-            message_type = MessageType.FILE
-            media_id = message_data.document.id
-            file_name = message_data.document.filename
-
-        elif whatsapp_message_type == "location":
-            message_type = MessageType.LOCATION
-
-        elif whatsapp_message_type == "interactive":
-            message_type = MessageType.TEXT
-            if message_data.interactive.type == "button_reply":
-                attachment = message_data.interactive.button_reply.id
-            elif message_data.interactive.type == "list_reply":
-                attachment = message_data.interactive.list_reply_message
-            elif message_data.interactive.type == "nfm_reply":
-                message_type = "m.form_response"
-                message_form = message_data.interactive.nfm_reply.response_json
-                content_attachment = FormResponseMessage(
-                    form_data=message_form, msgtype="m.form_response"
+        try:
+            message_type, attachment, media_id, caption, file_name = (
+                self.get_whatsapp_message_type(
+                    whatsapp_message_type=whatsapp_message_type, message_data=message_data
                 )
-                content_attachment.visible = message_form.get("visible", True)
-
-        elif whatsapp_message_type == "button":
-            message_type = MessageType.TEXT
-            attachment = message_data.button.text
-
-        elif whatsapp_message_type == "contacts":
-            message_type = whatsapp_message_type
-            attachment = message_data.contacts
-
-        else:
-            self.log.error(f"Unsupported message type: {whatsapp_message_type}")
+            )
+        except ValueError as e:
+            self.log.error(f"Error getting the message in portal {self.mxid}: {e}")
             await self.az.intent.send_notice(self.mxid, "Error getting the message")
             return
 
-        if message_type == MessageType.TEXT:
-            content_attachment = TextMessageEventContent(msgtype=message_type, body=attachment)
-
-        elif isinstance(message_type, MessageType) and message_type.is_media:
-            if media_id:
-                # Obtain the url of the file from Whatsapp API
-                media_data = await self.whatsapp_client.get_media(media_id=media_id)
-
-                if not media_data:
-                    self.log.error("Error getting the data of the media")
-                    await self.az.intent.send_notice(
-                        self.mxid, "Error getting the data of the media"
-                    )
-                    return
-
-                # Obtain the media file
-                data = await media_data.read()
-
-                try:
-                    attachment, media_type = await self.get_media_url(data)
-                except Exception as e:
-                    self.log.exception(f"Message not receive, error: {e}")
-                    return
-
-            # Create the content of the message media for send to Matrix
-            media_name = file_name
-
-            if not media_name and media_type:
-                ext = media_type.split("/")[-1]
-                media_name = f"Media.{ext}"
-
-            content_attachment = MediaMessageEventContent(
-                body=media_name,
-                msgtype=message_type,
-                url=attachment,
-                info=Obj(
-                    size=len(data),
-                    mimetype=media_type,
-                ),
+        try:
+            content_attachment = await self.get_whatsapp_content_message(
+                message_type=message_type,
+                attachment=attachment,
+                media_id=media_id,
+                location=getattr(message_data, "location"),
+                file_name=file_name,
             )
-
-        elif message_type == MessageType.LOCATION:
-            # Obtain the dat of the location
-            location = message_data.location
-            longitude = location.longitude
-            latitude = location.latitude
-            long_direction = "E" if longitude > 0 else "W"
-            lat_direction = "N" if latitude > 0 else "S"
-
-            # Create the body of the location message
-            body = (
-                f"{location.name} - {round(abs(latitude), 4)}° {lat_direction}, "
-                f"{round(abs(longitude), 4)}° {long_direction}"
-            )
-
-            # Create the url of the location message
-            url = f"{self.openstreetmap_url}{latitude}/{longitude}"
-
-            # create the content of the location message
-            content_attachment = LocationMessageEventContent(
-                body=f"{location.name} {location.address}",
-                msgtype=message_type,
-                geo_uri=f"geo:{latitude},{longitude}",
-                external_url=f"{self.google_maps_url}?q={latitude},{longitude}",
-            )
-
-            content_attachment["format"] = str(Format.HTML)
-            content_attachment["formatted_body"] = f"Location: <a href='{url}'>{body}</a>"
-
-        elif message_type == "contacts":
-            message_type = MessageType.FILE
-            file_name, contacts_file = self.whatsapp_client.generate_vcard(attachment)
-
-            try:
-                mxc, media_type = await self.get_media_url(contacts_file)
-            except Exception as e:
-                self.log.exception(f"Message not receive, error: {e}")
-                return
-
-            content_attachment = MediaMessageEventContent(
-                body=file_name,
-                msgtype=MessageType.FILE,
-                url=mxc,
-                info=Obj(
-                    size=len(contacts_file),
-                    mime_type=media_type,
-                ),
-            )
+        except (ValueError, Exception) as e:
+            self.log.error(f"Error getting the content message in portal {self.mxid}: {e}")
+            await self.az.intent.send_notice(self.mxid, "Error getting the content message")
+            return
 
         has_been_sent = await self.send_data_message(
             content_attachment=content_attachment,
@@ -788,6 +859,80 @@ class Portal(DBPortal, BasePortal):
                 reaction=data_reaction.emoji,
                 created_at=datetime.now(),
             ).insert()
+
+    async def handle_whatsapp_echo(self, user: User, echo_message: WhatsappMessageEcho) -> None:
+        """
+        Handle WhatsApp echo messages (messages sent from WhatsApp by the customer).
+        These messages should be bridged to Matrix.
+
+        Parameters
+        ----------
+        user : User
+            The user who sent the message from WhatsApp.
+
+        echo_message : WhatsappMessageEcho
+            The echo message data from WhatsApp.
+        """
+        # Validate if the matrix room exists
+        if not self.mxid:
+            self.log.error(
+                f"Failed to get matrix room for {user.mxid} in echo message {echo_message.id}"
+            )
+            return
+
+        async with self._send_lock:
+            whatsapp_message_type = echo_message.type
+            whatsapp_message_id = echo_message.id
+
+            # Get message content based on type
+            try:
+                message_type, attachment, media_id, caption, file_name = (
+                    self.get_whatsapp_message_type(
+                        whatsapp_message_type=whatsapp_message_type, message_data=echo_message
+                    )
+                )
+            except ValueError as e:
+                self.log.error(f"Error getting echo message type: {e}")
+                return
+
+            # Get the content for Matrix
+            try:
+                content_attachment = await self.get_whatsapp_content_message(
+                    message_type=message_type,
+                    attachment=attachment,
+                    media_id=media_id,
+                    location=getattr(echo_message, "location", None),
+                    file_name=file_name,
+                )
+            except (ValueError, Exception) as e:
+                self.log.error(f"Error getting echo message content: {e}")
+                return
+
+            try:
+                # Send the message to Matrix using the bot user
+                event_mxid = await self.az.intent.send_message(self.mxid, content_attachment)
+
+                if caption:
+                    await self.az.intent.send_notice(self.mxid, caption)
+
+                # Save the message to database
+                await DBMessage(
+                    event_mxid=event_mxid,
+                    room_id=self.mxid,
+                    phone_id=echo_message.to,  # The recipient phone
+                    sender=user.mxid,
+                    whatsapp_message_id=whatsapp_message_id,
+                    app_business_id=self.app_business_id,
+                    created_at=datetime.now(),
+                ).insert()
+
+                self.log.debug(
+                    f"Echo message {whatsapp_message_id} bridged successfully using "
+                    f"{self.az.intent.mxid} intent"
+                )
+
+            except Exception as e:
+                self.log.exception(f"Error sending echo message to Matrix: {e}")
 
     async def handle_matrix_join(self, user: User) -> None:
         if self.is_direct or not await user.is_logged_in():
