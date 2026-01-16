@@ -262,7 +262,9 @@ class Portal(DBPortal, BasePortal):
         # Send the message to Matrix
         return self.main_intent.send_message(self.mxid, content)
 
-    async def create_matrix_room(self, source: User, sender: WhatsappContacts) -> RoomID:
+    async def create_matrix_room(
+        self, source: User, sender: WhatsappContacts, invitees: list[str] | None = None
+    ) -> RoomID:
         """
         Create a matrix room where to contact with the customer
 
@@ -273,6 +275,14 @@ class Portal(DBPortal, BasePortal):
 
         sender : dict
             dictionary that contains the data of who sends the message.
+
+        invitees : list[str] | None
+            The list of users to invite to the room.
+
+        Returns
+        -------
+        RoomID
+            The ID of the created room.
 
         Exceptions
         ----------
@@ -285,12 +295,16 @@ class Portal(DBPortal, BasePortal):
                 return self.mxid
             try:
                 self.phone_id = sender.wa_id
-                return await self._create_matrix_room(source=source, sender=sender)
+                return await self._create_matrix_room(
+                    source=source, sender=sender, invitees=invitees
+                )
             except Exception as error:
                 self.log.exception(f"Failed to create portal: {error}")
                 return None
 
-    async def _create_matrix_room(self, source: User, sender: WhatsappContacts) -> RoomID:
+    async def _create_matrix_room(
+        self, source: User, sender: WhatsappContacts, invitees: list[str] | None = None
+    ) -> RoomID:
         """
         Create and configure a matrix room
 
@@ -301,6 +315,14 @@ class Portal(DBPortal, BasePortal):
 
         sender : dict
             dictionary that contains the data of who sends the message.
+
+        invitees : list[str] | None
+            The list of users to invite to the room.
+
+        Returns
+        -------
+        RoomID
+            The ID of the created room.
         """
         self.log.debug("Creating Matrix room")
 
@@ -324,7 +346,9 @@ class Portal(DBPortal, BasePortal):
             },
         ]
 
-        invites = [source.mxid]
+        if len(invitees or []) == 0:
+            invitees = [source.mxid]
+
         creation_content = {}
         displayname = sender.profile.name if sender.profile else f"user_{sender.wa_id}"
         room_name_variables = {
@@ -341,7 +365,7 @@ class Portal(DBPortal, BasePortal):
             name=room_name_template.format(**room_name_variables),
             is_direct=self.is_direct,
             initial_state=initial_state,
-            invitees=invites,
+            invitees=invitees,
             topic="Whatsapp private chat",
             creation_content=creation_content,
         )
@@ -873,66 +897,73 @@ class Portal(DBPortal, BasePortal):
         echo_message : WhatsappMessageEcho
             The echo message data from WhatsApp.
         """
-        # Validate if the matrix room exists
-        if not self.mxid:
-            self.log.error(
-                f"Failed to get matrix room for {user.mxid} in echo message {echo_message.id}"
+        # Validate if the matrix room exists, if not, it is created
+        try:
+            if not await self.create_matrix_room(
+                source=user,
+                sender=WhatsappContacts(wa_id=echo_message.to, profile=None),
+                invitees=[user.mxid, self.az.bot_mxid],
+            ):
+                self.log.error(
+                    f"Failed to create a matrix room for user {user.mxid} with wa_id "
+                    f"{echo_message.to} using echo message"
+                )
+                return
+        except Exception as e:
+            self.log.error(f"Error creating matrix room, aborting handle echo: {e}")
+
+        whatsapp_message_type = echo_message.type
+        whatsapp_message_id = echo_message.id
+
+        # Get message content based on type
+        try:
+            message_type, attachment, media_id, caption, file_name = (
+                self.get_whatsapp_message_type(
+                    whatsapp_message_type=whatsapp_message_type, message_data=echo_message
+                )
             )
+        except ValueError as e:
+            self.log.error(f"Error getting echo message type: {e}")
             return
 
-        async with self._send_lock:
-            whatsapp_message_type = echo_message.type
-            whatsapp_message_id = echo_message.id
+        # Get the content for Matrix
+        try:
+            content_attachment = await self.get_whatsapp_content_message(
+                message_type=message_type,
+                attachment=attachment,
+                media_id=media_id,
+                location=getattr(echo_message, "location", None),
+                file_name=file_name,
+            )
+        except (ValueError, Exception) as e:
+            self.log.error(f"Error getting echo message content: {e}")
+            return
 
-            # Get message content based on type
-            try:
-                message_type, attachment, media_id, caption, file_name = (
-                    self.get_whatsapp_message_type(
-                        whatsapp_message_type=whatsapp_message_type, message_data=echo_message
-                    )
-                )
-            except ValueError as e:
-                self.log.error(f"Error getting echo message type: {e}")
-                return
+        try:
+            # Send the message to Matrix using the bot user
+            event_mxid = await self.az.intent.send_message(self.mxid, content_attachment)
 
-            # Get the content for Matrix
-            try:
-                content_attachment = await self.get_whatsapp_content_message(
-                    message_type=message_type,
-                    attachment=attachment,
-                    media_id=media_id,
-                    location=getattr(echo_message, "location", None),
-                    file_name=file_name,
-                )
-            except (ValueError, Exception) as e:
-                self.log.error(f"Error getting echo message content: {e}")
-                return
+            if caption:
+                await self.az.intent.send_notice(self.mxid, caption)
 
-            try:
-                # Send the message to Matrix using the bot user
-                event_mxid = await self.az.intent.send_message(self.mxid, content_attachment)
+            # Save the message to database
+            await DBMessage(
+                event_mxid=event_mxid,
+                room_id=self.mxid,
+                phone_id=echo_message.to,  # The recipient phone
+                sender=user.mxid,
+                whatsapp_message_id=whatsapp_message_id,
+                app_business_id=self.app_business_id,
+                created_at=datetime.now(),
+            ).insert()
 
-                if caption:
-                    await self.az.intent.send_notice(self.mxid, caption)
+            self.log.debug(
+                f"Echo message {whatsapp_message_id} bridged successfully using "
+                f"{self.az.intent.mxid} intent"
+            )
 
-                # Save the message to database
-                await DBMessage(
-                    event_mxid=event_mxid,
-                    room_id=self.mxid,
-                    phone_id=echo_message.to,  # The recipient phone
-                    sender=user.mxid,
-                    whatsapp_message_id=whatsapp_message_id,
-                    app_business_id=self.app_business_id,
-                    created_at=datetime.now(),
-                ).insert()
-
-                self.log.debug(
-                    f"Echo message {whatsapp_message_id} bridged successfully using "
-                    f"{self.az.intent.mxid} intent"
-                )
-
-            except Exception as e:
-                self.log.exception(f"Error sending echo message to Matrix: {e}")
+        except Exception as e:
+            self.log.exception(f"Error sending echo message to Matrix: {e}")
 
     async def handle_matrix_join(self, user: User) -> None:
         if self.is_direct or not await user.is_logged_in():
