@@ -227,15 +227,12 @@ class WhatsappClient:
         File:
             The media that was searched.
         """
-        params = {
-            "access_token": self.page_access_token,
-        }
         headers = {
             "Authorization": f"Bearer {self.page_access_token}",
         }
 
         try:
-            resp = await self.http.get(f"{self.base_url}/{media_id}", params=params)
+            resp = await self.http.get(f"{self.base_url}/{media_id}", headers=headers)
         except ClientConnectorError as e:
             self.log.error(e)
             return None
