@@ -202,14 +202,8 @@ class WhatsappHandler:
 
             # Get the portal for this conversation
             portal: Portal = await Portal.get_by_app_and_phone_id(
-                phone_id=customer_phone, app_business_id=business_id, create=False
+                phone_id=customer_phone, app_business_id=business_id
             )
-
-            if not portal:
-                self.log.warning(
-                    f"Portal not found for phone_id {customer_phone} and business_id {business_id}"
-                )
-                continue
 
             # Handle the echo message using the portal
             await portal.handle_whatsapp_echo(user=user, echo_message=echo_message)
