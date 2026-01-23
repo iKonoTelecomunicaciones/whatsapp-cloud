@@ -162,7 +162,6 @@ class ProvisioningAPI:
             access_token = data["access_token"]
             notice_room = data["notice_room"]
             admin_user = data["admin_user"]
-            pin = data["pin"]
         except KeyError as e:
             raise self._missing_key_error(e)
 
@@ -238,7 +237,8 @@ class ProvisioningAPI:
             page_access_token=access_token,
         )
 
-        await self._register_phone(app_phone_id, access_token, pin)
+        if pin := data.get("pin"):
+            await self._register_phone(app_phone_id, access_token, pin)
 
         # Create the user and add the business_id and the notice_room
         user: User = await User.get_by_mxid(mxid=admin_user)
