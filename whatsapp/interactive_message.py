@@ -466,11 +466,11 @@ class ParameterFlowReply(SerializableAttrs):
     def from_dict(cls, data: dict):
         return cls(
             flow_message_version=data.get("message_version", "3"),
-            flow_name=data.get("name", ""),
-            flow_cta=data.get("button", ""),
-            flow_token=data.get("token", ""),
-            flow_action=data.get("action", ""),
-            flow_action_payload=data.get("payload", ""),
+            flow_name=data.get("name") or data.get("flow_name", ""),
+            flow_cta=data.get("button") or data.get("flow_cta", ""),
+            flow_token=data.get("token") or data.get("flow_token", ""),
+            flow_action=data.get("action") or data.get("flow_action", ""),
+            flow_action_payload=data.get("payload") or data.get("flow_action_payload", ""),
         )
 
 
@@ -483,13 +483,13 @@ class ActionFlowReply(ActionReply):
 
     """
 
+    name: str = ib(metadata={"json": "name"}, default="flow")
     parameters: ParameterFlowReply = ib(
         factory=ParameterFlowReply, metadata={"json": "parameters"}
     )
 
     @classmethod
     def from_dict(cls, data: dict):
-
         parameters_obj: ParameterFlowReply = ParameterFlowReply.from_dict(
             data.get("parameters", {})
         )
@@ -673,18 +673,35 @@ class InteractiveFlowMessage(InteractiveMessage):
         action_obj = None
         reply_content = None
         interactive_type = data.get("type", "")
+        header_obj = None
+        body_obj = None
+        footer_obj = None
 
-        if data.get("content", {}):
+        if data.get("content", {}) and not (
+            data.get("body") or data.get("header") or data.get("footer")
+        ):
             reply_content = InteractiveReplyContent.from_dict(data.get("content", {}))
+            header_obj = reply_content.header
+            body_obj = reply_content.body
+            footer_obj = reply_content.footer
+
+        if data.get("body"):
+            body_obj = TextReply.from_dict(data.get("body", {}))
+
+        if data.get("header"):
+            header_obj = InteractiveHeader.from_dict(data.get("header", {}))
+
+        if data.get("footer"):
+            footer_obj = TextReply.from_dict(data.get("footer", {}))
 
         if data.get("action"):
             action_obj: ActionFlowReply = ActionFlowReply.from_dict(data.get("action", {}))
 
         return cls(
             type=interactive_type,
-            header=reply_content.header,
-            body=reply_content.body,
-            footer=reply_content.footer,
+            header=header_obj,
+            body=body_obj,
+            footer=footer_obj,
             action=action_obj,
         )
 
