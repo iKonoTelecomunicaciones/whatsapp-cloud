@@ -133,12 +133,13 @@ class ProvisioningAPI:
         async with self.http.post(url, headers=headers, json=data) as resp:
             if resp.status != 200:
                 self.log.error(
-                    f"Failed to subscribe Whatsapp Business {app_business_id} to webhook: {await resp.text()}"
+                    f"Failed to subscribe Whatsapp Business {app_business_id} to webhook: {await resp.text()} "
+                    f"Webhook domain: {data['override_callback_uri']}"
                 )
                 return
 
             self.log.info(
-                f"Successfully subscribed Whatsapp Business {app_business_id} to webhook"
+                f"Successfully subscribed Whatsapp Business {app_business_id} to webhook with domain {domain}"
             )
 
     async def register_app(self, request: web.Request) -> web.Response:
@@ -391,9 +392,10 @@ class ProvisioningAPI:
             )
 
         # Separate the data from the request
-        app_name = data.get("app_name", None)
-        access_token = data.get("access_token", None)
-        admin_user = request.query.get("user_id", None)
+        app_name = data.get("app_name")
+        access_token = data.get("access_token")
+        admin_user = request.query.get("user_id")
+        domain = data.get("domain")
 
         if not admin_user:
             return web.HTTPNotAcceptable(
@@ -453,6 +455,17 @@ class ProvisioningAPI:
         await whatsapp_app.update_by_admin_user(
             user=whatsapp_app.admin_user, values=data_to_update
         )
+
+        self.log.debug(f"The whatsapp_app {whatsapp_app.business_id} has been updated")
+
+        self.log.debug(f"The webhook will be updated?: {domain is not None}")
+
+        if domain:
+            await self._subscribe_to_webhook(
+                app_business_id=whatsapp_app.business_id,
+                domain=domain,
+                access_token=whatsapp_app.page_access_token,
+            )
 
         return web.HTTPOk(
             text=json.dumps(
