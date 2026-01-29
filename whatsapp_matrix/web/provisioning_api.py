@@ -10,7 +10,6 @@ from mautrix.types import UserID
 
 from whatsapp.data import WhatsappContacts
 from whatsapp.types import WsBusinessID, WSPhoneID
-from whatsapp_matrix import user
 from whatsapp_matrix.portal import Portal
 from whatsapp_matrix.puppet import Puppet
 
@@ -72,6 +71,76 @@ class ProvisioningAPI:
             **self._acao_headers,
             "Content-Type": "application/json",
         }
+
+    async def _register_phone(self, phone_id: WSPhoneID, access_token: str, pin: str) -> None:
+        """
+        Register a new phone with the given ID and access token.
+
+        Parameters
+        ----------
+        phone_id : WSPhoneID
+            The ID of the phone to register.
+        access_token : str
+            The access token to use for registration.
+        pin : str
+            The PIN to use for registration.
+
+        """
+        url = f"{self.base_url}/{self.version}/{phone_id}/register"
+        headers = {
+            "Authorization": f"Bearer {access_token}",
+            "Content-Type": "application/json",
+        }
+        data = {
+            "messaging_product": "whatsapp",
+            "pin": pin,
+        }
+
+        async with self.http.post(url, headers=headers, json=data) as resp:
+            if resp.status != 200:
+                self.log.error(f"Failed to register phone {phone_id}: {await resp.text()}")
+                return
+
+            self.log.info(f"Successfully registered phone {phone_id}")
+
+    async def _subscribe_to_webhook(
+        self, app_business_id: WsBusinessID, domain: str, access_token: str
+    ) -> None:
+        """
+        Subscribe the phone to the webhook.
+
+        Parameters
+        ----------
+        app_business_id : WsBusinessID
+            The ID of the business to subscribe.
+        domain : str
+            The domain to use for the webhook.
+        access_token : str
+            The access token to use for subscription.
+
+        """
+
+        url = f"{self.base_url}/{self.version}/{app_business_id}/subscribed_apps"
+        headers = {
+            "Authorization": f"Bearer {access_token}",
+            "Content-Type": "application/json",
+        }
+        data = {
+            "override_callback_uri": f"https://{domain}/cloud/receive",
+            "verify_token": self.shared_secret,
+        }
+
+        async with self.http.post(url, headers=headers, json=data) as resp:
+            if resp.status != 200:
+                self.log.error(
+                    f"Failed to subscribe Whatsapp Business {app_business_id} to webhook: {await resp.text()} "
+                    f"Webhook domain: {data['override_callback_uri']}"
+                )
+                return
+
+            self.log.info(
+                f"Successfully subscribed Whatsapp Business {app_business_id} to webhook with domain {domain}"
+            )
 
     async def register_app(self, request: web.Request) -> web.Response:
         """
@@ -169,14 +238,27 @@ class ProvisioningAPI:
             page_access_token=access_token,
         )
 
+        if pin := data.get("pin"):
+            await self._register_phone(app_phone_id, access_token, pin)
+
         # Create the user and add the business_id and the notice_room
         user: User = await User.get_by_mxid(mxid=admin_user)
         user.app_business_id = app_business_id
         user.notice_room = notice_room
         await user.update()
 
+        if domain := data.get("domain"):
+            await self._subscribe_to_webhook(app_business_id, domain, access_token)
+
         return web.HTTPOk(
-            text=json.dumps({"message": "Whatsapp application has been created"}),
+            text=json.dumps(
+                {
+                    "message": "Whatsapp application has been created",
+                    "data": {
+                        "app_token": self.shared_secret,
+                    },
+                }
+            ),
             headers=self._headers,
         )
 
@@ -310,9 +392,10 @@ class ProvisioningAPI:
             )
 
         # Separate the data from the request
-        app_name = data.get("app_name", None)
-        access_token = data.get("access_token", None)
-        admin_user = request.query.get("user_id", None)
+        app_name = data.get("app_name")
+        access_token = data.get("access_token")
+        admin_user = request.query.get("user_id")
+        domain = data.get("domain")
 
         if not admin_user:
             return web.HTTPNotAcceptable(
@@ -373,11 +456,25 @@ class ProvisioningAPI:
             user=whatsapp_app.admin_user, values=data_to_update
         )
 
+        self.log.debug(f"The whatsapp_app {whatsapp_app.business_id} has been updated")
+
+        self.log.debug(f"The webhook will be updated?: {domain is not None}")
+
+        if domain:
+            await self._subscribe_to_webhook(
+                app_business_id=whatsapp_app.business_id,
+                domain=domain,
+                access_token=whatsapp_app.page_access_token,
+            )
+
         return web.HTTPOk(
             text=json.dumps(
                 {
-                    "data": {"businessID": whatsapp_app.business_id},
                     "message": "The whatsapp_app %(businessID)s has been updated",
+                    "data": {
+                        "app_token": self.shared_secret,
+                        "businessID": whatsapp_app.business_id,
+                    },
                 }
             ),
             headers=self._headers,
