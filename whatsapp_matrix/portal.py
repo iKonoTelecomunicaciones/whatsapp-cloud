@@ -508,11 +508,11 @@ class Portal(DBPortal, BasePortal):
             caption = media_data.caption if hasattr(media_data, "caption") else None
             file_name = None
 
-            if hasattr(media_data, "voice"):
-                # This is to distinguish between a voice message and an audio message
-                file_name = "Voice Audio" if media_data.voice else "Audio"
-            elif hasattr(media_data, "filename"):
+            if hasattr(media_data, "filename"):
                 file_name = media_data.filename
+            else:
+                media_type = media_data.mime_type.split("/")[-1]
+                file_name = f"Media.{media_type}"
 
         elif whatsapp_message_type == "sticker":
             message_type = MessageType.IMAGE
