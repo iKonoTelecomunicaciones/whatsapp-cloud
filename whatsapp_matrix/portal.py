@@ -512,7 +512,7 @@ class Portal(DBPortal, BasePortal):
                 file_name = media_data.filename
             else:
                 media_type = media_data.mime_type.split("/")[-1]
-                file_name = f"Media.{media_type}"
+                file_name = f"media.{media_type}"
 
         elif whatsapp_message_type == "sticker":
             message_type = MessageType.IMAGE
