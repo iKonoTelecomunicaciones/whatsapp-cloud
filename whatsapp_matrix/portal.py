@@ -240,10 +240,10 @@ class Portal(DBPortal, BasePortal):
 
             return None
 
-    def send_text_message(self, message: str) -> EventID | None:
+    def convert_text_message(self, message: str) -> MessageEventContent:
         """
         Takes a message from Whatsapp, checks the kind of message and change the format of it to a
-        valid format of Matrix message and sends it to Matrix
+        valid format of Matrix message and return it
 
         Parameters
         ----------
@@ -254,13 +254,13 @@ class Portal(DBPortal, BasePortal):
             The class that containt the data of the message.
         """
         html, text = whatsapp_to_matrix(message)
-        content = TextMessageEventContent(msgtype=MessageType.TEXT, body=message)
+        content = TextMessageEventContent(msgtype=MessageType.TEXT, body=text)
         # Validate if the message has a html format
         if html is not None:
             content.format = Format.HTML
             content.formatted_body = html
-        # Send the message to Matrix
-        return self.main_intent.send_message(self.mxid, content)
+
+        return content
 
     async def create_matrix_room(
         self, source: User, sender: WhatsappContacts, invitees: list[str] | None = None
@@ -583,7 +583,7 @@ class Portal(DBPortal, BasePortal):
             If the message type is not supported or the media is not found.
         """
         if message_type == MessageType.TEXT:
-            return TextMessageEventContent(msgtype=message_type, body=attachment)
+            return self.convert_text_message(attachment)
 
         if isinstance(message_type, MessageType) and message_type.is_media:
             if media_id:
