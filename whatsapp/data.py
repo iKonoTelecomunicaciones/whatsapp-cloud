@@ -625,6 +625,50 @@ class WhatsappContact(SerializableAttrs):
 
 
 @dataclass
+class WhatsappTextMessage(SerializableAttrs):
+    """
+    Contain the information of a text message.
+
+    - type: The type of the message.
+
+    - text: The text content of the message.
+    """
+
+    type: str = ib(metadata={"json": "type"}, default="")
+    text: WhatsappText = ib(metadata={"json": "text"}, default={})
+
+    @classmethod
+    def from_dict(cls, data: dict):
+        return cls(
+            type=data.get("type", ""),
+            text=WhatsappText(**data.get("text", {})),
+        )
+
+
+@dataclass
+class WhatsappMessageEdit(SerializableAttrs):
+    """
+    Contain the information of a message edit.
+
+    - original_message_id: The id of the original message.
+
+    - message: The edited message content (only support for text messages).
+    """
+
+    original_message_id: WhatsappMessageID = ib(
+        metadata={"json": "original_message_id"}, default=""
+    )
+    message: WhatsappTextMessage = ib(metadata={"json": "message"}, default={})
+
+    @classmethod
+    def from_dict(cls, data: dict):
+        return cls(
+            original_message_id=data.get("original_message_id", ""),
+            message=WhatsappTextMessage.from_dict(data.get("message", {})),
+        )
+
+
+@dataclass
 class WhatsappMessages(SerializableAttrs):
     """
     Contain the information of the message.
@@ -659,6 +703,8 @@ class WhatsappMessages(SerializableAttrs):
     - button: Button object that contains the information of the button message that the user sent.
 
     - errors: List of error objects that contain the information of the errors that occurred.
+
+    - edit: The data of the edited message.
     """
 
     from_number: str = ib(metadata={"json": "from"}, default="")
@@ -678,6 +724,7 @@ class WhatsappMessages(SerializableAttrs):
     button: ButtonMessage = ib(metadata={"json": "button"}, default={})
     contacts: list[WhatsappContact] = ib(metadata={"json": "contacts"}, default=[])
     errors: list[WhatsappErrors] = ib(metadata={"json": "errors"}, default=[])
+    edit: WhatsappMessageEdit = ib(metadata={"json": "edit"}, default={})
 
     @classmethod
     def from_dict(cls, data: dict):
@@ -692,6 +739,7 @@ class WhatsappMessages(SerializableAttrs):
         button_obj = None
         contacts_obj = []
         error_obj = None
+        edit_obj = None
 
         if data.get("context", {}):
             context_obj = WhatsappContext.from_dict(data.get("context", {}))
@@ -723,6 +771,8 @@ class WhatsappMessages(SerializableAttrs):
         elif data.get("contacts", []):
             for contact in data.get("contacts", []):
                 contacts_obj.append(WhatsappContact.from_dict(contact))
+        elif data.get("edit"):
+            edit_obj = WhatsappMessageEdit.from_dict(data.get("edit"))
 
         if data.get("errors"):
             error_obj = [WhatsappErrors.from_dict(error) for error in data.get("errors")]
@@ -745,6 +795,7 @@ class WhatsappMessages(SerializableAttrs):
             button=button_obj,
             contacts=contacts_obj,
             errors=error_obj,
+            edit=edit_obj,
         )
 
 
@@ -829,6 +880,8 @@ class WhatsappMessageEcho(SerializableAttrs):
     - location: Location object if it's a location message.
 
     - contacts: List of contact objects if it's a contact message.
+
+    - edit: The data of the edited message.
     """
 
     from_number: str = ib(metadata={"json": "from"}, default="")
@@ -844,6 +897,7 @@ class WhatsappMessageEcho(SerializableAttrs):
     document: WhatsappDocument = ib(metadata={"json": "document"}, default={})
     location: WhatsappLocation = ib(metadata={"json": "location"}, default={})
     contacts: list[WhatsappContact] = ib(metadata={"json": "contacts"}, default=[])
+    edit: WhatsappMessageEdit = ib(metadata={"json": "edit"}, default={})
 
     @classmethod
     def from_dict(cls, data: dict):
@@ -854,6 +908,7 @@ class WhatsappMessageEcho(SerializableAttrs):
         sticker_obj = None
         document_obj = None
         contacts_obj = None
+        edit_obj = None
 
         if data.get("text", ""):
             text_obj = WhatsappText(**data.get("text", {}))
@@ -871,6 +926,8 @@ class WhatsappMessageEcho(SerializableAttrs):
             contacts_obj = []
             for contact in data.get("contacts", []):
                 contacts_obj.append(WhatsappContact.from_dict(contact))
+        elif data.get("edit"):
+            edit_obj = WhatsappMessageEdit.from_dict(data.get("edit", {}))
 
         return cls(
             from_number=data.get("from", ""),
@@ -886,6 +943,7 @@ class WhatsappMessageEcho(SerializableAttrs):
             document=document_obj,
             location=WhatsappLocation(**data.get("location", {})),
             contacts=contacts_obj,
+            edit=edit_obj,
         )
 
 
