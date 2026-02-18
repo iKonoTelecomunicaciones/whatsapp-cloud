@@ -48,7 +48,7 @@ from whatsapp.interactive_message import (
     FormResponseMessage,
 )
 from whatsapp.types import WhatsappMessageID, WhatsappPhone, WsBusinessID
-from whatsapp_matrix.formatter.from_matrix import matrix_to_whatsapp
+from whatsapp_matrix.formatter.from_matrix import WhatsappFormatMedia, matrix_to_whatsapp
 from whatsapp_matrix.formatter.from_whatsapp import whatsapp_reply_to_matrix
 
 from .db import Message as DBMessage
@@ -1047,8 +1047,16 @@ class Portal(DBPortal, BasePortal):
             ext = media_type.split("/")[-1]
             media_name = f"file.{ext}"
 
+        # Process media content and convert format if needed
+        processed_content, processed_content_type = await WhatsappFormatMedia().process_media(
+            data, media_type
+        )
+
         response = await self.whatsapp_client.upload_media(
-            data, messaging_product="whatsapp", file_type=media_type, file_name=media_name
+            processed_content,
+            messaging_product="whatsapp",
+            file_type=processed_content_type,
+            file_name=media_name,
         )
 
         if not response or "id" not in response:
