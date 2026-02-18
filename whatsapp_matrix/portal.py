@@ -22,6 +22,8 @@ from mautrix.types import (
     Obj,
     PowerLevelStateEventContent,
     ReactionEventContent,
+    RelatesTo,
+    RelationType,
     RoomID,
     TextMessageEventContent,
     UserID,
@@ -240,10 +242,10 @@ class Portal(DBPortal, BasePortal):
 
             return None
 
-    def send_text_message(self, message: str) -> EventID | None:
+    def convert_text_message(self, message: str) -> MessageEventContent:
         """
         Takes a message from Whatsapp, checks the kind of message and change the format of it to a
-        valid format of Matrix message and sends it to Matrix
+        valid format of Matrix message and return it
 
         Parameters
         ----------
@@ -254,13 +256,13 @@ class Portal(DBPortal, BasePortal):
             The class that containt the data of the message.
         """
         html, text = whatsapp_to_matrix(message)
-        content = TextMessageEventContent(msgtype=MessageType.TEXT, body=message)
+        content = TextMessageEventContent(msgtype=MessageType.TEXT, body=text)
         # Validate if the message has a html format
         if html is not None:
             content.format = Format.HTML
             content.formatted_body = html
-        # Send the message to Matrix
-        return self.main_intent.send_message(self.mxid, content)
+
+        return content
 
     async def create_matrix_room(
         self, source: User, sender: WhatsappContacts, invitees: list[str] | None = None
@@ -508,11 +510,11 @@ class Portal(DBPortal, BasePortal):
             caption = media_data.caption if hasattr(media_data, "caption") else None
             file_name = None
 
-            if hasattr(media_data, "voice"):
-                # This is to distinguish between a voice message and an audio message
-                file_name = "Voice Audio" if media_data.voice else "Audio"
-            elif hasattr(media_data, "filename"):
+            if hasattr(media_data, "filename"):
                 file_name = media_data.filename
+            else:
+                media_type = media_data.mime_type.split("/")[-1]
+                file_name = f"media.{media_type}"
 
         elif whatsapp_message_type == "sticker":
             message_type = MessageType.IMAGE
@@ -583,14 +585,7 @@ class Portal(DBPortal, BasePortal):
             If the message type is not supported or the media is not found.
         """
         if message_type == MessageType.TEXT:
-            html, text = whatsapp_to_matrix(attachment)
-            text_content = TextMessageEventContent(msgtype=message_type, body=text)
-
-            if html:
-                text_content.format = Format.HTML
-                text_content.formatted_body = html
-
-            return text_content
+            return self.convert_text_message(attachment)
 
         if isinstance(message_type, MessageType) and message_type.is_media:
             if media_id:
@@ -1113,6 +1108,11 @@ class Portal(DBPortal, BasePortal):
         if message.msgtype == MessageType.NOTICE and not self.config["bridge.bridge_notices"]:
             return
 
+        if message.relates_to.rel_type == RelationType.REPLACE:
+            self.log.debug(f"Ignoring edit message {message} for user {sender.mxid}...")
+            await self.main_intent.send_notice(self.mxid, f"Edit a message is not supported...")
+            return
+
         if message.get_reply_to():
             reply_message: DBMessage = await DBMessage.get_by_mxid(
                 message.get_reply_to(), self.mxid
@@ -1241,6 +1241,110 @@ class Portal(DBPortal, BasePortal):
             app_business_id=self.app_business_id,
             created_at=datetime.now(),
         ).insert()
+
+    async def get_content_edit_message(
+        self, room_id: RoomID, message_to_edit: WhatsappMessageEcho
+    ) -> MessageEventContent:
+        """
+        Get the content of the edited message.
+
+        Parameters
+        ----------
+        room_id : RoomID
+            The ID of the room where the message was sent.
+
+        message_to_edit : WhatsappMessageEcho
+            The echo message data from WhatsApp.
+
+        Returns
+        -------
+        MessageEventContent
+            The content of the edited message.
+
+        Raises
+        ------
+        ValueError
+            If the original message is not found.
+        """
+        # Get the original message from the database
+        original_message = await DBMessage.get_by_whatsapp_message_id(
+            message_to_edit.edit.original_message_id
+        )
+
+        if not original_message:
+            raise ValueError(
+                f"Original message with ID {message_to_edit.id} not found in room {room_id}"
+            )
+
+        # Get the text to send to matrix
+        html, text = whatsapp_to_matrix(message_to_edit.edit.message.text.body)
+        content = TextMessageEventContent(msgtype=MessageType.TEXT, body=text)
+
+        # Validate if the message has a htm l format
+        content.format = Format.HTML
+        content.formatted_body = html or text
+
+        # Create the edited message content
+        content.relates_to = RelatesTo(
+            event_id=original_message.event_mxid,
+            rel_type=RelationType.REPLACE,
+        )
+
+        return content
+
+    async def handle_whatsapp_edit(
+        self, sender_id: str, message_to_edit: WhatsappMessageEcho, intent: IntentAPI
+    ) -> None:
+        """
+        Handle WhatsApp edit event (edit did from WhatsApp by the customer).
+        These event should be bridged to Matrix.
+
+        Parameters
+        ----------
+        sender_id : str
+            The ID of the user who sent the edit event from WhatsApp.
+
+        message_to_edit : WhatsappMessageEcho
+            The echo message data from WhatsApp.
+
+        intent: IntentAPI
+            The intent API instance to use for sending messages.
+        """
+        try:
+            # Get edited message content
+            self.log.debug(
+                f"Getting edited message content for WhatsApp message ID {message_to_edit.id} in room {self.mxid}"
+            )
+            content_message = await self.get_content_edit_message(self.mxid, message_to_edit)
+        except ValueError as e:
+            self.log.error(
+                f"Error getting content edit message in room {self.mxid} for WhatsApp message ID {message_to_edit.id}: {e}"
+            )
+            return
+
+        try:
+            # Send the message to Matrix using the bot user
+            self.log.debug(
+                f"Sending edited message to Matrix room {self.mxid} for WhatsApp message ID {message_to_edit.id}"
+            )
+            event_mxid = await intent.send_message(self.mxid, content_message)
+
+            # Save the message to database
+            await DBMessage(
+                event_mxid=event_mxid,
+                room_id=self.mxid,
+                phone_id=self.phone_id,
+                sender=sender_id,
+                whatsapp_message_id=message_to_edit.id,
+                app_business_id=self.app_business_id,
+                created_at=datetime.now(),
+            ).insert()
+
+            self.log.debug(
+                f"Edit message {message_to_edit.id} bridged successfully for room {self.mxid}"
+            )
+        except Exception as e:
+            self.log.exception(f"Error sending edit message to Matrix: {e}")
 
     async def handle_matrix_reaction(
         self,
