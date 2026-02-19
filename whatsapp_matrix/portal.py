@@ -686,12 +686,6 @@ class Portal(DBPortal, BasePortal):
         Exception:
             Show and error if the media does not upload.
         """
-        if await DBMessage.get_by_whatsapp_message_id(message.entry.changes.value.messages.id):
-            self.log.warning(
-                f"Message {message.entry.changes.value.messages.id} already processed"
-            )
-            return
-
         # Validate if the matrix room exists, if not, it is created
         if not await self.create_matrix_room(source=source, sender=sender):
             return
@@ -701,6 +695,10 @@ class Portal(DBPortal, BasePortal):
 
         if not message_data:
             self.log.error("No message data")
+            return
+
+        if await DBMessage.get_by_whatsapp_message_id(message_data.id):
+            self.log.warning(f"Message {message_data.id} already processed")
             return
 
         # Validate if the message exist and that the message has a reply
