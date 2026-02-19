@@ -697,6 +697,10 @@ class Portal(DBPortal, BasePortal):
             self.log.error("No message data")
             return
 
+        if await DBMessage.get_by_whatsapp_message_id(message_data.id):
+            self.log.warning(f"Message {message_data.id} already processed")
+            return
+
         # Validate if the message exist and that the message has a reply
         whatsapp_message_type = message_data.type
         whatsapp_message_id = message_data.id
