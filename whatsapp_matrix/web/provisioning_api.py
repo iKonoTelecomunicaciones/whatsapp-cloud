@@ -48,6 +48,7 @@ class ProvisioningAPI:
         self.app.router.add_route("POST", "/v1/set_power_level", self.set_power_level)
         self.app.router.add_route("POST", "/v1/set_relay", self.set_relay)
         self.app.router.add_route("GET", "/v1/set_relay/{room_id}", self.validate_set_relay)
+        self.app.router.add_route("GET", "/v1/channel_status", self.channel_status)
 
     @property
     def _acao_headers(self) -> dict[str, str]:
@@ -1166,6 +1167,167 @@ class ProvisioningAPI:
                     "data": {"room_id": room_id, "relay_user_id": user.mxid},
                 },
             },
+            status=200,
+            headers=self._acao_headers,
+        )
+
+    async def business_data(self, business_id: str, page_access_token: str) -> dict:
+        """
+        Get the business data for a WhatsApp business account.
+
+        Parameters
+        ----------
+        business_id: str
+            The ID of the WhatsApp business account.
+        page_access_token: str
+            The access token for the WhatsApp API.
+
+        Returns
+        -------
+        dict
+            The business data.
+        """
+        url = f"{self.base_url}/{self.version}/{business_id}"
+        headers = {
+            "Authorization": f"Bearer {page_access_token}",
+            "Content-Type": "application/json",
+        }
+
+        self.log.debug(f"Getting business data from Whatsapp Api Cloud: {url}")
+        response: ClientSession = await self.http.get(url=url, headers=headers)
+
+        if response.status != 200:
+            error = await response.json()
+            self.log.error(f"Error getting business data for {business_id}: {error}")
+            raise Exception(error.get("error", {}).get("message"))
+
+        return await response.json()
+
+    async def phone_data(self, phone_id: str, page_access_token: str) -> dict:
+        """
+        Get the phone data for a WhatsApp business account.
+
+        Parameters
+        ----------
+        phone_id: str
+            The ID of the phone associated with the business account.
+        page_access_token: str
+            The access token for the WhatsApp API.
+
+        Returns
+        -------
+        dict
+            The phone data.
+        """
+        url = f"{self.base_url}/{self.version}/{phone_id}"
+        headers = {
+            "Authorization": f"Bearer {page_access_token}",
+            "Content-Type": "application/json",
+        }
+
+        self.log.debug(f"Getting phone data from Whatsapp Api Cloud: {url}")
+        response: ClientSession = await self.http.get(url=url, headers=headers)
+
+        if response.status != 200:
+            error = await response.json()
+            self.log.error(f"Error getting phone data for {phone_id}: {error}")
+            raise Exception(error.get("error", {}).get("message"))
+
+        return await response.json()
+
+    async def channel_information(
+        self, business_id: str, phone_id: str, page_access_token: str
+    ) -> dict:
+        """
+        Get the channel information for a WhatsApp business account.
+
+        Parameters
+        ----------
+        business_id: str
+            The ID of the WhatsApp business account.
+        phone_id: str
+            The ID of the phone associated with the business account.
+        page_access_token: str
+            The access token for the WhatsApp API.
+
+        Returns
+        -------
+        dict
+            The channel status information.
+        """
+        business_data = await self.business_data(business_id, page_access_token)
+        phone_data = await self.phone_data(phone_id, page_access_token)
+
+        platform_type = phone_data.get("platform_type")
+        status = "DISCONNECTED"
+
+        if platform_type == "CLOUD_API":
+            status = "CONNECTED"
+
+        return {
+            "business_name": business_data.get("name"),
+            "business_id": business_data.get("id"),
+            "phone_name": phone_data.get("verified_name"),
+            "phone_number": phone_data.get("display_phone_number"),
+            "phone_id": phone_data.get("id"),
+            "status": status,
+        }
+
+    async def channel_status(self, request: web.Request) -> web.Response:
+        """
+        Get the channel status information for a user.
+
+        Parameters
+        ----------
+        request: web.Request
+            The request that contains the user_mxid in the query params.
+        Returns
+        -------
+        JSON
+            The response with channel status information
+        """
+        user, _ = await self._get_user_and_body(request, read_body=False)
+
+        self.log.debug(f"Get channel status for user {user.mxid}")
+        # Get the WhatsApp application for the user
+        whatsapp_app: WhatsappApplication = await WhatsappApplication.get_by_business_id(
+            business_id=user.app_business_id
+        )
+
+        if not whatsapp_app:
+            self.log.error(f"WhatsApp application not found for user {user.mxid}")
+            return web.json_response(
+                data={
+                    "detail": {
+                        "message": "WhatsApp application not found",
+                        "data": {"status": "DISCONNECTED"},
+                    }
+                },
+                status=200,
+                headers=self._acao_headers,
+            )
+
+        try:
+            channel_status = await self.channel_information(
+                phone_id=whatsapp_app.wb_phone_id,
+                business_id=whatsapp_app.business_id,
+                page_access_token=whatsapp_app.page_access_token,
+            )
+        except Exception as e:
+            self.log.error(f"Failed to get channel status for user {user.mxid}: {e}")
+            return web.json_response(
+                data={
+                    "detail": {
+                        "message": f"Error getting channel status: {e}",
+                        "data": {"status": "DISCONNECTED"},
+                    }
+                },
+                status=200,
+                headers=self._acao_headers,
+            )
+
+        return web.json_response(
+            data={"detail": {"data": channel_status}},
             status=200,
             headers=self._acao_headers,
         )
