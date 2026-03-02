@@ -384,13 +384,27 @@ class WhatsappClient:
         header_parameters = []
 
         # If the template has a media, add it to the template
-        if isinstance(media_data, list) and len(media_data) == 2:
+        if isinstance(media_data, list) and len(media_data) >= 2:
             media_type = media_data[0]
             media_ids = media_data[1]
+            media_names = []
 
-            header_parameters = [
-                {"type": media_type, media_type: {"id": media_id}} for media_id in media_ids
-            ]
+            if len(media_data) == 3:
+                media_names = media_data[2]
+
+            header_parameters = []
+
+            for index, media_id in enumerate(media_ids):
+                data = {"id": media_id}
+
+                if media_names and index < len(media_names):
+                    media_dict = media_names[index]
+
+                    if media_dict.get("index") == index:
+                        data["filename"] = media_dict.get("name")
+                        del media_names[index]
+
+                header_parameters.append({"type": media_type, media_type: data})
 
         components = []
 
