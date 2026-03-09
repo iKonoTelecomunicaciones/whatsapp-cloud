@@ -1,7 +1,9 @@
 from __future__ import annotations
 
+import mimetypes
 from asyncio import Lock, sleep
 from datetime import datetime
+from io import BytesIO
 from string import Template
 from typing import TYPE_CHECKING, Any, cast
 
@@ -29,6 +31,7 @@ from mautrix.types import (
     UserID,
 )
 from mautrix.util import magic
+from pypdf import PdfReader
 
 from whatsapp.api import WhatsappClient
 from whatsapp.data import (
@@ -1617,9 +1620,7 @@ class Portal(DBPortal, BasePortal):
             # Obtain the data of the message media
             try:
                 await self.get_and_send_media(
-                    media_type=message_type,
-                    media_url=[url],
-                    media_ids=[],
+                    media_type=message_type, media_url=[url], media_ids=[]
                 )
             except Exception as e:
                 self.log.exception(f"Error trying to send the media message: {e}")
@@ -1857,7 +1858,12 @@ class Portal(DBPortal, BasePortal):
         return attachment, message_type
 
     async def get_and_send_media(
-        self, media_type: str, media_url: str, media_ids: list, send_to_matrix: bool = True
+        self,
+        media_type: str,
+        media_url: str,
+        media_ids: list,
+        media_names: list = [],
+        send_to_matrix: bool = True,
     ) -> None:
         """
         Download the media and send it to Matrix
@@ -1872,6 +1878,8 @@ class Portal(DBPortal, BasePortal):
             The url of the media
         media_ids: list
             The list of the ids of the media that whatsapp cloud api returns
+        media_names: list
+            The names of the media files to upload
         send_to_matrix: bool
             If True, send the media to Matrix. If False, only upload the media to Whatsapp Cloud API
         """
@@ -1882,7 +1890,7 @@ class Portal(DBPortal, BasePortal):
             else MessageType.VIDEO if media_type == "video" else MessageType.FILE
         )
 
-        for url in media_url:
+        for index, url in enumerate(media_url):
             # Obtain the media file
             response = await self.az.http_session.get(url)
             data = await response.content.read()
@@ -1890,6 +1898,15 @@ class Portal(DBPortal, BasePortal):
             file_type = ""
             if "Content-Type" in response.headers:
                 file_type = response.headers["Content-Type"]
+
+            if "pdf" in file_type:
+                extension = mimetypes.guess_extension(file_type)
+                reader = PdfReader(BytesIO(data))
+                metadata = reader.metadata
+
+                if metadata and metadata.title:
+                    filename = f"{metadata.title}{extension}"
+                    media_names.append({"index": index, "name": filename})
 
             # Upload the media to whatsapp cloud api to get the media_id
             response_upload_media = await self.whatsapp_client.upload_media(
@@ -2003,6 +2020,7 @@ class Portal(DBPortal, BasePortal):
         flow_action: dict | None
             The flow action of the template, if the template has a flow with dynamic content.
         """
+        media_names = []
         media_ids = []
         parameter_actions = [flow_action]
 
@@ -2027,6 +2045,7 @@ class Portal(DBPortal, BasePortal):
                 media_url=template_data["media_url"],
                 media_ids=media_ids,
                 send_to_matrix=send_to_matrix,
+                media_names=media_names,
             )
 
         if template_data["template_to_matrix"]:
@@ -2035,12 +2054,17 @@ class Portal(DBPortal, BasePortal):
             )
 
         if template_data["template_status"] == "APPROVED":
+            media = [template_data["media_type"], media_ids]
+
+            if len(media_names) > 0:
+                media.append(media_names)
+
             # Send the template to Whatsapp
             return await self.handle_matrix_template(
                 sender=user,
                 event_id=msg_event_id,
                 template_data=template_data,
-                media=[template_data["media_type"], media_ids],
+                media=media,
             )
 
         # Send the message to Whatsapp
