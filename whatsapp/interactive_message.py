@@ -460,7 +460,7 @@ class ParameterFlowReply(SerializableAttrs):
     flow_cta: str = ib(metadata={"json": "flow_cta"}, default="")
     flow_token: str = ib(metadata={"json": "flow_token"}, default="")
     flow_action: str = ib(metadata={"json": "flow_action"}, default="")
-    flow_action_payload: str = ib(metadata={"json": "flow_action_payload"}, default=None)
+    flow_action_payload: dict | None = ib(metadata={"json": "flow_action_payload"}, default=None)
 
     @classmethod
     def from_dict(cls, data: dict):
