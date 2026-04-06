@@ -536,7 +536,7 @@ class Portal(DBPortal, BasePortal):
                 message_type = "m.form_response"
                 message_form = message_data.interactive.nfm_reply.response_json
                 attachment = FormResponseMessage(
-                    form_data=message_form, msgtype="m.form_response", body="Sent a form response"
+                    form_data=message_form, msgtype="m.form_response", body="Form response sent"
                 )
                 attachment.visible = message_form.get("visible", True)
 
@@ -667,6 +667,8 @@ class Portal(DBPortal, BasePortal):
                 ),
             )
         else:
+            # When the message is an interactive message, like flow, list or buttons message
+            # it will be returned without modifications
             return attachment
 
     async def handle_whatsapp_message(
