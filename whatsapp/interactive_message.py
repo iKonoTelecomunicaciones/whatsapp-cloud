@@ -460,18 +460,46 @@ class ParameterFlowReply(SerializableAttrs):
     flow_cta: str = ib(metadata={"json": "flow_cta"}, default="")
     flow_token: str = ib(metadata={"json": "flow_token"}, default="")
     flow_action: str = ib(metadata={"json": "flow_action"}, default="")
-    flow_action_payload: str = ib(metadata={"json": "flow_action_payload"}, default="{}")
+    flow_action_payload: dict | None = ib(metadata={"json": "flow_action_payload"}, default=None)
 
     @classmethod
     def from_dict(cls, data: dict):
-        return cls(
+
+        flow_action_payload = data.get("payload") or data.get("flow_action_payload")
+
+        parameters = cls(
             flow_message_version=data.get("message_version", "3"),
             flow_name=data.get("name") or data.get("flow_name", ""),
             flow_cta=data.get("button") or data.get("flow_cta", ""),
             flow_token=data.get("token") or data.get("flow_token", ""),
             flow_action=data.get("action") or data.get("flow_action", ""),
-            flow_action_payload=data.get("payload") or data.get("flow_action_payload", ""),
         )
+
+        if flow_action_payload:
+            parameters.flow_action_payload = (
+                flow_action_payload.serialize()
+                if isinstance(flow_action_payload, Obj)
+                else flow_action_payload
+            )
+
+            if isinstance(parameters.flow_action_payload, dict):
+                parameters.flow_action_payload.pop("active", None)
+
+        return parameters
+
+    def serialize(self) -> dict:
+        data = {
+            "flow_message_version": self.flow_message_version,
+            "flow_name": self.flow_name,
+            "flow_cta": self.flow_cta,
+            "flow_token": self.flow_token,
+            "flow_action": self.flow_action,
+        }
+
+        if self.flow_action_payload:
+            data["flow_action_payload"] = self.flow_action_payload
+
+        return data
 
 
 @dataclass

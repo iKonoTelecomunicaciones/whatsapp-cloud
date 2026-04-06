@@ -535,10 +535,10 @@ class Portal(DBPortal, BasePortal):
             elif message_data.interactive.type == "nfm_reply":
                 message_type = "m.form_response"
                 message_form = message_data.interactive.nfm_reply.response_json
-                content_attachment = FormResponseMessage(
-                    form_data=message_form, msgtype="m.form_response"
+                attachment = FormResponseMessage(
+                    form_data=message_form, msgtype="m.form_response", body="Form response sent"
                 )
-                content_attachment.visible = message_form.get("visible", True)
+                attachment.visible = message_form.get("visible", True)
 
         elif whatsapp_message_type == "button":
             message_type = MessageType.TEXT
@@ -590,7 +590,7 @@ class Portal(DBPortal, BasePortal):
         if message_type == MessageType.TEXT:
             return self.convert_text_message(attachment)
 
-        if isinstance(message_type, MessageType) and message_type.is_media:
+        elif isinstance(message_type, MessageType) and message_type.is_media:
             if media_id:
                 # Obtain the url of the file from Whatsapp API
                 media_data = await self.whatsapp_client.get_media(media_id=media_id)
@@ -619,7 +619,7 @@ class Portal(DBPortal, BasePortal):
                 ),
             )
 
-        if message_type == MessageType.LOCATION:
+        elif message_type == MessageType.LOCATION:
             longitude = location.longitude
             latitude = location.latitude
             long_direction = "E" if longitude > 0 else "W"
@@ -647,7 +647,7 @@ class Portal(DBPortal, BasePortal):
 
             return content_attachment
 
-        if message_type == "contacts":
+        elif message_type == "contacts":
             message_type = MessageType.FILE
             file_name, contacts_file = self.whatsapp_client.generate_vcard(attachment)
 
@@ -666,6 +666,10 @@ class Portal(DBPortal, BasePortal):
                     mime_type=media_type,
                 ),
             )
+        else:
+            # When the message is an interactive message, like flow, list or buttons message
+            # it will be returned without modifications
+            return attachment
 
     async def handle_whatsapp_message(
         self, source: User, message: WhatsappEvent, sender: WhatsappContacts
