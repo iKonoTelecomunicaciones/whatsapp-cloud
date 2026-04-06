@@ -1629,7 +1629,6 @@ class Portal(DBPortal, BasePortal):
                 return
 
         try:
-            self.log.critical(f">>>>>>>>>>>>>>>>>>>>>>>>>>>>{event_interactive_message.interactive_message}")
             # Send the interactive message in whatsapp format
             response = await self.whatsapp_client.send_interactive_message(
                 phone_id=self.phone_id,
