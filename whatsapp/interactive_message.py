@@ -482,8 +482,8 @@ class ParameterFlowReply(SerializableAttrs):
                 else flow_action_payload
             )
 
-            if "active" in parameters.flow_action_payload:
-                del parameters.flow_action_payload["active"]
+            if isinstance(parameters.flow_action_payload, dict):
+                parameters.flow_action_payload.pop("active", None)
 
         return parameters
 
