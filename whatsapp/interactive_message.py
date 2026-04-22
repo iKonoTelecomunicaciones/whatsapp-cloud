@@ -485,6 +485,9 @@ class ParameterFlowReply(SerializableAttrs):
             if isinstance(parameters.flow_action_payload, dict):
                 parameters.flow_action_payload.pop("active", None)
 
+                if not parameters.flow_action_payload.get("data"):
+                    parameters.flow_action_payload.pop("data", None)
+
         return parameters
 
     def serialize(self) -> dict:
@@ -713,13 +716,13 @@ class InteractiveFlowMessage(InteractiveMessage):
             body_obj = reply_content.body
             footer_obj = reply_content.footer
 
-        if data.get("body"):
+        if data.get("body", {}) and data.get("body", {}).get("text"):
             body_obj = TextReply.from_dict(data.get("body", {}))
 
         if data.get("header"):
             header_obj = InteractiveHeader.from_dict(data.get("header", {}))
 
-        if data.get("footer"):
+        if data.get("footer", {}) and data.get("footer", {}).get("text"):
             footer_obj = TextReply.from_dict(data.get("footer", {}))
 
         if data.get("action"):
