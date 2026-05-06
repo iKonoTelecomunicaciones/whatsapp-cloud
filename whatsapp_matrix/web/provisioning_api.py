@@ -408,7 +408,7 @@ class ProvisioningAPI:
         Convert bytes to MB.
         """
         size_mb = float(size_in_bytes) / (10**6)
-        return f"{size_mb:.2f} MB"
+        return f"{size_mb:.3f} MB"
 
     @staticmethod
     def _collect_class_caches(cache_class: type) -> dict[str, dict[str, object]]:
@@ -416,14 +416,25 @@ class ProvisioningAPI:
         Collect class cache dictionaries that start with 'by_'.
         """
         caches: dict[str, dict[str, object]] = {}
+        total_size = 0
+
         for attr_name, value in vars(cache_class).items():
-            if not attr_name.startswith("by_") or not isinstance(value, Mapping):
-                continue
+            size = ProvisioningAPI._deep_getsizeof(value)
+            total_size += size
+            len_value = "N/A"
+
+            if isinstance(value, Mapping):
+                len_value = len(value.keys())
+            elif isinstance(value, (list, tuple, set, frozenset)):
+                len_value = len(value)
 
             caches[attr_name] = {
-                "size": ProvisioningAPI._format_size(ProvisioningAPI._deep_getsizeof(value)),
-                "len": len(value.keys()),
+                "size": ProvisioningAPI._format_size(size),
+                "len": len_value,
+                "type": str(type(value)),
             }
+
+        caches["total_size"] = ProvisioningAPI._format_size(total_size)
         return caches
 
     async def resources(self, request: web.Request) -> web.Response:
