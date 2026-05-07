@@ -1,7 +1,9 @@
 from __future__ import annotations
 
 import json
+import sys
 from asyncio import AbstractEventLoop, get_event_loop
+from collections.abc import Mapping
 from json import JSONDecodeError
 from logging import Logger, getLogger
 
@@ -49,6 +51,7 @@ class ProvisioningAPI:
         self.app.router.add_route("POST", "/v1/set_relay", self.set_relay)
         self.app.router.add_route("GET", "/v1/set_relay/{room_id}", self.validate_set_relay)
         self.app.router.add_route("GET", "/v1/channel_status", self.channel_status)
+        self.app.router.add_route("GET", "/v1/resources", self.resources)
 
     @property
     def _acao_headers(self) -> dict[str, str]:
@@ -362,6 +365,91 @@ class ProvisioningAPI:
             raise web.HTTPForbidden(
                 text=json.dumps({"detail": {"message": "Invalid token"}}), headers=self._headers
             )
+
+    @staticmethod
+    def _deep_getsizeof(obj: object, seen: set[int] | None = None) -> int:
+        """
+        Recursively estimate the memory size of a Python object.
+        """
+        if seen is None:
+            seen = set()
+
+        obj_id = id(obj)
+        if obj_id in seen:
+            return 0
+        seen.add(obj_id)
+
+        size = sys.getsizeof(obj)
+
+        if isinstance(obj, dict):
+            for key, value in obj.items():
+                size += ProvisioningAPI._deep_getsizeof(key, seen)
+                size += ProvisioningAPI._deep_getsizeof(value, seen)
+            return size
+
+        if isinstance(obj, (list, tuple, set, frozenset)):
+            for item in obj:
+                size += ProvisioningAPI._deep_getsizeof(item, seen)
+            return size
+
+        if hasattr(obj, "__dict__"):
+            size += ProvisioningAPI._deep_getsizeof(vars(obj), seen)
+
+        if hasattr(obj, "__slots__"):
+            for slot in obj.__slots__:
+                if hasattr(obj, slot):
+                    size += ProvisioningAPI._deep_getsizeof(getattr(obj, slot), seen)
+
+        return size
+
+    @staticmethod
+    def _format_size(size_in_bytes: int) -> str:
+        """
+        Convert bytes to MB.
+        """
+        size_mb = float(size_in_bytes) / (10**6)
+        return f"{size_mb:.3f} MB"
+
+    @staticmethod
+    def _collect_class_caches(cache_class: type) -> dict[str, dict[str, object]]:
+        """
+        Collect class cache dictionaries that start with 'by_'.
+        """
+        caches: dict[str, dict[str, object]] = {}
+        total_size = 0
+
+        for attr_name, value in vars(cache_class).items():
+            size = ProvisioningAPI._deep_getsizeof(value)
+            total_size += size
+            len_value = "N/A"
+
+            if isinstance(value, Mapping):
+                len_value = len(value.keys())
+            elif isinstance(value, (list, tuple, set, frozenset)):
+                len_value = len(value)
+
+            caches[attr_name] = {
+                "size": ProvisioningAPI._format_size(size),
+                "len": len_value,
+                "type": str(type(value)),
+            }
+
+        caches["total_size"] = ProvisioningAPI._format_size(total_size)
+        return caches
+
+    async def resources(self, request: web.Request) -> web.Response:
+        """
+        Return cache resources from User, Puppet and Portal classes.
+        """
+        self.check_token(request)
+
+        response = {
+            "user": self._collect_class_caches(User),
+            "puppet": self._collect_class_caches(Puppet),
+            "portal": self._collect_class_caches(Portal),
+        }
+
+        return web.json_response(data=response, status=200, headers=self._acao_headers)
 
     async def update_app(self, request: web.Request) -> dict:
         """
