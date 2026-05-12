@@ -129,13 +129,12 @@ class WhatsappHandler:
         self.log.debug(f"Received Whatsapp Cloud message event: {data}")
         sender = data.entry.changes.value.contacts
         business_id = data.entry.id
-        message_id = data.entry.changes.value.messages.id
         user: User = await User.get_by_business_id(business_id)
         portal: Portal = await Portal.get_by_app_and_phone_id(
             phone_id=sender.wa_id, app_business_id=business_id
         )
 
-        with RoomSyncMessages(portal.mxid, message_id) as message_lock:
+        with RoomSyncMessages(portal.mxid) as message_lock:
             async with message_lock:
                 if data.entry.changes.value.messages.errors:
                     await portal.handle_whatsapp_errors(data.entry.changes.value.messages.errors)
@@ -209,14 +208,13 @@ class WhatsappHandler:
         for echo_message in wb_value.message_echoes:
             # The 'to' field contains the recipient's phone (the customer)
             customer_phone = echo_message.to
-            message_id = echo_message.id
 
             # Get the portal for this conversation
             portal: Portal = await Portal.get_by_app_and_phone_id(
                 phone_id=customer_phone, app_business_id=business_id
             )
 
-            with RoomSyncMessages(portal.mxid, message_id) as message_lock:
+            with RoomSyncMessages(portal.mxid) as message_lock:
                 async with message_lock:
                     # Handle the echo message using the portal
                     if echo_message.type == "edit":
