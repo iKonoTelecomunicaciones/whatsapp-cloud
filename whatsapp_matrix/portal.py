@@ -982,7 +982,9 @@ class Portal(DBPortal, BasePortal):
         if self.is_direct or not await user.is_logged_in():
             return
 
-    async def handle_whatsapp_errors(self, errors: list[WhatsappErrors]) -> None:
+    async def handle_whatsapp_errors(
+        self, source: User, messages: WhatsappMessages, sender: WhatsappContacts
+    ) -> None:
         """
         Handle errors from Whatsapp API.
         Parameters
@@ -990,15 +992,43 @@ class Portal(DBPortal, BasePortal):
         error : WhatsappErrors
             The error object containing error details.
         """
-        if not self.mxid:
-            self.log.error(
-                f"Error handling the error events, not portal found.\n Errors: {errors}"
-            )
-            return
+        errors = messages.errors
+        message_id = messages.id
 
         async with self._send_lock:
             for err in errors:
                 self.log.error(f"Whatsapp API sent an error: {err}")
+
+                if not self.mxid:
+                    self.log.error(
+                        f"Not portal found for phone_id {self.phone_id} and app_business_id "
+                        f"{self.app_business_id} to send the error notice, creating portal... "
+                    )
+
+                    if not await self.create_matrix_room(source=source, sender=sender):
+                        self.log.error(
+                            f"Failed to create a matrix room for phone_id {self.phone_id} and "
+                            f"app_business_id {self.app_business_id} to send the error notice."
+                        )
+                        return
+
+                if err.code == 131060 and "unavailable" in err.message.lower():
+                    message = self.convert_text_message(messages.text.body)
+                    self.log.critical(f"sending test error {self.mxid}")
+                    event_mxid = await self.az.intent.send_message(self.mxid, message)
+                    # Save the message to database
+                    await DBMessage(
+                        event_mxid=event_mxid,
+                        room_id=self.mxid,
+                        phone_id=err.to,  # The recipient phone
+                        sender=source.mxid,
+                        whatsapp_message_id=message_id,
+                        app_business_id=self.app_business_id,
+                        created_at=datetime.now(),
+                    ).insert()
+
+                    continue
+
                 await self.main_intent.send_notice(
                     self.mxid,
                     f"Whatsapp API returned an error.\n Title: {err.title}, message: {err.message}",
