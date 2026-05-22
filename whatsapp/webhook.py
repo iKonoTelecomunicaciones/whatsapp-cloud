@@ -143,6 +143,13 @@ class WhatsappHandler:
                 message_to_edit=data.entry.changes.value.messages,
                 intent=portal.main_intent,
             )
+        elif data.entry.changes.value.messages.type == "system":
+            self.log.info(
+                f"Received a system message of type "
+                f"{data.entry.changes.value.messages.system.type} from user {sender.wa_id} "
+                f"for business account {business_id}. "
+                f"Message: {data.entry.changes.value.messages.system.body}"
+            )
         else:
             await portal.handle_whatsapp_message(user, data, sender)
 

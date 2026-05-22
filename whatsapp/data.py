@@ -669,6 +669,29 @@ class WhatsappMessageEdit(SerializableAttrs):
 
 
 @dataclass
+class WhatsappSystem(SerializableAttrs):
+    """
+    Contain the information of the system message.
+
+    - body: The body of the system message, typically containing a description of the change.
+    - wa_id: The WhatsApp ID associated with the system message, typically the new number.
+    - type: The type of the system message.
+    """
+
+    body: str = ib(metadata={"json": "body"}, default="")
+    wa_id: str = ib(metadata={"json": "wa_id"}, default="")
+    type: str = ib(metadata={"json": "type"}, default="")
+
+    @classmethod
+    def from_dict(cls, data: dict):
+        return cls(
+            body=data.get("body", ""),
+            wa_id=data.get("wa_id", ""),
+            type=data.get("type", ""),
+        )
+
+
+@dataclass
 class WhatsappMessages(SerializableAttrs):
     """
     Contain the information of the message.
@@ -676,9 +699,13 @@ class WhatsappMessages(SerializableAttrs):
     - from_number: The number of the user, whatsapp api pass this value as "from", so we need to
       change it to "from_number".
 
+    - from_user_id: The id of the user who sent the message
+
     - id: The id of the message
 
     - timestamp: The time when the message was sent.
+
+    - system: Properties related to system messages, such as numbers changing.
 
     - text: Containt message of the user.
 
@@ -708,8 +735,10 @@ class WhatsappMessages(SerializableAttrs):
     """
 
     from_number: str = ib(metadata={"json": "from"}, default="")
+    from_user_id: str = ib(metadata={"json": "from_user_id"}, default="")
     id: WhatsappMessageID = ib(metadata={"json": "id"}, default="")
     timestamp: str = ib(metadata={"json": "timestamp"}, default="")
+    system: WhatsappSystem = ib(metadata={"json": "system"}, default={})
     context: WhatsappContext = ib(metadata={"json": "context"}, default={})
     text: WhatsappText = ib(metadata={"json": "text"}, default={})
     type: str = ib(metadata={"json": "type"}, default="")
@@ -740,9 +769,13 @@ class WhatsappMessages(SerializableAttrs):
         contacts_obj = []
         error_obj = None
         edit_obj = None
+        system_obj = None
 
         if data.get("context", {}):
             context_obj = WhatsappContext.from_dict(data.get("context", {}))
+
+        if data.get("system", {}):
+            system_obj = WhatsappSystem.from_dict(data.get("system", {}))
 
         if data.get("text", ""):
             text_obj = WhatsappText(**data.get("text", {}))
@@ -779,6 +812,7 @@ class WhatsappMessages(SerializableAttrs):
 
         return cls(
             from_number=data.get("from", ""),
+            from_user_id=data.get("from_user_id", ""),
             id=data.get("id", ""),
             timestamp=data.get("timestamp", ""),
             context=context_obj,
@@ -795,6 +829,7 @@ class WhatsappMessages(SerializableAttrs):
             button=button_obj,
             contacts=contacts_obj,
             errors=error_obj,
+            system=system_obj,
             edit=edit_obj,
         )
 
