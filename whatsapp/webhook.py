@@ -137,7 +137,7 @@ class WhatsappHandler:
         with RoomSyncMessages(portal.mxid) as message_lock:
             async with message_lock:
                 if data.entry.changes.value.messages.errors:
-                    await portal.handle_whatsapp_errors(data.entry.changes.value.messages.errors)
+                    await portal.handle_whatsapp_errors(data.entry.changes.value.messages)
                 elif data.entry.changes.value.messages.type == "reaction":
                     await portal.handle_whatsapp_reaction(data, sender.wa_id)
                 elif data.entry.changes.value.messages.type == "edit":

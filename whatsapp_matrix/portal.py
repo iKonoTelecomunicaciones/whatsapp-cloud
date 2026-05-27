@@ -982,14 +982,15 @@ class Portal(DBPortal, BasePortal):
         if self.is_direct or not await user.is_logged_in():
             return
 
-    async def handle_whatsapp_errors(self, errors: list[WhatsappErrors]) -> None:
+    async def handle_whatsapp_errors(self, messages: WhatsappMessages) -> None:
         """
         Handle errors from Whatsapp API.
         Parameters
         ----------
-        error : WhatsappErrors
-            The error object containing error details.
+        messages : WhatsappMessages
+            The messages object containing error details.
         """
+        errors = messages.errors
         if not self.mxid:
             self.log.error(
                 f"Error handling the error events, not portal found.\n Errors: {errors}"
@@ -999,10 +1000,19 @@ class Portal(DBPortal, BasePortal):
         async with self._send_lock:
             for err in errors:
                 self.log.error(f"Whatsapp API sent an error: {err}")
-                await self.main_intent.send_notice(
-                    self.mxid,
-                    f"Whatsapp API returned an error.\n Title: {err.title}, message: {err.message}",
+                self.log.error(f"messages: {messages}")
+                message = (
+                    f"Whatsapp API returned an error.\n Title: {err.title}, message: {err.message}"
                 )
+                self.log.critical(f"Whatsapp API error details: {err}")
+                if err.code == 131051 and messages.unsupported:
+                    if messages.unsupported.type == "video_note":
+                        message = (
+                            "Video notes are not supported in Whatsapp Cloud API. "
+                            "Please ask the user to send a regular video instead."
+                        )
+
+                await self.main_intent.send_notice(self.mxid, message)
 
     async def get_media(self, mxc: str) -> tuple[bytes, str]:
         """
