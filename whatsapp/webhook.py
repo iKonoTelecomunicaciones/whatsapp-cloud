@@ -7,6 +7,7 @@ from aiohttp import web
 from whatsapp_matrix.config import Config
 from whatsapp_matrix.db import WhatsappApplication as DBWhatsappApplication
 from whatsapp_matrix.portal import Portal
+from whatsapp_matrix.room_sync_messages import RoomSyncMessages
 from whatsapp_matrix.user import User
 
 from .data import WhatsappEvent, WhatsappStatusesEvent
@@ -133,18 +134,22 @@ class WhatsappHandler:
             phone_id=sender.wa_id, app_business_id=business_id
         )
 
-        if data.entry.changes.value.messages.errors:
-            await portal.handle_whatsapp_errors(user, data.entry.changes.value.messages, sender)
-        elif data.entry.changes.value.messages.type == "reaction":
-            await portal.handle_whatsapp_reaction(data, sender.wa_id)
-        elif data.entry.changes.value.messages.type == "edit":
-            await portal.handle_whatsapp_edit(
-                sender_id=sender.wa_id,
-                message_to_edit=data.entry.changes.value.messages,
-                intent=portal.main_intent,
-            )
-        else:
-            await portal.handle_whatsapp_message(user, data, sender)
+        with RoomSyncMessages(portal.mxid) as message_lock:
+            async with message_lock:
+                if data.entry.changes.value.messages.errors:
+                    await portal.handle_whatsapp_errors(
+                        user, data.entry.changes.value.messages, sender
+                    )
+                elif data.entry.changes.value.messages.type == "reaction":
+                    await portal.handle_whatsapp_reaction(data, sender.wa_id)
+                elif data.entry.changes.value.messages.type == "edit":
+                    await portal.handle_whatsapp_edit(
+                        sender_id=sender.wa_id,
+                        message_to_edit=data.entry.changes.value.messages,
+                        intent=portal.main_intent,
+                    )
+                else:
+                    await portal.handle_whatsapp_message(user, data, sender)
 
         return web.Response(status=200)
 
@@ -211,12 +216,16 @@ class WhatsappHandler:
                 phone_id=customer_phone, app_business_id=business_id
             )
 
-            # Handle the echo message using the portal
-            if echo_message.type == "edit":
-                await portal.handle_whatsapp_edit(
-                    sender_id=user.mxid, message_to_edit=echo_message, intent=portal.az.intent
-                )
-            else:
-                await portal.handle_whatsapp_echo(user=user, echo_message=echo_message)
+            with RoomSyncMessages(portal.mxid) as message_lock:
+                async with message_lock:
+                    # Handle the echo message using the portal
+                    if echo_message.type == "edit":
+                        await portal.handle_whatsapp_edit(
+                            sender_id=user.mxid,
+                            message_to_edit=echo_message,
+                            intent=portal.az.intent,
+                        )
+                    else:
+                        await portal.handle_whatsapp_echo(user=user, echo_message=echo_message)
 
         return web.Response(status=200)
