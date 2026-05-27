@@ -1017,7 +1017,6 @@ class Portal(DBPortal, BasePortal):
                 )
                 if err.code == 131060 and "unavailable" in err.message.lower():
                     message = self.convert_text_message(messages.text.body)
-                    self.log.critical(f"sending test error {self.mxid}")
                     event_mxid = await self.az.intent.send_message(self.mxid, message)
                     # Save the message to database
                     await DBMessage(
