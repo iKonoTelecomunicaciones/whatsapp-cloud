@@ -7,7 +7,7 @@ from aiohttp import web
 from whatsapp_matrix.config import Config
 from whatsapp_matrix.db import WhatsappApplication as DBWhatsappApplication
 from whatsapp_matrix.portal import Portal
-from whatsapp_matrix.room_sync_messages import RoomSyncMessages
+from whatsapp_matrix.room_sync_messages import RoomLock
 from whatsapp_matrix.user import User
 
 from .data import WhatsappEvent, WhatsappStatusesEvent
@@ -134,7 +134,7 @@ class WhatsappHandler:
             phone_id=sender.wa_id, app_business_id=business_id
         )
 
-        with RoomSyncMessages(portal.mxid) as message_lock:
+        with RoomLock(portal.mxid) as message_lock:
             async with message_lock:
                 if data.entry.changes.value.messages.errors:
                     await portal.handle_whatsapp_errors(data.entry.changes.value.messages)
@@ -214,7 +214,7 @@ class WhatsappHandler:
                 phone_id=customer_phone, app_business_id=business_id
             )
 
-            with RoomSyncMessages(portal.mxid) as message_lock:
+            with RoomLock(portal.mxid) as message_lock:
                 async with message_lock:
                     # Handle the echo message using the portal
                     if echo_message.type == "edit":
