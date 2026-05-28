@@ -982,7 +982,9 @@ class Portal(DBPortal, BasePortal):
         if self.is_direct or not await user.is_logged_in():
             return
 
-    async def handle_whatsapp_errors(self, messages: WhatsappMessages) -> None:
+    async def handle_whatsapp_errors(
+        self, source: User, messages: WhatsappMessages, sender: WhatsappContacts
+    ) -> None:
         """
         Handle errors from Whatsapp API.
         Parameters
@@ -991,25 +993,59 @@ class Portal(DBPortal, BasePortal):
             The messages object containing error details.
         """
         errors = messages.errors
-        if not self.mxid:
-            self.log.error(
-                f"Error handling the error events, not portal found.\n Errors: {errors}"
-            )
-            return
+        message_id = messages.id
 
         async with self._send_lock:
             for err in errors:
                 self.log.error(f"Whatsapp API sent an error: {err}")
-                self.log.error(f"messages: {messages}")
+
+                if not self.mxid:
+                    self.log.error(
+                        f"Not portal found for phone_id {self.phone_id} and app_business_id "
+                        f"{self.app_business_id} to send the error notice, creating portal... "
+                    )
+
+                    if not await self.create_matrix_room(source=source, sender=sender):
+                        self.log.error(
+                            f"Failed to create a matrix room for phone_id {self.phone_id} and "
+                            f"app_business_id {self.app_business_id} to send the error notice."
+                        )
+                        return
+
                 message = (
                     f"Whatsapp API returned an error.\n Title: {err.title}, message: {err.message}"
                 )
-                self.log.critical(f"Whatsapp API error details: {err}")
+
+                # Error code 131060 means the message is currently unavailable. It typically occurs
+                # when a WhatsApp user messages a business for the first time.
+                if err.code == 131060 and "unavailable" in err.message.lower():
+                    message = self.convert_text_message(messages.text.body)
+                    event_mxid = await self.az.intent.send_message(self.mxid, message)
+                    # Save the message to database
+                    await DBMessage(
+                        event_mxid=event_mxid,
+                        room_id=self.mxid,
+                        phone_id=err.to,  # The recipient phone
+                        sender=source.mxid,
+                        whatsapp_message_id=message_id,
+                        app_business_id=self.app_business_id,
+                        created_at=datetime.now(),
+                    ).insert()
+
+                    continue
+
+                # Error code 131051 is received when cloud API does not support some message type.
                 if err.code == 131051 and messages.unsupported:
                     if messages.unsupported.type == "video_note":
                         message = (
                             "Video notes are not supported in Whatsapp Cloud API. "
                             "Please ask the user to send a regular video instead."
+                        )
+                    if messages.unsupported.type == "unknown":
+                        message = (
+                            "The message type sent is not supported in Whatsapp Cloud API. "
+                            "Perhaps it is an edit or a message with unsupported content. "
+                            "Please ask the user to send a supported message type."
                         )
 
                 await self.main_intent.send_notice(self.mxid, message)
