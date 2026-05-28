@@ -330,6 +330,23 @@ class WhatsappErrorData(SerializableAttrs):
 
 
 @dataclass
+class UnsupportedErrorMessage(SerializableAttrs):
+    """
+    Contain the type of the error if the error is unsupported.
+
+    - type: The type of the error if the error is unsupported.
+    """
+
+    type: str = ib(metadata={"json": "type"}, default="")
+
+    @classmethod
+    def from_dict(cls, data: dict):
+        return cls(
+            type=data.get("type", ""),
+        )
+
+
+@dataclass
 class WhatsappErrors(SerializableAttrs):
     """
     Contain de information of the error.
@@ -341,6 +358,7 @@ class WhatsappErrors(SerializableAttrs):
     - message: The message of the error.
 
     - error_data: The data of the error.
+
     """
 
     code: str = ib(metadata={"json": "code"}, default="")
@@ -364,12 +382,7 @@ class WhatsappErrors(SerializableAttrs):
         if data.get("error_data"):
             error_data_obj = WhatsappErrorData(**data.get("error_data", {}))
 
-        return cls(
-            code=code_obj,
-            title=title_obj,
-            message=message_obj,
-            error_data=error_data_obj,
-        )
+        return cls(code=code_obj, title=title_obj, message=message_obj, error_data=error_data_obj)
 
 
 @dataclass
@@ -732,6 +745,8 @@ class WhatsappMessages(SerializableAttrs):
     - errors: List of error objects that contain the information of the errors that occurred.
 
     - edit: The data of the edited message.
+
+    - unsupported: The message of the error if the error is unsupported.
     """
 
     from_number: str = ib(metadata={"json": "from"}, default="")
@@ -754,6 +769,8 @@ class WhatsappMessages(SerializableAttrs):
     contacts: list[WhatsappContact] = ib(metadata={"json": "contacts"}, default=[])
     errors: list[WhatsappErrors] = ib(metadata={"json": "errors"}, default=[])
     edit: WhatsappMessageEdit = ib(metadata={"json": "edit"}, default={})
+    type: str = ib(metadata={"json": "type"}, default="")
+    unsupported: UnsupportedErrorMessage = ib(metadata={"json": "unsupported"}, default={})
 
     @classmethod
     def from_dict(cls, data: dict):
@@ -769,6 +786,7 @@ class WhatsappMessages(SerializableAttrs):
         contacts_obj = []
         error_obj = None
         edit_obj = None
+        unsuported_obj = None
         system_obj = None
 
         if data.get("context", {}):
@@ -810,6 +828,9 @@ class WhatsappMessages(SerializableAttrs):
         if data.get("errors"):
             error_obj = [WhatsappErrors.from_dict(error) for error in data.get("errors")]
 
+        if data.get("unsupported"):
+            unsuported_obj = UnsupportedErrorMessage.from_dict(data.get("unsupported", {}))
+
         return cls(
             from_number=data.get("from", ""),
             from_user_id=data.get("from_user_id", ""),
@@ -831,6 +852,7 @@ class WhatsappMessages(SerializableAttrs):
             errors=error_obj,
             system=system_obj,
             edit=edit_obj,
+            unsupported=unsuported_obj,
         )
 
 
