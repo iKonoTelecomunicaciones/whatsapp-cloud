@@ -1041,6 +1041,12 @@ class Portal(DBPortal, BasePortal):
                             "Video notes are not supported in Whatsapp Cloud API. "
                             "Please ask the user to send a regular video instead."
                         )
+                    if messages.unsupported.type == "unknown":
+                        message = (
+                            "The message type sent is not supported in Whatsapp Cloud API. "
+                            "Perhaps it is an edit or a message with unsupported content. "
+                            "Please ask the user to send a supported message type."
+                        )
 
                 await self.main_intent.send_notice(self.mxid, message)
 
