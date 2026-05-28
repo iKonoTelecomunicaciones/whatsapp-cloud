@@ -1015,6 +1015,9 @@ class Portal(DBPortal, BasePortal):
                 message = (
                     f"Whatsapp API returned an error.\n Title: {err.title}, message: {err.message}"
                 )
+
+                # Error code 131060 means the message is currently unavailable. It typically occurs
+                # when a WhatsApp user messages a business for the first time.
                 if err.code == 131060 and "unavailable" in err.message.lower():
                     message = self.convert_text_message(messages.text.body)
                     event_mxid = await self.az.intent.send_message(self.mxid, message)
@@ -1031,6 +1034,7 @@ class Portal(DBPortal, BasePortal):
 
                     continue
 
+                # Error code 131051 is received when cloud API does not support some message type.
                 if err.code == 131051 and messages.unsupported:
                     if messages.unsupported.type == "video_note":
                         message = (
