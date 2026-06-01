@@ -203,8 +203,8 @@ async def upgrade_v5(conn: Connection) -> None:
     # Update puppet_id in portal table to reference puppet.id instead of puppet.phone_id
     await conn.execute(
         """UPDATE portal SET puppet_id = puppet.id
-    FROM puppet
-    WHERE portal.phone_id = puppet.phone_id"""
+        FROM puppet
+        WHERE portal.phone_id = puppet.phone_id"""
     )
 
     # Drop the now-redundant columns

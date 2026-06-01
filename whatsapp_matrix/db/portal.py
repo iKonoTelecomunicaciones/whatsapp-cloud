@@ -46,8 +46,7 @@ class Portal:
     async def update(self) -> None:
         q = """
             UPDATE portal
-            SET phone_id=$1, app_business_id=$2, mxid=$3, relay_user_id=$4, bsuid=$5,
-            puppet_id=$6
+            SET phone_id=$1, app_business_id=$2, mxid=$3, relay_user_id=$4, bsuid=$5, puppet_id=$6
             WHERE phone_id=$1 AND app_business_id=$2
         """
         await self.db.execute(q, *self._values)
