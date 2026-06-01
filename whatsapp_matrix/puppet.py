@@ -4,11 +4,10 @@ from typing import TYPE_CHECKING, AsyncGenerator, AsyncIterable, Awaitable, Dict
 
 from mautrix.appservice import IntentAPI
 from mautrix.bridge import BasePuppet, async_getter_lock
-from mautrix.types import SyncToken, UserID
+from mautrix.types import UserID
 from mautrix.util.simple_template import SimpleTemplate
-from yarl import URL
 
-from whatsapp.types import WhatsappPhone, WsBusinessID
+from whatsapp.types import WhatsappPhone
 
 from .config import Config
 from .db import Puppet as DBPuppet
@@ -32,27 +31,25 @@ class Puppet(DBPuppet, BasePuppet):
     def __init__(
         self,
         phone_id: WhatsappPhone,
-        app_business_id: WsBusinessID,
         display_name: str | None = None,
         is_registered: bool = False,
         custom_mxid: UserID | None = None,
+        username: str | None = None,
         access_token: str | None = None,
-        next_batch: SyncToken | None = None,
-        base_url: URL | None = None,
+        id: int | None = None,
     ) -> None:
         super().__init__(
             phone_id=phone_id,
-            app_business_id=app_business_id,
             display_name=display_name,
-            is_registered=is_registered,
             custom_mxid=custom_mxid,
-            access_token=access_token,
-            next_batch=next_batch,
-            base_url=base_url,
+            username=username,
+            id=id,
         )
 
         self.log = self.log.getChild(self.phone_id)
 
+        self.access_token = access_token
+        self.is_registered = is_registered
         self.default_mxid = self.get_mxid_from_phone_id(self.phone_id)
         self.custom_mxid = self.default_mxid
         self.default_mxid_intent = self.az.intent.user(self.default_mxid)
@@ -159,7 +156,6 @@ class Puppet(DBPuppet, BasePuppet):
         cls,
         phone_id: WhatsappPhone,
         *,
-        app_business_id: WsBusinessID = None,
         create: bool = True,
     ) -> Optional["Puppet"]:
         """
@@ -169,9 +165,6 @@ class Puppet(DBPuppet, BasePuppet):
         ----------
         phone_id : WhatsappPhone
             The phone id of the user.
-
-        app_business_id : WsBusinessID
-            The business_id of the whatsapp business account.
 
         create : bool
             The value to create the puppet if it doesn't exist.
@@ -190,7 +183,7 @@ class Puppet(DBPuppet, BasePuppet):
 
         # Create the puppet if it doesn't exist and if the value of create is True
         if create:
-            puppet = cls(phone_id=phone_id, app_business_id=app_business_id)
+            puppet = cls(phone_id=phone_id)
             await puppet.insert()
             puppet._add_to_cache()
             return puppet
