@@ -6,6 +6,8 @@ WSPhoneID = NewType("WSPhoneID", str)
 WsBusinessID = NewType("WsBusinessID", str)
 # The phone number of the customer
 WhatsappPhone = NewType("WhatsappPhone", str)
+# The BSUID of the user
+WhatsappBSUID = NewType("WhatsappBSUID", str)
 # ID of the message
 WhatsappMessageID = NewType("WhatsappMessageID", str)
 # ID of the media

@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import re
 import sys
 from asyncio import AbstractEventLoop, get_event_loop
 from collections.abc import Mapping
@@ -776,12 +777,30 @@ class ProvisioningAPI:
         self.log.debug("Start PM")
         user, _ = await self._get_user_and_body(request, read_body=False)
 
-        puppet: Puppet = await self._get_puppet(
-            number=request.match_info["number"], app_business_id=user.app_business_id
-        )
-        portal: Portal = await Portal.get_by_app_and_phone_id(
-            phone_id=puppet.phone_id, app_business_id=user.app_business_id
-        )
+        identifier = request.match_info["number"]
+
+        # A BSUID has the form <COUNTRY_CODE>.<ID> (e.g. COL.1234);
+        # a phone number consists only of digits (e.g. 573141234567).
+        is_bsuid = bool(re.match(r'^[A-Za-z]+\.\S+$', identifier))
+
+        if is_bsuid:
+            portal: Portal = await Portal.get_by_app_and_identifier(
+                phone_id=None,
+                bsuid=identifier,
+                app_business_id=user.app_business_id,
+            )
+            puppet: Puppet = await Puppet.get_by_id_and_business_id(
+                puppet_id=portal.puppet_id, app_business_id=user.app_business_id
+            )
+        else:
+            puppet: Puppet = await self._get_puppet(
+                number=identifier, app_business_id=user.app_business_id
+            )
+            portal: Portal = await Portal.get_by_app_and_identifier(
+                phone_id=puppet.phone_id,
+                bsuid=None,
+                app_business_id=user.app_business_id,
+            )
 
         # If the portal is not created, create it
         if portal.mxid:

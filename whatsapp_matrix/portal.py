@@ -37,7 +37,6 @@ from whatsapp.api import WhatsappClient
 from whatsapp.data import (
     TemplateMessage,
     WhatsappContacts,
-    WhatsappErrors,
     WhatsappEvent,
     WhatsappLocation,
     WhatsappMessageEcho,
@@ -50,7 +49,7 @@ from whatsapp.interactive_message import (
     FormMessageEvent,
     FormResponseMessage,
 )
-from whatsapp.types import WhatsappMessageID, WhatsappPhone, WsBusinessID
+from whatsapp.types import WhatsappBSUID, WhatsappMessageID, WhatsappPhone, WsBusinessID
 from whatsapp_matrix.formatter.from_matrix import WhatsappFormatMedia, matrix_to_whatsapp
 from whatsapp_matrix.formatter.from_whatsapp import whatsapp_reply_to_matrix
 
@@ -73,7 +72,7 @@ Invitelist = UserID | list[UserID]
 
 class Portal(DBPortal, BasePortal):
     by_mxid: dict[RoomID, "Portal"] = {}
-    by_app_and_phone_id: dict[(WhatsappPhone, WsBusinessID), "Portal"] = {}
+    by_app_and_identifier: dict[(WhatsappPhone | WhatsappBSUID, WsBusinessID), "Portal"] = {}
 
     message_template: Template
     federate_rooms: bool
@@ -91,10 +90,10 @@ class Portal(DBPortal, BasePortal):
 
     def __init__(
         self,
-        phone_id: str,
         app_business_id: str,
         mxid: RoomID | None = None,
         relay_user_id: UserID | None = None,
+        phone_id: str | None = None,
         bsuid: str | None = None,
         puppet_id: int | None = None,
         id: int | None = None,
@@ -187,19 +186,41 @@ class Portal(DBPortal, BasePortal):
         return None
 
     @classmethod
-    async def get_by_app_and_phone_id(
+    async def get_by_puppet_and_business_id(
         cls,
-        phone_id: WhatsappPhone,
+        puppet_id: int,
+        app_business_id: WsBusinessID,
+    ) -> Portal | None:
+        portal = cast(cls, await super().get_by_puppet_id_and_business_id(puppet_id, app_business_id))
+
+        if portal is None:
+            return None
+
+        await portal.postinit()
+        if portal.puppet_id is None:
+            portal.puppet_id = puppet_id
+            await portal.update()
+
+        return portal
+
+    @classmethod
+    async def get_by_app_and_identifier(
+        cls,
+        phone_id: WhatsappPhone | None,
+        bsuid: WhatsappBSUID | None,
         app_business_id: WsBusinessID,
         create: bool | None = True,
     ) -> Portal | None:
         """
-        Get a portal by its phone_id and save it in the cache
+        Get a portal by its identifier and save it in the cache
 
         Parameters
         ----------
-        phone_id : WhatsappPhone
-            The phone id of the user.
+        phone_id : WhatsappPhone | None
+            The phone ID of the user.
+
+        bsuid : WhatsappBSUID | None
+            The BSUID of the user.
 
         app_business_id : WsBusinessID
             The business id of the user.
@@ -207,43 +228,59 @@ class Portal(DBPortal, BasePortal):
         create: bool
             Variable that indicates if the portal it will be create if not exist.
         """
-        if not cls._create_room_lock.get((phone_id, app_business_id)):
-            cls._create_room_lock[(phone_id, app_business_id)] = Lock()
+        identifier = phone_id if phone_id else bsuid
+        if not cls._create_room_lock.get((identifier, app_business_id)):
+            cls._create_room_lock[(identifier, app_business_id)] = Lock()
 
-        async with cls._create_room_lock[(phone_id, app_business_id)]:
+        async with cls._create_room_lock[(identifier, app_business_id)]:
             try:
-                # Search if the phone_id is in the cache
-                return cls.by_app_and_phone_id[(phone_id, app_business_id)]
+                # Search if the identifier is in the cache
+                portal = cls.by_app_and_identifier[(identifier, app_business_id)]
             except KeyError:
                 pass
-            # Search if the phone_id is in the database
+            # Search if the identifier is in the database
             portal = cast(
                 cls,
-                await super().get_by_phone_id(phone_id=phone_id, app_business_id=app_business_id),
+                await super().get_by_identifier(
+                    phone_id=phone_id, bsuid=bsuid, app_business_id=app_business_id
+                ),
             )
             if portal:
                 await portal.postinit()
+
+                if bsuid and portal.bsuid is None:
+                    portal.bsuid = bsuid
+                    await portal.update()
+
                 return portal
 
-            # If the phone_id is not in the database, it is created if the variable create is True
+            # If the identifier is not in the database, it is created if the variable create is True
             if create:
                 try:
-                    portal = cls(phone_id=phone_id, app_business_id=app_business_id)
+                    if phone_id:
+                        portal = cls(phone_id=phone_id, app_business_id=app_business_id)
+                    else:
+                        portal = cls(bsuid=bsuid, app_business_id=app_business_id)
+
                     await portal.insert()
                 except UniqueViolationError as e:
-                    cls.log.exception(f"Failed to create portal {phone_id}: {e}")
+                    cls.log.exception(f"Failed to create portal {identifier}: {e}")
                     portal = cast(
                         cls,
-                        await super().get_by_phone_id(
-                            phone_id=phone_id, app_business_id=app_business_id
+                        await super().get_by_identifier(
+                            phone_id=phone_id, bsuid=bsuid, app_business_id=app_business_id
                         ),
                     )
 
                 if not portal:
-                    cls.log.error(f"Failed to create portal {phone_id}")
+                    cls.log.error(f"Failed to create portal {identifier}")
                     return None
 
                 await portal.postinit()
+                if bsuid and portal.bsuid is None:
+                    portal.bsuid = bsuid
+                    await portal.update()
+
                 return portal
 
             return None
@@ -383,8 +420,6 @@ class Portal(DBPortal, BasePortal):
         if not self.mxid:
             raise Exception("Failed to create room: no mxid returned")
 
-        # Add the mxid to the database
-        await self.update()
         self.log.debug(f"Matrix room created: {self.mxid}")
         self.by_mxid[self.mxid] = self
 
@@ -397,6 +432,10 @@ class Portal(DBPortal, BasePortal):
         await self.main_intent.invite_user(
             self.mxid, source.mxid, extra_content=self._get_invite_content(puppet)
         )
+
+        self.puppet_id = puppet.id
+        # Add the mxid and the puppet_id to the database
+        await self.update()
 
         return self.mxid
 
@@ -456,7 +495,8 @@ class Portal(DBPortal, BasePortal):
         await DBMessage.delete_all(self.id)
         self.log.warning(f"Deleting portal {self.mxid}")
         self.by_mxid.pop(self.mxid, None)
-        self.by_app_and_phone_id.pop(self.phone_id, None)
+        identifier = self.phone_id if self.phone_id else self.bsuid
+        self.by_app_and_identifier.pop((identifier, self.app_business_id), None)
         self.mxid = None
         await self.update()
 
@@ -1581,8 +1621,9 @@ class Portal(DBPortal, BasePortal):
         if self.mxid:
             self.by_mxid[self.mxid] = self
 
-        if self.phone_id and self.app_business_id:
-            self.by_app_and_phone_id[(self.phone_id, self.app_business_id)] = self
+        identifier = self.phone_id if self.phone_id else self.bsuid
+        if identifier and self.app_business_id:
+            self.by_app_and_identifier[(identifier, self.app_business_id)] = self
 
         if self.is_direct:
             puppet = await self.get_dm_puppet()
@@ -1802,12 +1843,10 @@ class Portal(DBPortal, BasePortal):
             return
 
         if template_data["template_status"] != "APPROVED":
-            self.log.error(
-                f"""
+            self.log.error(f"""
                     Can't send the message of the template {template_data['template_name']},
                     his template status is {template_data['template_status']}
-                """
-            )
+                """)
             self.az.intent.send_notice(
                 room_id=self.mxid,
                 text=f"""

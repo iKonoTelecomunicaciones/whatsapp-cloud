@@ -108,8 +108,9 @@ class Puppet(DBPuppet, BasePuppet):
         info : Dict
             The name of the user and his phone id.
         """
-        display_name = info.profile.name if info.profile else f"user_{info.wa_id}"
-        variables = {"displayname": display_name, "userid": info.wa_id}
+        identifier = info.wa_id if info.wa_id else info.user_id
+        display_name = info.profile.name if info.profile else f"user_{identifier}"
+        variables = {"displayname": display_name, "userid": identifier}
         puppet_displayname: str = cls.config["bridge.whatsapp_cloud.displayname_template"]
 
         return puppet_displayname.format(**variables)
