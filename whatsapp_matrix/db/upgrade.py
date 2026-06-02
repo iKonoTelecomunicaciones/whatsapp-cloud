@@ -145,6 +145,11 @@ async def upgrade_v3(conn: Connection) -> None:
 
     # Add username column with unique constraint
     await conn.execute("""ALTER TABLE puppet ADD COLUMN username TEXT UNIQUE""")
+    # phone_id is necessary to be unique to avoid having multiple puppets with the same phone_id
+    # and also to be nullable
+    await conn.execute("""ALTER TABLE puppet ALTER COLUMN phone_id DROP NOT NULL""")
+
+    await conn.execute("""ALTER TABLE puppet ADD CONSTRAINT unique_phone_id UNIQUE (phone_id)""")
 
 
 @upgrade_table.register(description="Refactor portal table: add id, bsuid and puppet_id columns")
@@ -165,6 +170,9 @@ async def upgrade_v4(conn: Connection) -> None:
         """ALTER TABLE portal ADD CONSTRAINT FK_portal_puppet_id
         FOREIGN KEY (puppet_id) REFERENCES puppet (id) ON DELETE RESTRICT"""
     )
+
+    # Change the phone_id column to be nullable
+    await conn.execute("""ALTER TABLE portal ALTER COLUMN phone_id DROP NOT NULL""")
 
 
 @upgrade_table.register(
