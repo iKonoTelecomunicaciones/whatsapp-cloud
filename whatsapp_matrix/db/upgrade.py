@@ -206,6 +206,3 @@ async def upgrade_v5(conn: Connection) -> None:
         FROM puppet
         WHERE portal.phone_id = puppet.phone_id"""
     )
-
-    # Drop the now-redundant columns
-    await conn.execute("""ALTER TABLE portal DROP COLUMN phone_id""")
