@@ -174,6 +174,7 @@ async def upgrade_v4(conn: Connection) -> None:
     # Change the phone_id column to be nullable
     await conn.execute("""ALTER TABLE portal ALTER COLUMN phone_id DROP NOT NULL""")
 
+
 @upgrade_table.register(
     description="Refactor message table: replace room_id/phone_id/app_business_id with portal_id FK"
 )
