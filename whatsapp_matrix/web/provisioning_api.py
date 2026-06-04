@@ -755,9 +755,7 @@ class ProvisioningAPI:
         except Exception as e:
             raise web.HTTPBadRequest(text=json.dumps({"error": str(e)}), headers=self._headers)
 
-        puppet: Puppet = await Puppet.get_by_phone_id(
-            phone_id=number, app_business_id=app_business_id
-        )
+        puppet: Puppet = await Puppet.get_by_phone_id(phone_id=number)
 
         return puppet
 

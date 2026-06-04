@@ -95,8 +95,11 @@ class Portal(DBPortal, BasePortal):
         app_business_id: str,
         mxid: RoomID | None = None,
         relay_user_id: UserID | None = None,
+        bsuid: str | None = None,
+        puppet_id: int | None = None,
+        id: int | None = None,
     ) -> None:
-        super().__init__(phone_id, app_business_id, mxid, relay_user_id)
+        super().__init__(phone_id, app_business_id, mxid, relay_user_id, bsuid, puppet_id, id)
         BasePortal.__init__(self)
         self._send_lock = Lock()
         self.log = self.log.getChild(self.phone_id or self.mxid)
@@ -386,9 +389,7 @@ class Portal(DBPortal, BasePortal):
         self.by_mxid[self.mxid] = self
 
         # Obtain the puppet of the user and update the information
-        puppet: Puppet = await Puppet.get_by_phone_id(
-            self.phone_id, app_business_id=self.app_business_id
-        )
+        puppet: Puppet = await Puppet.get_by_phone_id(self.phone_id)
 
         await puppet.update_info(sender)
 
@@ -452,7 +453,7 @@ class Portal(DBPortal, BasePortal):
         """
         Delete a portal
         """
-        await DBMessage.delete_all(self.mxid)
+        await DBMessage.delete_all(self.id)
         self.log.warning(f"Deleting portal {self.mxid}")
         self.by_mxid.pop(self.mxid, None)
         self.by_app_and_phone_id.pop(self.phone_id, None)
@@ -465,7 +466,7 @@ class Portal(DBPortal, BasePortal):
         """
         if not self.is_direct:
             return None
-        return await Puppet.get_by_phone_id(self.phone_id, app_business_id=self.app_business_id)
+        return await Puppet.get_by_phone_id(self.phone_id)
 
     async def save(self) -> None:
         """
@@ -759,11 +760,9 @@ class Portal(DBPortal, BasePortal):
         # Save the message in the database
         msg = DBMessage(
             event_mxid=has_been_sent,
-            room_id=self.mxid,
-            phone_id=self.phone_id,
             sender=puppet.mxid,
             whatsapp_message_id=whatsapp_message_id,
-            app_business_id=message.entry.id,
+            portal_id=self.id,
             created_at=datetime.now(),
         )
 
@@ -962,11 +961,9 @@ class Portal(DBPortal, BasePortal):
             # Save the message to database
             await DBMessage(
                 event_mxid=event_mxid,
-                room_id=self.mxid,
-                phone_id=echo_message.to,  # The recipient phone
                 sender=user.mxid,
                 whatsapp_message_id=whatsapp_message_id,
-                app_business_id=self.app_business_id,
+                portal_id=self.id,
                 created_at=datetime.now(),
             ).insert()
 
@@ -1024,11 +1021,9 @@ class Portal(DBPortal, BasePortal):
                     # Save the message to database
                     await DBMessage(
                         event_mxid=event_mxid,
-                        room_id=self.mxid,
-                        phone_id=err.to,  # The recipient phone
                         sender=source.mxid,
                         whatsapp_message_id=message_id,
-                        app_business_id=self.app_business_id,
+                        portal_id=self.id,
                         created_at=datetime.now(),
                     ).insert()
 
@@ -1171,9 +1166,7 @@ class Portal(DBPortal, BasePortal):
             return
 
         if message.get_reply_to():
-            reply_message: DBMessage = await DBMessage.get_by_mxid(
-                message.get_reply_to(), self.mxid
-            )
+            reply_message: DBMessage = await DBMessage.get_by_mxid(message.get_reply_to())
             if reply_message:
                 aditional_data["reply_to"] = {"wb_message_id": reply_message.whatsapp_message_id}
 
@@ -1291,11 +1284,9 @@ class Portal(DBPortal, BasePortal):
         # Save the message in the database
         await DBMessage(
             event_mxid=event_id,
-            room_id=self.mxid,
-            phone_id=self.phone_id,
             sender=sender.mxid,
             whatsapp_message_id=WhatsappMessageID(message_id),
-            app_business_id=self.app_business_id,
+            portal_id=self.id,
             created_at=datetime.now(),
         ).insert()
 
@@ -1389,11 +1380,9 @@ class Portal(DBPortal, BasePortal):
             # Save the message to database
             await DBMessage(
                 event_mxid=event_mxid,
-                room_id=self.mxid,
-                phone_id=self.phone_id,
                 sender=sender_id,
                 whatsapp_message_id=message_to_edit.id,
-                app_business_id=self.app_business_id,
+                portal_id=self.id,
                 created_at=datetime.now(),
             ).insert()
 
@@ -1507,7 +1496,7 @@ class Portal(DBPortal, BasePortal):
             self.log.error("No puppet, ignoring read")
             return
 
-        message: DBMessage = await DBMessage.get_last_message_puppet(self.mxid, puppet.custom_mxid)
+        message: DBMessage = await DBMessage.get_last_message_puppet(self.id, puppet.custom_mxid)
 
         if not message:
             self.log.error("No message, ignoring read")
@@ -1579,11 +1568,9 @@ class Portal(DBPortal, BasePortal):
         # Save the template in the database
         await DBMessage(
             event_mxid=event_id,
-            room_id=self.mxid,
-            phone_id=self.phone_id,
             sender=sender.mxid,
             whatsapp_message_id=WhatsappMessageID(response.get("messages", [])[0].get("id", "")),
-            app_business_id=self.app_business_id,
+            portal_id=self.id,
             created_at=datetime.now(),
         ).insert()
 
@@ -1711,11 +1698,9 @@ class Portal(DBPortal, BasePortal):
         # Save the message in the database
         await DBMessage(
             event_mxid=event_id,
-            room_id=self.mxid,
-            phone_id=self.phone_id,
             sender=sender.mxid,
             whatsapp_message_id=WhatsappMessageID(response.get("messages", [])[0].get("id", "")),
-            app_business_id=self.app_business_id,
+            portal_id=self.id,
             created_at=datetime.now(),
         ).insert()
 

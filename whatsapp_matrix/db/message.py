@@ -1,14 +1,14 @@
 from __future__ import annotations
 
 from datetime import datetime
-from typing import TYPE_CHECKING, ClassVar, Iterable, Optional
+from typing import TYPE_CHECKING, ClassVar, Optional
 
 import asyncpg
 from attr import dataclass
-from mautrix.types import EventID, RoomID, UserID
+from mautrix.types import EventID, UserID
 from mautrix.util.async_db import Database
 
-from whatsapp.types import WhatsappMessageID, WhatsappPhone, WsBusinessID
+from whatsapp.types import WhatsappMessageID
 
 fake_db = Database.create("") if TYPE_CHECKING else None
 
@@ -18,33 +18,27 @@ class Message:
     db: ClassVar[Database] = fake_db
 
     event_mxid: EventID
-    room_id: RoomID
-    phone_id: WhatsappPhone
     sender: UserID
     whatsapp_message_id: str
-    app_business_id: str
+    portal_id: int
     created_at: float
 
     @property
     def _values(self):
         return (
             self.event_mxid,
-            self.room_id,
-            self.phone_id,
             self.sender,
             self.whatsapp_message_id,
-            self.app_business_id,
+            self.portal_id,
             self.created_at,
         )
 
-    _columns = (
-        "event_mxid, room_id, phone_id, sender, whatsapp_message_id, app_business_id, created_at"
-    )
+    _columns = "event_mxid, sender, whatsapp_message_id, portal_id, created_at"
 
     async def insert(self) -> None:
         q = """
-            INSERT INTO message (event_mxid, room_id, phone_id, sender,
-            whatsapp_message_id, app_business_id, created_at) VALUES ($1, $2, $3, $4, $5, $6, $7)
+            INSERT INTO message (event_mxid, sender, whatsapp_message_id, portal_id, created_at)
+            VALUES ($1, $2, $3, $4, $5)
         """
         await self.db.execute(q, *self._values)
 
@@ -53,26 +47,15 @@ class Message:
         return cls(**row)
 
     @classmethod
-    async def delete_all(cls, room_id: RoomID) -> None:
-        await cls.db.execute("DELETE FROM message WHERE room_id=$1", room_id)
-
-    @classmethod
-    async def get_all_by_app_business_id(cls, business_id: WsBusinessID) -> Iterable["Message"]:
-        q = """
-            SELECT event_mxid, room_id, phone_id, sender, whatsapp_message_id, app_business_id, created_at
-            FROM message WHERE whatsapp_message_id=$1
-        """
-        rows = await cls.db.fetch(q, business_id)
-        if not rows:
-            return None
-        return [cls._from_row(row) for row in rows]
+    async def delete_all(cls, portal_id: int) -> None:
+        await cls.db.execute("DELETE FROM message WHERE portal_id=$1", portal_id)
 
     @classmethod
     async def get_by_whatsapp_message_id(
         cls, whatsapp_message_id: WhatsappMessageID
     ) -> Optional["Message"]:
         q = """
-            SELECT event_mxid, room_id, phone_id, sender, whatsapp_message_id, app_business_id, created_at
+            SELECT event_mxid, sender, whatsapp_message_id, portal_id, created_at
             FROM message WHERE whatsapp_message_id=$1
         """
         row = await cls.db.fetchrow(q, whatsapp_message_id)
@@ -81,34 +64,34 @@ class Message:
         return cls._from_row(row)
 
     @classmethod
-    async def get_by_mxid(cls, event_mxid: EventID, room_id: RoomID) -> Optional["Message"]:
+    async def get_by_mxid(cls, event_mxid: EventID) -> Optional["Message"]:
         q = """
-            SELECT event_mxid, room_id, phone_id, sender, whatsapp_message_id, app_business_id, created_at
-            FROM message WHERE event_mxid=$1 AND room_id=$2
+            SELECT event_mxid, sender, whatsapp_message_id, portal_id, created_at
+            FROM message WHERE event_mxid=$1
         """
-        row = await cls.db.fetchrow(q, event_mxid, room_id)
+        row = await cls.db.fetchrow(q, event_mxid)
         if not row:
             return None
         return cls._from_row(row)
 
     @classmethod
-    async def get_last_message(cls, room_id: RoomID) -> "Message":
+    async def get_last_message(cls, portal_id: int) -> "Message":
         q = """
-            SELECT event_mxid, room_id, phone_id, sender, whatsapp_message_id, app_business_id, created_at
-            FROM message WHERE room_id=$1 ORDER BY created_at DESC LIMIT 1
+            SELECT event_mxid, sender, whatsapp_message_id, portal_id, created_at
+            FROM message WHERE portal_id=$1 ORDER BY created_at DESC LIMIT 1
         """
-        row = await cls.db.fetchrow(q, room_id)
+        row = await cls.db.fetchrow(q, portal_id)
         if not row:
             return None
         return cls._from_row(row)
 
     @classmethod
-    async def get_last_message_puppet(cls, room_id: RoomID, sender: UserID) -> "Message":
+    async def get_last_message_puppet(cls, portal_id: int, sender: UserID) -> "Message":
         q = """
-            SELECT event_mxid, room_id, phone_id, sender, whatsapp_message_id, app_business_id, created_at
-            FROM message WHERE room_id=$1 AND sender=$2 ORDER BY created_at DESC LIMIT 1
+            SELECT event_mxid, sender, whatsapp_message_id, portal_id, created_at
+            FROM message WHERE portal_id=$1 AND sender=$2 ORDER BY created_at DESC LIMIT 1
         """
-        row = await cls.db.fetchrow(q, room_id, sender)
+        row = await cls.db.fetchrow(q, portal_id, sender)
         if not row:
             return None
         return cls._from_row(row)
