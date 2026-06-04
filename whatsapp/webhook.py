@@ -105,14 +105,26 @@ class WhatsappHandler:
 
         # If the event is an error, we send to the user the message error
         elif wb_value.get("statuses") and wb_value.get("statuses")[0].get("status") == "failed":
-            wb_statuses = WhatsappStatusesEvent.from_dict(wb_value.get("statuses")[0])
+            wb_event = WhatsappEvent.from_dict(data)
+            wb_statuses = wb_event.entry.changes.value.statuses
             # Get the customer phone
             customer_phone = wb_statuses.recipient_id
+            customer_bsuid = wb_event.entry.changes.value.contacts.user_id
             # Get the error information
             message_error = wb_statuses.errors.error_data.details
 
-            portal: Portal = await Portal.get_by_app_and_phone_id(
-                phone_id=customer_phone, app_business_id=wb_business_id, create=False
+            if customer_phone is None and customer_bsuid is None:
+                self.log.error(
+                    f"Failed to handle the error event because the recipient identifier is missing. "
+                    f"Business ID: {wb_business_id}, Event: {data}"
+                )
+                return web.Response(status=200)
+
+            portal: Portal = await Portal.get_by_app_and_identifier(
+                phone_id=customer_phone,
+                bsuid=customer_bsuid,
+                app_business_id=wb_business_id,
+                create=False,
             )
             if portal:
                 await portal.handle_whatsapp_error(message_error=message_error)
@@ -130,8 +142,16 @@ class WhatsappHandler:
         sender = data.entry.changes.value.contacts
         business_id = data.entry.id
         user: User = await User.get_by_business_id(business_id)
-        portal: Portal = await Portal.get_by_app_and_phone_id(
-            phone_id=sender.wa_id, app_business_id=business_id
+
+        if sender.wa_id is None and sender.user_id is None:
+            self.log.error(
+                f"Failed to handle the error event because the recipient identifier is missing. "
+                f"Business ID: {business_id}, Event: {data}"
+            )
+            return web.Response(status=200)
+
+        portal: Portal = await Portal.get_by_app_and_identifier(
+            phone_id=sender.wa_id, bsuid=sender.user_id, app_business_id=business_id
         )
 
         with RoomSyncMessages(portal.mxid) as message_lock:
@@ -167,11 +187,13 @@ class WhatsappHandler:
         """
         self.log.debug(f"Received Whatsapp Cloud read event: {data}")
         # Get the phone id and the business id
-        wa_id = data.entry.changes.value.statuses.recipient_id
+        phone_id = data.entry.changes.value.contacts.wa_id
+        bsuid = data.entry.changes.value.contacts.user_id
+
         business_id = data.entry.id
         # Get the portal
-        portal: Portal = await Portal.get_by_app_and_phone_id(
-            phone_id=wa_id, app_business_id=business_id, create=False
+        portal: Portal = await Portal.get_by_app_and_identifier(
+            phone_id=phone_id, bsuid=bsuid, app_business_id=business_id, create=False
         )
         # Handle the read event
         if portal:
@@ -217,10 +239,11 @@ class WhatsappHandler:
         for echo_message in wb_value.message_echoes:
             # The 'to' field contains the recipient's phone (the customer)
             customer_phone = echo_message.to
+            customer_bsuid = wb_value.contacts.user_id
 
             # Get the portal for this conversation
-            portal: Portal = await Portal.get_by_app_and_phone_id(
-                phone_id=customer_phone, app_business_id=business_id
+            portal: Portal = await Portal.get_by_app_and_identifier(
+                phone_id=customer_phone, bsuid=customer_bsuid, app_business_id=business_id
             )
 
             with RoomSyncMessages(portal.mxid) as message_lock:
