@@ -260,7 +260,7 @@ class Puppet(DBPuppet, BasePuppet):
 
         # A BSUID has the form <COUNTRY_CODE>.<ID> (e.g. COL.1234);
         # a phone number consists only of digits (e.g. 573141234567).
-        is_bsuid = bool(re.match(r'^[A-Za-z]+\.\S+$', identifier))
+        is_bsuid = bool(re.match(r"^[A-Za-z]+\.\S+$", identifier))
         if is_bsuid:
             return await cls.get_by_identifier(bsuid=identifier, create=create)
 
