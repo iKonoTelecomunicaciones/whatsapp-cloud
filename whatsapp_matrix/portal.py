@@ -37,7 +37,6 @@ from whatsapp.api import WhatsappClient
 from whatsapp.data import (
     TemplateMessage,
     WhatsappContacts,
-    WhatsappErrors,
     WhatsappEvent,
     WhatsappLocation,
     WhatsappMessageEcho,
@@ -50,7 +49,7 @@ from whatsapp.interactive_message import (
     FormMessageEvent,
     FormResponseMessage,
 )
-from whatsapp.types import WhatsappMessageID, WhatsappPhone, WsBusinessID
+from whatsapp.types import WhatsappBSUID, WhatsappMessageID, WhatsappPhone, WsBusinessID
 from whatsapp_matrix.formatter.from_matrix import WhatsappFormatMedia, matrix_to_whatsapp
 from whatsapp_matrix.formatter.from_whatsapp import whatsapp_reply_to_matrix
 
@@ -73,7 +72,7 @@ Invitelist = UserID | list[UserID]
 
 class Portal(DBPortal, BasePortal):
     by_mxid: dict[RoomID, "Portal"] = {}
-    by_app_and_phone_id: dict[(WhatsappPhone, WsBusinessID), "Portal"] = {}
+    by_app_and_identifier: dict[(WhatsappPhone | WhatsappBSUID, WsBusinessID), "Portal"] = {}
 
     message_template: Template
     federate_rooms: bool
@@ -91,15 +90,19 @@ class Portal(DBPortal, BasePortal):
 
     def __init__(
         self,
-        phone_id: str,
         app_business_id: str,
         mxid: RoomID | None = None,
         relay_user_id: UserID | None = None,
+        phone_id: str | None = None,
+        bsuid: str | None = None,
+        puppet_id: int | None = None,
+        id: int | None = None,
     ) -> None:
-        super().__init__(phone_id, app_business_id, mxid, relay_user_id)
+        super().__init__(app_business_id, mxid, relay_user_id, phone_id, bsuid, puppet_id, id)
         BasePortal.__init__(self)
+        identifier = self.phone_id if self.phone_id else self.bsuid
         self._send_lock = Lock()
-        self.log = self.log.getChild(self.phone_id or self.mxid)
+        self.log = self.log.getChild(identifier or self.mxid)
         self._main_intent: IntentAPI = None
         self._relay_user = None
         self.error_codes = self.config["whatsapp.error_codes"]
@@ -184,19 +187,44 @@ class Portal(DBPortal, BasePortal):
         return None
 
     @classmethod
-    async def get_by_app_and_phone_id(
+    async def get_by_puppet_and_business_id(
         cls,
-        phone_id: WhatsappPhone,
+        puppet_id: int,
+        app_business_id: WsBusinessID,
+    ) -> Portal | None:
+        portal = cast(
+            cls, await super().get_by_puppet_id_and_business_id(puppet_id, app_business_id)
+        )
+
+        if portal is None:
+            return None
+
+        await portal.postinit()
+        if portal.puppet_id is None:
+            portal.puppet_id = puppet_id
+            await portal.update()
+
+        return portal
+
+    # TODO: Refactor this method to avoid the code duplication with get_by_phone_id and get_by_identifier
+    @classmethod
+    async def get_by_app_and_identifier(
+        cls,
+        phone_id: WhatsappPhone | None,
+        bsuid: WhatsappBSUID | None,
         app_business_id: WsBusinessID,
         create: bool | None = True,
     ) -> Portal | None:
         """
-        Get a portal by its phone_id and save it in the cache
+        Get a portal by its identifier and save it in the cache
 
         Parameters
         ----------
-        phone_id : WhatsappPhone
-            The phone id of the user.
+        phone_id : WhatsappPhone | None
+            The phone ID of the user.
+
+        bsuid : WhatsappBSUID | None
+            The BSUID of the user.
 
         app_business_id : WsBusinessID
             The business id of the user.
@@ -204,43 +232,78 @@ class Portal(DBPortal, BasePortal):
         create: bool
             Variable that indicates if the portal it will be create if not exist.
         """
-        if not cls._create_room_lock.get((phone_id, app_business_id)):
-            cls._create_room_lock[(phone_id, app_business_id)] = Lock()
+        has_bsuid_lock = (bsuid, app_business_id) in cls._create_room_lock
+        has_phone_id_lock = (phone_id, app_business_id) in cls._create_room_lock
+        identifier = phone_id if has_phone_id_lock else bsuid
 
-        async with cls._create_room_lock[(phone_id, app_business_id)]:
-            try:
-                # Search if the phone_id is in the cache
-                return cls.by_app_and_phone_id[(phone_id, app_business_id)]
-            except KeyError:
-                pass
-            # Search if the phone_id is in the database
+        if phone_id and not has_bsuid_lock and not has_phone_id_lock:
+            identifier = phone_id
+            cls._create_room_lock[(phone_id, app_business_id)] = Lock()
+        elif bsuid and not has_bsuid_lock and not has_phone_id_lock:
+            identifier = bsuid
+            cls._create_room_lock[(bsuid, app_business_id)] = Lock()
+
+        async with cls._create_room_lock[(identifier, app_business_id)]:
+            if cls.by_app_and_identifier.get((identifier, app_business_id)):
+                # Search if the identifier is in the cache
+                portal = cls.by_app_and_identifier[(identifier, app_business_id)]
+                if bsuid and portal.bsuid is None:
+                    portal.bsuid = bsuid
+                    await portal.update()
+                if phone_id and portal.phone_id is None:
+                    portal.phone_id = phone_id
+                    await portal.update()
+
+                return portal
+            # Search if the identifier is in the database
             portal = cast(
                 cls,
-                await super().get_by_phone_id(phone_id=phone_id, app_business_id=app_business_id),
+                await super().get_by_identifier(
+                    phone_id=phone_id, bsuid=bsuid, app_business_id=app_business_id
+                ),
             )
             if portal:
                 await portal.postinit()
+
+                if bsuid and portal.bsuid is None:
+                    portal.bsuid = bsuid
+                    await portal.update()
+                if phone_id and not portal.phone_id:
+                    portal.phone_id = phone_id
+                    await portal.update()
+
                 return portal
 
-            # If the phone_id is not in the database, it is created if the variable create is True
+            # If the identifier is not in the database, it is created if the variable create is True
             if create:
                 try:
-                    portal = cls(phone_id=phone_id, app_business_id=app_business_id)
+                    if phone_id:
+                        portal = cls(phone_id=phone_id, app_business_id=app_business_id)
+                    else:
+                        portal = cls(bsuid=bsuid, app_business_id=app_business_id)
+
                     await portal.insert()
                 except UniqueViolationError as e:
-                    cls.log.exception(f"Failed to create portal {phone_id}: {e}")
+                    cls.log.exception(f"Failed to create portal {identifier}: {e}")
                     portal = cast(
                         cls,
-                        await super().get_by_phone_id(
-                            phone_id=phone_id, app_business_id=app_business_id
+                        await super().get_by_identifier(
+                            phone_id=phone_id, bsuid=bsuid, app_business_id=app_business_id
                         ),
                     )
 
                 if not portal:
-                    cls.log.error(f"Failed to create portal {phone_id}")
+                    cls.log.error(f"Failed to create portal {identifier}")
                     return None
 
                 await portal.postinit()
+                if bsuid and portal.bsuid is None:
+                    portal.bsuid = bsuid
+                    await portal.update()
+                if phone_id and portal.phone_id is None:
+                    portal.phone_id = phone_id
+                    await portal.update()
+
                 return portal
 
             return None
@@ -295,11 +358,21 @@ class Portal(DBPortal, BasePortal):
             Show and error if the portal does not create.
         """
         # Validate if the matrix room exists, if not, it is created
-        async with self._create_room_lock[(self.phone_id, self.app_business_id)]:
+        identifier = self.phone_id if self.phone_id else self.bsuid
+        async with self._create_room_lock[(identifier, self.app_business_id)]:
             if self.mxid:
+
+                if not self.phone_id and sender.wa_id:
+                    self.phone_id = sender.wa_id
+                    await self.update()
+                if not self.bsuid and sender.user_id:
+                    self.bsuid = sender.user_id
+                    await self.update()
+
                 return self.mxid
             try:
                 self.phone_id = sender.wa_id
+                self.bsuid = sender.user_id
                 return await self._create_matrix_room(
                     source=source, sender=sender, invitees=invitees
                 )
@@ -357,7 +430,7 @@ class Portal(DBPortal, BasePortal):
         creation_content = {}
         displayname = sender.profile.name if sender.profile else f"user_{sender.wa_id}"
         room_name_variables = {
-            "userid": sender.wa_id,
+            "userid": sender.wa_id or sender.user_id,
             "displayname": displayname,
         }
         room_name_template: str = self.config["bridge.whatsapp_cloud.room_name_template"]
@@ -380,22 +453,25 @@ class Portal(DBPortal, BasePortal):
         if not self.mxid:
             raise Exception("Failed to create room: no mxid returned")
 
-        # Add the mxid to the database
-        await self.update()
         self.log.debug(f"Matrix room created: {self.mxid}")
         self.by_mxid[self.mxid] = self
 
         # Obtain the puppet of the user and update the information
-        puppet: Puppet = await Puppet.get_by_phone_id(
-            self.phone_id, app_business_id=self.app_business_id
-        )
+        puppet: Puppet = await Puppet.get_by_identifier(phone_id=self.phone_id, bsuid=self.bsuid)
 
         await puppet.update_info(sender)
 
         # Invite the user to the room
-        await self.main_intent.invite_user(
-            self.mxid, source.mxid, extra_content=self._get_invite_content(puppet)
-        )
+        try:
+            await self.main_intent.invite_user(
+                self.mxid, source.mxid, extra_content=self._get_invite_content(puppet)
+            )
+        except Exception:
+            self.log.exception("Failed to invite user to room")
+
+        self.puppet_id = puppet.id
+        # Add the mxid and the puppet_id to the database
+        await self.update()
 
         return self.mxid
 
@@ -452,10 +528,11 @@ class Portal(DBPortal, BasePortal):
         """
         Delete a portal
         """
-        await DBMessage.delete_all(self.mxid)
+        await DBMessage.delete_all(self.id)
         self.log.warning(f"Deleting portal {self.mxid}")
         self.by_mxid.pop(self.mxid, None)
-        self.by_app_and_phone_id.pop(self.phone_id, None)
+        identifier = self.phone_id if self.phone_id else self.bsuid
+        self.by_app_and_identifier.pop((identifier, self.app_business_id), None)
         self.mxid = None
         await self.update()
 
@@ -463,9 +540,23 @@ class Portal(DBPortal, BasePortal):
         """
         Get the puppet of the user
         """
+        if self.puppet_id:
+            puppet = await Puppet.get_by_id(self.puppet_id)
+
+            if puppet:
+                if not puppet.phone_id and self.phone_id:
+                    puppet.phone_id = self.phone_id
+                    await puppet.update()
+                if not puppet.bsuid and self.bsuid:
+                    puppet.bsuid = self.bsuid
+                    await puppet.update()
+
+            return puppet
+
         if not self.is_direct:
             return None
-        return await Puppet.get_by_phone_id(self.phone_id, app_business_id=self.app_business_id)
+        puppet = await Puppet.get_by_identifier(phone_id=self.phone_id, bsuid=self.bsuid)
+        return puppet
 
     async def save(self) -> None:
         """
@@ -759,11 +850,9 @@ class Portal(DBPortal, BasePortal):
         # Save the message in the database
         msg = DBMessage(
             event_mxid=has_been_sent,
-            room_id=self.mxid,
-            phone_id=self.phone_id,
             sender=puppet.mxid,
             whatsapp_message_id=whatsapp_message_id,
-            app_business_id=message.entry.id,
+            portal_id=self.id,
             created_at=datetime.now(),
         )
 
@@ -962,11 +1051,9 @@ class Portal(DBPortal, BasePortal):
             # Save the message to database
             await DBMessage(
                 event_mxid=event_mxid,
-                room_id=self.mxid,
-                phone_id=echo_message.to,  # The recipient phone
                 sender=user.mxid,
                 whatsapp_message_id=whatsapp_message_id,
-                app_business_id=self.app_business_id,
+                portal_id=self.id,
                 created_at=datetime.now(),
             ).insert()
 
@@ -1024,11 +1111,9 @@ class Portal(DBPortal, BasePortal):
                     # Save the message to database
                     await DBMessage(
                         event_mxid=event_mxid,
-                        room_id=self.mxid,
-                        phone_id=err.to,  # The recipient phone
                         sender=source.mxid,
                         whatsapp_message_id=message_id,
-                        app_business_id=self.app_business_id,
+                        portal_id=self.id,
                         created_at=datetime.now(),
                     ).insert()
 
@@ -1171,9 +1256,7 @@ class Portal(DBPortal, BasePortal):
             return
 
         if message.get_reply_to():
-            reply_message: DBMessage = await DBMessage.get_by_mxid(
-                message.get_reply_to(), self.mxid
-            )
+            reply_message: DBMessage = await DBMessage.get_by_mxid(message.get_reply_to())
             if reply_message:
                 aditional_data["reply_to"] = {"wb_message_id": reply_message.whatsapp_message_id}
 
@@ -1291,11 +1374,9 @@ class Portal(DBPortal, BasePortal):
         # Save the message in the database
         await DBMessage(
             event_mxid=event_id,
-            room_id=self.mxid,
-            phone_id=self.phone_id,
             sender=sender.mxid,
             whatsapp_message_id=WhatsappMessageID(message_id),
-            app_business_id=self.app_business_id,
+            portal_id=self.id,
             created_at=datetime.now(),
         ).insert()
 
@@ -1389,11 +1470,9 @@ class Portal(DBPortal, BasePortal):
             # Save the message to database
             await DBMessage(
                 event_mxid=event_mxid,
-                room_id=self.mxid,
-                phone_id=self.phone_id,
                 sender=sender_id,
                 whatsapp_message_id=message_to_edit.id,
-                app_business_id=self.app_business_id,
+                portal_id=self.id,
                 created_at=datetime.now(),
             ).insert()
 
@@ -1501,13 +1580,15 @@ class Portal(DBPortal, BasePortal):
         AttributeError:
             Show and error if the message has an error.
         """
-        puppet: Puppet = await Puppet.get_by_phone_id(self.phone_id, create=False)
+        puppet: Puppet = await Puppet.get_by_identifier(
+            phone_id=self.phone_id, bsuid=self.bsuid, create=False
+        )
 
         if not puppet:
             self.log.error("No puppet, ignoring read")
             return
 
-        message: DBMessage = await DBMessage.get_last_message_puppet(self.mxid, puppet.custom_mxid)
+        message: DBMessage = await DBMessage.get_last_message_puppet(self.id, puppet.custom_mxid)
 
         if not message:
             self.log.error("No message, ignoring read")
@@ -1579,11 +1660,9 @@ class Portal(DBPortal, BasePortal):
         # Save the template in the database
         await DBMessage(
             event_mxid=event_id,
-            room_id=self.mxid,
-            phone_id=self.phone_id,
             sender=sender.mxid,
             whatsapp_message_id=WhatsappMessageID(response.get("messages", [])[0].get("id", "")),
-            app_business_id=self.app_business_id,
+            portal_id=self.id,
             created_at=datetime.now(),
         ).insert()
 
@@ -1594,12 +1673,28 @@ class Portal(DBPortal, BasePortal):
         if self.mxid:
             self.by_mxid[self.mxid] = self
 
-        if self.phone_id and self.app_business_id:
-            self.by_app_and_phone_id[(self.phone_id, self.app_business_id)] = self
+        identifier = self.phone_id if self.phone_id else self.bsuid
+        if identifier and self.app_business_id:
+            self.by_app_and_identifier[(identifier, self.app_business_id)] = self
 
         if self.is_direct:
             puppet = await self.get_dm_puppet()
+
+            if not puppet:
+                return
+
+            if self.phone_id and not puppet.phone_id:
+                puppet.phone_id = self.phone_id
+                await puppet.update()
+            elif self.bsuid and not puppet.bsuid:
+                puppet.bsuid = self.bsuid
+                await puppet.update()
+
             self._main_intent = puppet.default_mxid_intent
+            if not self.puppet_id:
+                self.puppet_id = puppet.id
+                await self.update()
+
         elif not self.is_direct:
             self._main_intent = self.az.intent
 
@@ -1711,11 +1806,9 @@ class Portal(DBPortal, BasePortal):
         # Save the message in the database
         await DBMessage(
             event_mxid=event_id,
-            room_id=self.mxid,
-            phone_id=self.phone_id,
             sender=sender.mxid,
             whatsapp_message_id=WhatsappMessageID(response.get("messages", [])[0].get("id", "")),
-            app_business_id=self.app_business_id,
+            portal_id=self.id,
             created_at=datetime.now(),
         ).insert()
 
