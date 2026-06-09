@@ -48,7 +48,7 @@ class Puppet(DBPuppet, BasePuppet):
             id=id,
         )
 
-        if not phone_id and not bsuid:
+        if not phone_id and not bsuid and self.custom_mxid:
             bsuid = self.mxid_template.parse(self.custom_mxid)
 
         self.bsuid = bsuid

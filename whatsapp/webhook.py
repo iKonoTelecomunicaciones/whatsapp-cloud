@@ -10,7 +10,7 @@ from whatsapp_matrix.portal import Portal
 from whatsapp_matrix.room_sync_messages import RoomSyncMessages
 from whatsapp_matrix.user import User
 
-from .data import WhatsappEvent, WhatsappStatusesEvent
+from .data import WhatsappEvent
 
 
 class WhatsappHandler:
@@ -108,7 +108,7 @@ class WhatsappHandler:
             wb_event = WhatsappEvent.from_dict(data)
             wb_statuses = wb_event.entry.changes.value.statuses
             # Get the customer phone
-            customer_phone = wb_statuses.recipient_id
+            customer_phone = wb_event.entry.changes.value.contacts.wa_id
             customer_bsuid = wb_event.entry.changes.value.contacts.user_id
             # Get the error information
             message_error = wb_statuses.errors.error_data.details
@@ -161,10 +161,10 @@ class WhatsappHandler:
                         user, data.entry.changes.value.messages, sender
                     )
                 elif data.entry.changes.value.messages.type == "reaction":
-                    await portal.handle_whatsapp_reaction(data, sender.wa_id)
+                    await portal.handle_whatsapp_reaction(data, sender)
                 elif data.entry.changes.value.messages.type == "edit":
                     await portal.handle_whatsapp_edit(
-                        sender_id=sender.wa_id,
+                        sender_id=sender.wa_id or sender.user_id,
                         message_to_edit=data.entry.changes.value.messages,
                         intent=portal.main_intent,
                     )
