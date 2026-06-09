@@ -278,9 +278,11 @@ class Portal(DBPortal, BasePortal):
             if create:
                 try:
                     if phone_id:
-                        portal = cls(phone_id=phone_id, app_business_id=app_business_id)
+                        portal = cls(
+                            bsuid=None, phone_id=phone_id, app_business_id=app_business_id
+                        )
                     else:
-                        portal = cls(bsuid=bsuid, app_business_id=app_business_id)
+                        portal = cls(phone_id=None, bsuid=bsuid, app_business_id=app_business_id)
 
                     await portal.insert()
                 except UniqueViolationError as e:
@@ -548,13 +550,15 @@ class Portal(DBPortal, BasePortal):
         if self.puppet_id:
             puppet = await Puppet.get_by_id(self.puppet_id)
 
-            if puppet:
-                if not puppet.phone_id and self.phone_id:
-                    puppet.phone_id = self.phone_id
-                    await puppet.update()
-                if not puppet.bsuid and self.bsuid:
-                    puppet.bsuid = self.bsuid
-                    await puppet.update()
+            if not puppet:
+                return None
+
+            if not puppet.phone_id and self.phone_id:
+                puppet.phone_id = self.phone_id
+                await puppet.update()
+            if not puppet.bsuid and self.bsuid:
+                puppet.bsuid = self.bsuid
+                await puppet.update()
 
             return puppet
 
@@ -1941,12 +1945,10 @@ class Portal(DBPortal, BasePortal):
             return
 
         if template_data["template_status"] != "APPROVED":
-            self.log.error(
-                f"""
+            self.log.error(f"""
                     Can't send the message of the template {template_data['template_name']},
                     his template status is {template_data['template_status']}
-                """
-            )
+                """)
             self.az.intent.send_notice(
                 room_id=self.mxid,
                 text=f"""

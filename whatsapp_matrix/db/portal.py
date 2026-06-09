@@ -61,7 +61,7 @@ class Portal:
 
     @classmethod
     async def get_by_identifier(
-        cls, phone_id: str, bsuid: str | None, app_business_id: str
+        cls, phone_id: str | None, bsuid: str | None, app_business_id: str
     ) -> "Portal" | None:
         q = (
             f"SELECT id, {cls._columns} FROM portal WHERE (phone_id=$1 OR bsuid=$2)"

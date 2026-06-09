@@ -14,7 +14,7 @@ fake_db = Database.create("") if TYPE_CHECKING else None
 class Puppet:
     db: ClassVar[Database] = fake_db
 
-    phone_id: str
+    phone_id: str | None
     display_name: str | None
     custom_mxid: UserID | None
     username: str | None
