@@ -454,7 +454,6 @@ class Portal(DBPortal, BasePortal):
 
         self.phone_id = sender.wa_id
         self.bsuid = sender.user_id
-        self.log.critical(f"SENDER: {sender}")
         self.log.debug(
             f"Matrix room created: {self.mxid} for phone_id: {self.phone_id} and bsuid: {self.bsuid}"
         )
