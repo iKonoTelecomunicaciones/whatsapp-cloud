@@ -14,10 +14,10 @@ fake_db = Database.create("") if TYPE_CHECKING else None
 class Portal:
     db: ClassVar[Database] = fake_db
 
-    phone_id: str
     app_business_id: str
     mxid: RoomID | None
     relay_user_id: UserID | None
+    phone_id: str | None = None
     bsuid: str | None = None
     puppet_id: int | None = None
     id: int | None = None
@@ -47,7 +47,7 @@ class Portal:
         q = """
             UPDATE portal
             SET phone_id=$1, app_business_id=$2, mxid=$3, relay_user_id=$4, bsuid=$5, puppet_id=$6
-            WHERE phone_id=$1 AND app_business_id=$2
+            WHERE (phone_id=$1 OR bsuid=$5) AND app_business_id=$2
         """
         await self.db.execute(q, *self._values)
 
@@ -55,6 +55,29 @@ class Portal:
     async def get_by_phone_id(cls, phone_id: str, app_business_id: str) -> Optional["Portal"]:
         q = f"SELECT id, {cls._columns} FROM portal WHERE phone_id=$1 AND app_business_id=$2"
         row = await cls.db.fetchrow(q, phone_id, app_business_id)
+        if not row:
+            return None
+        return cls._from_row(row)
+
+    @classmethod
+    async def get_by_identifier(
+        cls, phone_id: str | None, bsuid: str | None, app_business_id: str
+    ) -> "Portal" | None:
+        q = (
+            f"SELECT id, {cls._columns} FROM portal WHERE (phone_id=$1 OR bsuid=$2)"
+            " AND app_business_id=$3"
+        )
+        row = await cls.db.fetchrow(q, phone_id, bsuid, app_business_id)
+        if not row:
+            return None
+        return cls._from_row(row)
+
+    @classmethod
+    async def get_by_puppet_id_and_business_id(
+        cls, puppet_id: str, app_business_id: str
+    ) -> "Portal" | None:
+        q = f"SELECT id, {cls._columns} FROM portal WHERE puppet_id=$1 AND app_business_id=$2"
+        row = await cls.db.fetchrow(q, puppet_id, app_business_id)
         if not row:
             return None
         return cls._from_row(row)

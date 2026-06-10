@@ -10,7 +10,14 @@ from mautrix.types import MessageType
 from whatsapp.data import WhatsappContact, WhatsappMediaData
 from whatsapp_matrix.config import Config
 
-from .types import WhatsappMediaID, WhatsappMessageID, WhatsappPhone, WsBusinessID, WSPhoneID
+from .types import (
+    WhatsappBSUID,
+    WhatsappMediaID,
+    WhatsappMessageID,
+    WhatsappPhone,
+    WsBusinessID,
+    WSPhoneID,
+)
 
 
 class WhatsappClient:
@@ -34,7 +41,8 @@ class WhatsappClient:
 
     async def send_message(
         self,
-        phone_id: WhatsappPhone,
+        phone_id: WhatsappPhone | None,
+        bsuid: WsBusinessID | None,
         message_type: MessageType,
         message: str | None = None,
         media_id: str | None = None,
@@ -50,8 +58,11 @@ class WhatsappClient:
         message : str
             The message that will be sent to the user.
 
-        phone_id : WhatsappPhone
+        phone_id : WhatsappPhone | None
             The number of the user.
+
+        bsuid: WsBusinessID | None
+            The id of the whatsapp business user.
 
         message_type: MessageType
             The type of the message that will be sent to the user.
@@ -114,10 +125,14 @@ class WhatsappClient:
         data = {
             "messaging_product": "whatsapp",
             "recipient_type": "individual",
-            "to": phone_id,
             "type": type_message,
             type_message: message_data,
         }
+
+        if phone_id:
+            data["to"] = phone_id
+        elif bsuid:
+            data["recipient"] = bsuid
 
         # If the message is a reply, add the message_id
         if aditional_data.get("reply_to"):
@@ -135,7 +150,8 @@ class WhatsappClient:
 
     async def send_interactive_message(
         self,
-        phone_id: WhatsappPhone,
+        phone_id: WhatsappPhone | None,
+        bsuid: WhatsappBSUID | None,
         message_type: MessageType,
         aditional_data: dict | None = None,
     ) -> dict[str, str]:
@@ -144,8 +160,11 @@ class WhatsappClient:
 
         Parameters
         ----------
-        phone_id : WhatsappPhone
+        phone_id : WhatsappPhone | None
             The number of the user.
+
+        bsuid: WhatsappBSUID | None
+            The id of the whatsapp business user.
 
         message_type: MessageType
             The type of the message that will be sent to the user.
@@ -191,10 +210,14 @@ class WhatsappClient:
         data = {
             "messaging_product": "whatsapp",
             "recipient_type": "individual",
-            "to": phone_id,
             "type": type_message,
             type_message: message_data,
         }
+
+        if phone_id:
+            data["to"] = phone_id
+        elif bsuid:
+            data["recipient"] = bsuid
 
         self.log.debug(f"Interactive message: {data}")
 
@@ -297,7 +320,8 @@ class WhatsappClient:
     async def send_reaction(
         self,
         message_id: WhatsappMessageID,
-        phone_id: WSPhoneID,
+        phone_id: WSPhoneID | None,
+        bsuid: WhatsappBSUID | None,
         emoji: str | None = "",
     ) -> dict:
         """
@@ -308,10 +332,13 @@ class WhatsappClient:
         message_id : str
             The id of the message that will been reacted.
 
-        phone_id : WhatsappPhone
+        phone_id : WhatsappPhone | None
             The number of the user.
 
-        emoji: str
+        bsuid: WhatsappBSUID | None
+            The id of the whatsapp business user.
+
+        emoji: str | None
             The emoji that will be sent to the user.
 
         Returns
@@ -331,12 +358,16 @@ class WhatsappClient:
         data = {
             "messaging_product": "whatsapp",
             "recipient_type": "individual",
-            "to": phone_id,
             "type": "reaction",
             "reaction": {"message_id": message_id, "emoji": emoji},
         }
 
-        self.log.debug(f"Sending reaction {data} to {phone_id}")
+        if phone_id:
+            data["to"] = phone_id
+        elif bsuid:
+            data["recipient"] = bsuid
+
+        self.log.debug(f"Sending reaction {data} to {phone_id or bsuid}")
 
         # Send the reaction to the Whatsapp API
         resp = await self.http.post(send_message_url, json=data, headers=headers)
@@ -350,7 +381,8 @@ class WhatsappClient:
 
     async def send_template(
         self,
-        phone_id: WSPhoneID,
+        phone_id: WSPhoneID | None,
+        bsuid: WhatsappBSUID | None,
         template_data: dict,
         media_data: list | None = None,
     ) -> dict:
@@ -359,8 +391,10 @@ class WhatsappClient:
 
         Parameters
         ----------
-        phone_id: WSPhoneID
+        phone_id: WSPhoneID | None
             The id of the whatsapp business phone.
+        bsuid: WhatsappBSUID | None
+            The id of the whatsapp business user.
         template_data: dict
             A dict with the information of the template.
         media_data: list
@@ -424,7 +458,6 @@ class WhatsappClient:
 
         data = {
             "messaging_product": "whatsapp",
-            "to": phone_id,
             "type": "template",
             "template": {
                 "name": template_data["template_name"],
@@ -433,7 +466,12 @@ class WhatsappClient:
             },
         }
 
-        self.log.debug(f"Sending template {data} to {phone_id}")
+        if phone_id:
+            data["to"] = phone_id
+        elif bsuid:
+            data["recipient"] = bsuid
+
+        self.log.debug(f"Sending template {data} to {phone_id or bsuid}")
 
         # Send the template to the Whatsapp API
         resp = await self.http.post(send_template_url, json=data, headers=headers)

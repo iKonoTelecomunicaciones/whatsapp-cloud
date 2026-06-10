@@ -1,24 +1,25 @@
 from __future__ import annotations
 
-from typing import TYPE_CHECKING, AsyncGenerator, AsyncIterable, Awaitable, Dict, Optional, cast
+import re
+from collections.abc import AsyncGenerator, AsyncIterable, Awaitable
+from typing import TYPE_CHECKING, cast
 
 from mautrix.appservice import IntentAPI
 from mautrix.bridge import BasePuppet, async_getter_lock
 from mautrix.types import UserID
 from mautrix.util.simple_template import SimpleTemplate
 
-from whatsapp.types import WhatsappPhone
+from whatsapp.types import WhatsappBSUID, WhatsappPhone, WhatsappUsername
 
 from .config import Config
 from .db import Puppet as DBPuppet
 
 if TYPE_CHECKING:
     from .__main__ import WhatsappBridge
-    from .portal import Portal
 
 
 class Puppet(DBPuppet, BasePuppet):
-    by_phone_id: Dict[WhatsappPhone, "Puppet"] = {}
+    by_identifier_id: dict[WhatsappPhone | WhatsappBSUID, "Puppet"] = {}
     by_custom_mxid: dict[UserID, Puppet] = {}
     hs_domain: str
     mxid_template: SimpleTemplate[str]
@@ -31,10 +32,11 @@ class Puppet(DBPuppet, BasePuppet):
     def __init__(
         self,
         phone_id: WhatsappPhone,
+        bsuid: WhatsappBSUID | None = None,
         display_name: str | None = None,
         is_registered: bool = False,
         custom_mxid: UserID | None = None,
-        username: str | None = None,
+        username: WhatsappUsername | None = None,
         access_token: str | None = None,
         id: int | None = None,
     ) -> None:
@@ -46,11 +48,16 @@ class Puppet(DBPuppet, BasePuppet):
             id=id,
         )
 
-        self.log = self.log.getChild(self.phone_id)
+        if not phone_id and not bsuid and self.custom_mxid:
+            bsuid = self.mxid_template.parse(self.custom_mxid)
+
+        self.bsuid = bsuid
+        identifier = self.phone_id if self.phone_id else self.bsuid
+        self.log = self.log.getChild(identifier)
 
         self.access_token = access_token
         self.is_registered = is_registered
-        self.default_mxid = self.get_mxid_from_phone_id(self.phone_id)
+        self.default_mxid = self.get_mxid_from_identifier(identifier)
         self.custom_mxid = self.default_mxid
         self.default_mxid_intent = self.az.intent.user(self.default_mxid)
 
@@ -74,32 +81,36 @@ class Puppet(DBPuppet, BasePuppet):
         cls.login_device_name = "Whatsapp Bridge"
         return (puppet.try_start() async for puppet in cls.all_with_custom_mxid())
 
-    def intent_for(self, portal: "Portal") -> IntentAPI:
-        if portal.phone_id == self.phone_id:
-            return self.default_mxid_intent
-        return self.intent
-
     def _add_to_cache(self) -> None:
         if self.phone_id:
-            self.by_phone_id[self.phone_id] = self
+            self.by_identifier_id[self.phone_id] = self
+        if self.bsuid:
+            self.by_identifier_id[self.bsuid] = self
         if self.custom_mxid:
             self.by_custom_mxid[self.custom_mxid] = self
 
     @property
     def mxid(self) -> UserID:
-        return UserID(self.mxid_template.format_full(self.phone_id))
+        return UserID(
+            self.mxid_template.format_full(self.phone_id if self.phone_id else self.bsuid)
+        )
 
     async def save(self) -> None:
         await self.update()
 
-    async def update_info(self, info: Dict) -> None:
+    async def update_info(self, info: dict) -> None:
         update = False
         update = await self._update_name(info) or update
+
+        if self.username != info.get("profile", {}).get("username"):
+            self.username = info.get("profile", {}).get("username")
+            update = True
+
         if update:
             await self.update()
 
     @classmethod
-    def _get_displayname(cls, info: Dict) -> str:
+    def _get_displayname(cls, info: dict) -> str:
         """
         Get the name of the user to use on the matrix room.
 
@@ -108,13 +119,14 @@ class Puppet(DBPuppet, BasePuppet):
         info : Dict
             The name of the user and his phone id.
         """
-        display_name = info.profile.name if info.profile else f"user_{info.wa_id}"
-        variables = {"displayname": display_name, "userid": info.wa_id}
+        identifier = info.wa_id if info.wa_id else info.user_id
+        display_name = info.profile.name if info.profile else f"user_{identifier}"
+        variables = {"displayname": display_name, "userid": identifier}
         puppet_displayname: str = cls.config["bridge.whatsapp_cloud.displayname_template"]
 
         return puppet_displayname.format(**variables)
 
-    async def _update_name(self, info: Dict) -> bool:
+    async def _update_name(self, info: dict) -> bool:
         """
         Update the name of the user.
 
@@ -144,46 +156,68 @@ class Puppet(DBPuppet, BasePuppet):
         return False
 
     @classmethod
-    def get_mxid_from_phone_id(cls, phone_id: WhatsappPhone) -> UserID:
-        return UserID(cls.mxid_template.format_full(phone_id))
+    def get_mxid_from_identifier(cls, identifier: WhatsappPhone | WhatsappUsername) -> UserID:
+        return UserID(cls.mxid_template.format_full(identifier))
 
     async def get_displayname(self) -> str:
         return await self.intent.get_displayname(self.mxid)
 
     @classmethod
     @async_getter_lock
-    async def get_by_phone_id(
+    async def get_by_identifier(
         cls,
-        phone_id: WhatsappPhone,
+        phone_id: WhatsappPhone | None = None,
+        bsuid: WhatsappUsername | None = None,
         *,
         create: bool = True,
-    ) -> Optional["Puppet"]:
+    ) -> "Puppet" | None:
         """
-        Get the puppet using the phone id.
+        Get the puppet using the identifier.
 
         Parameters
         ----------
-        phone_id : WhatsappPhone
+        phone_id : WhatsappPhone | None
             The phone id of the user.
-
+        bsuid : WhatsappUsername | None
+            The bsuid of the user.
         create : bool
             The value to create the puppet if it doesn't exist.
         """
-        try:
-            # Search for the puppet in the cache
-            return cls.by_phone_id[phone_id]
-        except KeyError:
-            pass
+        if phone_id is None and bsuid is None:
+            raise ValueError("Either phone_id or bsuid must be provided")
 
-        # Search for the puppet in the database
-        puppet = cast(cls, await super().get_by_phone_id(phone_id))
+        if phone_id in cls.by_identifier_id:
+            return cls.by_identifier_id[phone_id]
+
+        if bsuid in cls.by_identifier_id:
+            return cls.by_identifier_id[bsuid]
+
+        mxid = None
+        puppet = None
+        if phone_id:
+            mxid = cls.get_mxid_from_identifier(phone_id)
+
+            # Search for the puppet in the database
+            puppet = cast(cls, await super().get_by_identifier(mxid))
+
+        if bsuid and puppet is None:
+            mxid = cls.get_mxid_from_identifier(bsuid)
+            puppet = cast(cls, await super().get_by_identifier(mxid))
+
         if puppet is not None:
+            if phone_id and not puppet.phone_id:
+                puppet.phone_id = phone_id
+                await puppet.update()
+            if bsuid and not puppet.bsuid:
+                puppet.bsuid = bsuid
+                await puppet.update()
+
             puppet._add_to_cache()
             return puppet
 
         # Create the puppet if it doesn't exist and if the value of create is True
         if create:
-            puppet = cls(phone_id=phone_id)
+            puppet = cls(phone_id=phone_id, bsuid=bsuid)
             await puppet.insert()
             puppet._add_to_cache()
             return puppet
@@ -191,24 +225,23 @@ class Puppet(DBPuppet, BasePuppet):
         return None
 
     @classmethod
-    def get_phone_id_from_mxid(cls, mxid: UserID) -> WhatsappPhone | None:
+    async def get_by_id(cls, id: int) -> "Puppet" | None:
         """
-        Get the phone id using the mxid.
+        Get the puppet using the id.
 
         Parameters
         ----------
-        mxid : UserID
-            The matrix id of the user.
+        id : int
+            The id of the puppet.
         """
-        phone_id = None
-        phone_id = cls.mxid_template.parse(mxid)
-
-        if not phone_id:
-            return None
-        return phone_id
+        puppet = cast(cls, await super().get_by_id(id))
+        if puppet:
+            puppet._add_to_cache()
+            return puppet
+        return None
 
     @classmethod
-    async def get_by_mxid(cls, mxid: UserID, *, create: bool = True) -> Optional["Puppet"]:
+    async def get_by_mxid(cls, mxid: UserID, *, create: bool = True) -> "Puppet" | None:
         """
         Get the mxid of the user.
 
@@ -220,10 +253,18 @@ class Puppet(DBPuppet, BasePuppet):
         create: bool
             The value to create the puppet if it doesn't exist.
         """
-        phone_id = cls.get_phone_id_from_mxid(mxid)
-        if phone_id:
-            return await cls.get_by_phone_id(phone_id, create=create)
-        return None
+        identifier = cls.mxid_template.parse(mxid)
+
+        if not identifier:
+            return None
+
+        # A BSUID has the form <COUNTRY_CODE>.<ID> (e.g. COL.1234);
+        # a phone number consists only of digits (e.g. 573141234567).
+        is_bsuid = bool(re.match(r"^[A-Za-z]+\.\S+$", identifier))
+        if is_bsuid:
+            return await cls.get_by_identifier(bsuid=identifier, create=create)
+
+        return await cls.get_by_identifier(phone_id=identifier, create=create)
 
     @classmethod
     @async_getter_lock
@@ -253,7 +294,7 @@ class Puppet(DBPuppet, BasePuppet):
         puppet: cls
         for index, puppet in enumerate(puppets):
             try:
-                yield cls.by_phone_id[puppet.phone_id]
+                yield cls.by_custom_mxid[puppet.custom_mxid]
             except KeyError:
                 puppet._add_to_cache()
                 yield puppet

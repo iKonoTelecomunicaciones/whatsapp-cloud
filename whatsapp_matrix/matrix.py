@@ -142,7 +142,7 @@ class MatrixHandler(BaseMatrixHandler):
         if not portal:
             return
 
-        message = await Message.get_by_mxid(message_id, room_id)
+        message = await Message.get_by_mxid(message_id)
 
         if not message:
             self.log.error(f"No message found for {message_id}")

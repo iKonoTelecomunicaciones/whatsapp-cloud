@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import re
 import sys
 from asyncio import AbstractEventLoop, get_event_loop
 from collections.abc import Mapping
@@ -736,7 +737,7 @@ class ProvisioningAPI:
                 headers=self._headers,
             )
 
-    async def _get_puppet(self, number: WSPhoneID, app_business_id: WsBusinessID) -> Puppet:
+    async def _get_puppet(self, number: WSPhoneID) -> Puppet:
         """
         Obtain the puppet from the number of the user
 
@@ -755,7 +756,7 @@ class ProvisioningAPI:
         except Exception as e:
             raise web.HTTPBadRequest(text=json.dumps({"error": str(e)}), headers=self._headers)
 
-        puppet: Puppet = await Puppet.get_by_phone_id(phone_id=number)
+        puppet: Puppet = await Puppet.get_by_identifier(phone_id=number)
 
         return puppet
 
@@ -776,22 +777,47 @@ class ProvisioningAPI:
         self.log.debug("Start PM")
         user, _ = await self._get_user_and_body(request, read_body=False)
 
-        puppet: Puppet = await self._get_puppet(
-            number=request.match_info["number"], app_business_id=user.app_business_id
-        )
-        portal: Portal = await Portal.get_by_app_and_phone_id(
-            phone_id=puppet.phone_id, app_business_id=user.app_business_id
-        )
+        identifier = request.match_info["number"]
+
+        # A BSUID has the form <COUNTRY_CODE>.<ID> (e.g. COL.1234);
+        # a phone number consists only of digits (e.g. 573141234567).
+        is_bsuid = bool(re.match(r"^[A-Za-z]+\.\S+$", identifier))
+
+        self.log.debug(f"Starting PM with identifier: {identifier}, is_bsuid? {is_bsuid}")
+
+        if is_bsuid:
+            puppet: Puppet = await Puppet.get_by_identifier(bsuid=identifier)
+            portal: Portal = await Portal.get_by_app_and_identifier(
+                phone_id=None,
+                bsuid=identifier,
+                app_business_id=user.app_business_id,
+            )
+        else:
+            puppet: Puppet = await self._get_puppet(number=identifier)
+            portal: Portal = await Portal.get_by_app_and_identifier(
+                phone_id=puppet.phone_id,
+                bsuid=None,
+                app_business_id=user.app_business_id,
+            )
 
         # If the portal is not created, create it
         if portal.mxid:
             await portal.main_intent.invite_user(portal.mxid, user.mxid)
             just_created = False
         else:
+            self.log.debug(f"Creating portal for identifier: {identifier}, is_bsuid? {is_bsuid}")
             chat_customer = {
-                "wa_id": puppet.phone_id,
-                "profile": {"name": puppet.display_name or puppet.custom_mxid},
+                "profile": {
+                    "name": puppet.display_name or puppet.custom_mxid,
+                    "username": puppet.username,
+                },
             }
+
+            if not is_bsuid:
+                chat_customer["wa_id"] = normalize_number(identifier).replace("+", "")
+            else:
+                chat_customer["user_id"] = identifier
+
             sender = WhatsappContacts.from_dict(chat_customer)
             await portal.create_matrix_room(user, sender)
             just_created = True
