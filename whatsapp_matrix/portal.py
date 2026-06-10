@@ -1945,10 +1945,12 @@ class Portal(DBPortal, BasePortal):
             return
 
         if template_data["template_status"] != "APPROVED":
-            self.log.error(f"""
+            self.log.error(
+                f"""
                     Can't send the message of the template {template_data['template_name']},
                     his template status is {template_data['template_status']}
-                """)
+                """
+            )
             self.az.intent.send_notice(
                 room_id=self.mxid,
                 text=f"""
