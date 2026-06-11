@@ -137,7 +137,9 @@ class WhatsappHandler:
         with RoomLock(portal.mxid) as message_lock:
             async with message_lock:
                 if data.entry.changes.value.messages.errors:
-                    await portal.handle_whatsapp_errors(data.entry.changes.value.messages)
+                    await portal.handle_whatsapp_errors(
+                        user, data.entry.changes.value.messages, sender
+                    )
                 elif data.entry.changes.value.messages.type == "reaction":
                     await portal.handle_whatsapp_reaction(data, sender.wa_id)
                 elif data.entry.changes.value.messages.type == "edit":
@@ -145,6 +147,13 @@ class WhatsappHandler:
                         sender_id=sender.wa_id,
                         message_to_edit=data.entry.changes.value.messages,
                         intent=portal.main_intent,
+                    )
+                elif data.entry.changes.value.messages.type == "system":
+                    self.log.info(
+                        f"Received a system message of type "
+                        f"{data.entry.changes.value.messages.system.type} from user {sender.wa_id} "
+                        f"for business account {business_id}. "
+                        f"Message: {data.entry.changes.value.messages.system.body}"
                     )
                 else:
                     await portal.handle_whatsapp_message(user, data, sender)
