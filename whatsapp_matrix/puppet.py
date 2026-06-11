@@ -10,6 +10,7 @@ from mautrix.types import UserID
 from mautrix.util.simple_template import SimpleTemplate
 
 from whatsapp.types import WhatsappBSUID, WhatsappPhone, WhatsappUsername
+from whatsapp_matrix.cache_manager import CacheManager
 
 from .config import Config
 from .db import Puppet as DBPuppet
@@ -19,8 +20,8 @@ if TYPE_CHECKING:
 
 
 class Puppet(DBPuppet, BasePuppet):
-    by_identifier_id: dict[WhatsappPhone | WhatsappBSUID, "Puppet"] = {}
-    by_custom_mxid: dict[UserID, Puppet] = {}
+    by_identifier_id: CacheManager
+    by_custom_mxid: CacheManager
     hs_domain: str
     mxid_template: SimpleTemplate[str]
 
@@ -79,15 +80,21 @@ class Puppet(DBPuppet, BasePuppet):
         cls.sync_with_custom_puppets = False
 
         cls.login_device_name = "Whatsapp Bridge"
+        # initialize TTL caches using configuration (defaults applied if missing)
+        ttl = cls.config["cache.ttl"]
+        maxsize = cls.config["cache.puppet_max_size"]
+        cls.by_identifier_id = CacheManager(maxsize=maxsize, ttl=ttl)
+        cls.by_custom_mxid = CacheManager(maxsize=maxsize, ttl=ttl)
+
         return (puppet.try_start() async for puppet in cls.all_with_custom_mxid())
 
     def _add_to_cache(self) -> None:
         if self.phone_id:
-            self.by_identifier_id[self.phone_id] = self
+            self.by_identifier_id.set_item(self.phone_id, self)
         if self.bsuid:
-            self.by_identifier_id[self.bsuid] = self
+            self.by_identifier_id.set_item(self.bsuid, self)
         if self.custom_mxid:
-            self.by_custom_mxid[self.custom_mxid] = self
+            self.by_custom_mxid.set_item(self.custom_mxid, self)
 
     @property
     def mxid(self) -> UserID:
@@ -187,10 +194,10 @@ class Puppet(DBPuppet, BasePuppet):
             raise ValueError("Either phone_id or bsuid must be provided")
 
         if phone_id in cls.by_identifier_id:
-            return cls.by_identifier_id[phone_id]
+            return cls.by_identifier_id.get_item(phone_id)
 
         if bsuid in cls.by_identifier_id:
-            return cls.by_identifier_id[bsuid]
+            return cls.by_identifier_id.get_item(bsuid)
 
         mxid = None
         puppet = None
@@ -269,10 +276,9 @@ class Puppet(DBPuppet, BasePuppet):
     @classmethod
     @async_getter_lock
     async def get_by_custom_mxid(cls, mxid: UserID) -> "Puppet" | None:
-        try:
-            return cls.by_custom_mxid[mxid]
-        except KeyError:
-            pass
+        puppet = cls.by_custom_mxid.get_item(mxid)
+        if puppet is not None:
+            return puppet
 
         puppet = cast(cls, await super().get_by_custom_mxid(mxid))
         if puppet:
@@ -293,8 +299,8 @@ class Puppet(DBPuppet, BasePuppet):
         puppets = await super().all_with_custom_mxid()
         puppet: cls
         for index, puppet in enumerate(puppets):
-            try:
-                yield cls.by_custom_mxid[puppet.custom_mxid]
-            except KeyError:
+            if puppet.custom_mxid not in cls.by_custom_mxid:
                 puppet._add_to_cache()
                 yield puppet
+
+            yield cls.by_custom_mxid.get_item(puppet.custom_mxid)

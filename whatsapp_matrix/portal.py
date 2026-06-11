@@ -50,6 +50,7 @@ from whatsapp.interactive_message import (
     FormResponseMessage,
 )
 from whatsapp.types import WhatsappBSUID, WhatsappMessageID, WhatsappPhone, WsBusinessID
+from whatsapp_matrix.cache_manager import CacheManager
 from whatsapp_matrix.formatter.from_matrix import WhatsappFormatMedia, matrix_to_whatsapp
 from whatsapp_matrix.formatter.from_whatsapp import whatsapp_reply_to_matrix
 
@@ -71,8 +72,8 @@ Invitelist = UserID | list[UserID]
 
 
 class Portal(DBPortal, BasePortal):
-    by_mxid: dict[RoomID, "Portal"] = {}
-    by_app_and_identifier: dict[(WhatsappPhone | WhatsappBSUID, WsBusinessID), "Portal"] = {}
+    by_mxid: CacheManager
+    by_app_and_identifier: CacheManager
 
     message_template: Template
     federate_rooms: bool
@@ -171,13 +172,18 @@ class Portal(DBPortal, BasePortal):
         BasePortal.bridge = bridge
         cls.private_chat_portal_whatsapp = cls.config["bridge.private_chat_portal_whatsapp"]
         cls.session = bridge.session
+        # initialize TTL caches for portals
+        ttl = cls.config["cache.ttl"]
+        maxsize = cls.config["cache.portal_max_size"]
+        cls.by_mxid = CacheManager(maxsize=maxsize, ttl=ttl)
+        cls.by_app_and_identifier = CacheManager(maxsize=maxsize, ttl=ttl)
 
     @classmethod
     async def get_by_mxid(cls, mxid: RoomID) -> Portal | None:
-        try:
-            return cls.by_mxid[mxid]
-        except KeyError:
-            pass
+        portal = cls.by_mxid.get_item(mxid)
+
+        if portal is not None:
+            return portal
 
         portal = cast(cls, await super().get_by_mxid(mxid))
         if portal is not None:
@@ -243,10 +249,11 @@ class Portal(DBPortal, BasePortal):
             identifier = bsuid
             cls._create_room_lock[(bsuid, app_business_id)] = Lock()
 
+        cls.log.critical(f"DATA in cache: {cls.by_app_and_identifier}")
         async with cls._create_room_lock[(identifier, app_business_id)]:
-            if cls.by_app_and_identifier.get((identifier, app_business_id)):
+            if (identifier, app_business_id) in cls.by_app_and_identifier:
+                portal = cls.by_app_and_identifier.get_item((identifier, app_business_id))
                 # Search if the identifier is in the cache
-                portal = cls.by_app_and_identifier[(identifier, app_business_id)]
                 if bsuid and portal.bsuid is None:
                     portal.bsuid = bsuid
                     await portal.update()
@@ -459,7 +466,7 @@ class Portal(DBPortal, BasePortal):
         self.log.debug(
             f"Matrix room created: {self.mxid} for phone_id: {self.phone_id} and bsuid: {self.bsuid}"
         )
-        self.by_mxid[self.mxid] = self
+        self.by_mxid.set_item(self.mxid, self)
 
         # Obtain the puppet of the user and update the information
         puppet: Puppet = await Puppet.get_by_identifier(phone_id=self.phone_id, bsuid=self.bsuid)
@@ -1705,11 +1712,16 @@ class Portal(DBPortal, BasePortal):
     async def postinit(self) -> None:
         await self.init_whatsapp_client
         if self.mxid:
-            self.by_mxid[self.mxid] = self
+            self.by_mxid.set_item(self.mxid, self)
 
         identifier = self.phone_id if self.phone_id else self.bsuid
+        self.log.critical(
+            f"Registering portal with identifier {identifier} and app_business_id {self.app_business_id}"
+        )
+
         if identifier and self.app_business_id:
-            self.by_app_and_identifier[(identifier, self.app_business_id)] = self
+            key = (identifier, self.app_business_id)
+            self.by_app_and_identifier.set_item(key, self)
 
         if self.is_direct:
             puppet = await self.get_dm_puppet()

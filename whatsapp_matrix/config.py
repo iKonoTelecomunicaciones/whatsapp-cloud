@@ -55,6 +55,11 @@ class Config(BaseBridgeConfig):
         copy("whatsapp.webhook_path")
         copy("whatsapp.error_codes")
         copy("whatsapp.file_name")
+        # Cache settings
+        copy("cache.ttl")
+        copy("cache.puppet_max_size")
+        copy("cache.portal_max_size")
+        copy("cache.user_max_size")
 
     def _get_permissions(self, key: str) -> Permissions:
         level = self["bridge.permissions"].get(key, "")

@@ -223,6 +223,15 @@ whatsapp:
         1011:
             reason_en: "Invalid Media Size"
             reason_es: "Tamaño de multimedia inválido"
+# Cache settings for in-memory object caches (TTLCache)
+cache:
+    # Time-to-live in seconds before an unused entry is evicted (default: 1 hour)
+    ttl: 3600
+    # Maximum number of entries per cache dictionary
+    # Each class (Puppet, Portal, User) uses its own TTLCache instance
+    puppet_max_size: 5000
+    portal_max_size: 5000
+    user_max_size: 1000
 
 # Python logging configuration.
 #
