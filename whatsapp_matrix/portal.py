@@ -249,7 +249,6 @@ class Portal(DBPortal, BasePortal):
             identifier = bsuid
             cls._create_room_lock[(bsuid, app_business_id)] = Lock()
 
-        cls.log.critical(f"DATA in cache: {cls.by_app_and_identifier}")
         async with cls._create_room_lock[(identifier, app_business_id)]:
             if (identifier, app_business_id) in cls.by_app_and_identifier:
                 portal = cls.by_app_and_identifier.get_item((identifier, app_business_id))
@@ -1715,9 +1714,6 @@ class Portal(DBPortal, BasePortal):
             self.by_mxid[self.mxid] = self
 
         identifier = self.phone_id if self.phone_id else self.bsuid
-        self.log.critical(
-            f"Registering portal with identifier {identifier} and app_business_id {self.app_business_id}"
-        )
 
         if identifier and self.app_business_id:
             key = (identifier, self.app_business_id)
