@@ -175,8 +175,8 @@ class Portal(DBPortal, BasePortal):
         # initialize TTL caches for portals
         ttl = cls.config["cache.ttl"]
         maxsize = cls.config["cache.portal_max_size"]
-        cls.by_mxid = CacheManager(maxsize=maxsize, ttl=ttl)
-        cls.by_app_and_identifier = CacheManager(maxsize=maxsize, ttl=ttl)
+        cls.by_mxid = CacheManager(maxsize=maxsize, ttl=ttl, config=cls.config)
+        cls.by_app_and_identifier = CacheManager(maxsize=maxsize, ttl=ttl, config=cls.config)
 
     @classmethod
     async def get_by_mxid(cls, mxid: RoomID) -> Portal | None:
@@ -466,7 +466,7 @@ class Portal(DBPortal, BasePortal):
         self.log.debug(
             f"Matrix room created: {self.mxid} for phone_id: {self.phone_id} and bsuid: {self.bsuid}"
         )
-        self.by_mxid.set_item(self.mxid, self)
+        self.by_mxid[self.mxid] = self
 
         # Obtain the puppet of the user and update the information
         puppet: Puppet = await Puppet.get_by_identifier(phone_id=self.phone_id, bsuid=self.bsuid)
@@ -1712,7 +1712,7 @@ class Portal(DBPortal, BasePortal):
     async def postinit(self) -> None:
         await self.init_whatsapp_client
         if self.mxid:
-            self.by_mxid.set_item(self.mxid, self)
+            self.by_mxid[self.mxid] = self
 
         identifier = self.phone_id if self.phone_id else self.bsuid
         self.log.critical(
@@ -1721,7 +1721,7 @@ class Portal(DBPortal, BasePortal):
 
         if identifier and self.app_business_id:
             key = (identifier, self.app_business_id)
-            self.by_app_and_identifier.set_item(key, self)
+            self.by_app_and_identifier[key] = self
 
         if self.is_direct:
             puppet = await self.get_dm_puppet()

@@ -83,18 +83,18 @@ class Puppet(DBPuppet, BasePuppet):
         # initialize TTL caches using configuration (defaults applied if missing)
         ttl = cls.config["cache.ttl"]
         maxsize = cls.config["cache.puppet_max_size"]
-        cls.by_identifier_id = CacheManager(maxsize=maxsize, ttl=ttl)
-        cls.by_custom_mxid = CacheManager(maxsize=maxsize, ttl=ttl)
+        cls.by_identifier_id = CacheManager(maxsize=maxsize, ttl=ttl, config=cls.config)
+        cls.by_custom_mxid = CacheManager(maxsize=maxsize, ttl=ttl, config=cls.config)
 
         return (puppet.try_start() async for puppet in cls.all_with_custom_mxid())
 
     def _add_to_cache(self) -> None:
         if self.phone_id:
-            self.by_identifier_id.set_item(self.phone_id, self)
+            self.by_identifier_id[self.phone_id] = self
         if self.bsuid:
-            self.by_identifier_id.set_item(self.bsuid, self)
+            self.by_identifier_id[self.bsuid] = self
         if self.custom_mxid:
-            self.by_custom_mxid.set_item(self.custom_mxid, self)
+            self.by_custom_mxid[self.custom_mxid] = self
 
     @property
     def mxid(self) -> UserID:

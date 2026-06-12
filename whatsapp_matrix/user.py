@@ -59,8 +59,8 @@ class User(DBUser, BaseUser):
         # initialize TTL caches for users
         ttl = cls.config["cache.ttl"]
         maxsize = cls.config["cache.user_max_size"]
-        cls.by_mxid = CacheManager(maxsize=maxsize, ttl=ttl)
-        cls.by_business_id = CacheManager(maxsize=maxsize, ttl=ttl)
+        cls.by_mxid = CacheManager(maxsize=maxsize, ttl=ttl, config=cls.config)
+        cls.by_business_id = CacheManager(maxsize=maxsize, ttl=ttl, config=cls.config)
 
     async def get_portal_with(self, puppet: pu.Puppet, create: bool = True) -> po.Portal | None:
         return await po.Portal.get_by_puppet_and_business_id(
@@ -76,9 +76,9 @@ class User(DBUser, BaseUser):
         return await pu.Puppet.get_by_mxid(self.mxid)
 
     def _add_to_cache(self) -> None:
-        self.by_mxid.set_item(self.mxid, self)
+        self.by_mxid[self.mxid] = self
         if self.app_business_id:
-            self.by_business_id.set_item(self.app_business_id, self)
+            self.by_business_id[self.app_business_id] = self
 
     @classmethod
     async def get_by_mxid(cls, mxid: UserID, create: bool = True) -> "User" | None:
