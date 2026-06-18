@@ -37,7 +37,6 @@ from whatsapp.api import WhatsappClient
 from whatsapp.data import (
     TemplateMessage,
     WhatsappContacts,
-    WhatsappErrors,
     WhatsappEvent,
     WhatsappLocation,
     WhatsappMessageEcho,
@@ -51,6 +50,7 @@ from whatsapp.interactive_message import (
     FormResponseMessage,
 )
 from whatsapp.types import WhatsappMessageID, WhatsappPhone, WsBusinessID
+from whatsapp_matrix.cache_manager import CacheManager
 from whatsapp_matrix.formatter.from_matrix import WhatsappFormatMedia, matrix_to_whatsapp
 from whatsapp_matrix.formatter.from_whatsapp import whatsapp_reply_to_matrix
 from whatsapp_matrix.room_sync_messages import RoomLock
@@ -73,8 +73,8 @@ Invitelist = UserID | list[UserID]
 
 
 class Portal(DBPortal, BasePortal):
-    by_mxid: dict[RoomID, "Portal"] = {}
-    by_app_and_phone_id: dict[(WhatsappPhone, WsBusinessID), "Portal"] = {}
+    by_mxid: CacheManager
+    by_app_and_phone_id: CacheManager
 
     message_template: Template
     federate_rooms: bool
@@ -163,13 +163,18 @@ class Portal(DBPortal, BasePortal):
         BasePortal.bridge = bridge
         cls.private_chat_portal_whatsapp = cls.config["bridge.private_chat_portal_whatsapp"]
         cls.session = bridge.session
+        # initialize TTL caches for portals
+        ttl = cls.config["cache.ttl"]
+        maxsize = cls.config["cache.portal_max_size"]
+        cls.by_mxid = CacheManager(maxsize=maxsize, ttl=ttl, config=cls.config)
+        cls.by_app_and_phone_id = CacheManager(maxsize=maxsize, ttl=ttl, config=cls.config)
 
     @classmethod
     async def get_by_mxid(cls, mxid: RoomID) -> Portal | None:
-        try:
-            return cls.by_mxid[mxid]
-        except KeyError:
-            pass
+        portal = cls.by_mxid.get_item(mxid)
+
+        if portal is not None:
+            return portal
 
         portal = cast(cls, await super().get_by_mxid(mxid))
         if portal is not None:
@@ -201,11 +206,10 @@ class Portal(DBPortal, BasePortal):
         """
         with RoomLock((phone_id, app_business_id)) as room_lock:
             async with room_lock:
-                try:
-                    # Search if the phone_id is in the cache
-                    return cls.by_app_and_phone_id[(phone_id, app_business_id)]
-                except KeyError:
-                    pass
+                portal = cls.by_app_and_phone_id.get_item((phone_id, app_business_id))
+                if portal is not None:
+                    return portal
+
                 # Search if the phone_id is in the database
                 portal = cast(
                     cls,

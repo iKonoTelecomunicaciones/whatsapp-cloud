@@ -9,6 +9,7 @@ from mautrix.util.simple_template import SimpleTemplate
 from yarl import URL
 
 from whatsapp.types import WhatsappPhone, WsBusinessID
+from whatsapp_matrix.cache_manager import CacheManager
 
 from .config import Config
 from .db import Puppet as DBPuppet
@@ -19,8 +20,8 @@ if TYPE_CHECKING:
 
 
 class Puppet(DBPuppet, BasePuppet):
-    by_phone_id: Dict[WhatsappPhone, "Puppet"] = {}
-    by_custom_mxid: dict[UserID, Puppet] = {}
+    by_phone_id: CacheManager
+    by_custom_mxid: CacheManager
     hs_domain: str
     mxid_template: SimpleTemplate[str]
 
@@ -75,6 +76,12 @@ class Puppet(DBPuppet, BasePuppet):
         cls.sync_with_custom_puppets = False
 
         cls.login_device_name = "Whatsapp Bridge"
+        # initialize TTL caches using configuration (defaults applied if missing)
+        ttl = cls.config["cache.ttl"]
+        maxsize = cls.config["cache.puppet_max_size"]
+        cls.by_phone_id = CacheManager(maxsize=maxsize, ttl=ttl, config=cls.config)
+        cls.by_custom_mxid = CacheManager(maxsize=maxsize, ttl=ttl, config=cls.config)
+
         return (puppet.try_start() async for puppet in cls.all_with_custom_mxid())
 
     def intent_for(self, portal: "Portal") -> IntentAPI:
@@ -176,11 +183,9 @@ class Puppet(DBPuppet, BasePuppet):
         create : bool
             The value to create the puppet if it doesn't exist.
         """
-        try:
-            # Search for the puppet in the cache
-            return cls.by_phone_id[phone_id]
-        except KeyError:
-            pass
+        puppet = cls.by_phone_id.get_item(phone_id)
+        if puppet is not None:
+            return puppet
 
         # Search for the puppet in the database
         puppet = cast(cls, await super().get_by_phone_id(phone_id))
@@ -235,10 +240,9 @@ class Puppet(DBPuppet, BasePuppet):
     @classmethod
     @async_getter_lock
     async def get_by_custom_mxid(cls, mxid: UserID) -> "Puppet" | None:
-        try:
-            return cls.by_custom_mxid[mxid]
-        except KeyError:
-            pass
+        puppet = cls.by_custom_mxid.get_item(mxid)
+        if puppet is not None:
+            return puppet
 
         puppet = cast(cls, await super().get_by_custom_mxid(mxid))
         if puppet:
@@ -259,8 +263,8 @@ class Puppet(DBPuppet, BasePuppet):
         puppets = await super().all_with_custom_mxid()
         puppet: cls
         for index, puppet in enumerate(puppets):
-            try:
-                yield cls.by_phone_id[puppet.phone_id]
-            except KeyError:
+            if puppet.phone_id not in cls.by_phone_id:
                 puppet._add_to_cache()
                 yield puppet
+            else:
+                yield cls.by_phone_id.get_item(puppet.phone_id)
