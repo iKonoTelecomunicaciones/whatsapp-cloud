@@ -77,10 +77,8 @@ class Puppet(DBPuppet, BasePuppet):
 
         cls.login_device_name = "Whatsapp Bridge"
         # initialize TTL caches using configuration (defaults applied if missing)
-        ttl = cls.config["cache.ttl"]
-        maxsize = cls.config["cache.puppet_max_size"]
-        cls.by_phone_id = CacheManager(maxsize=maxsize, ttl=ttl, config=cls.config)
-        cls.by_custom_mxid = CacheManager(maxsize=maxsize, ttl=ttl, config=cls.config)
+        cls.by_phone_id = CacheManager(cache_type="puppet", config=cls.config)
+        cls.by_custom_mxid = CacheManager(cache_type="puppet", config=cls.config)
 
         return (puppet.try_start() async for puppet in cls.all_with_custom_mxid())
 

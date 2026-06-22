@@ -164,10 +164,8 @@ class Portal(DBPortal, BasePortal):
         cls.private_chat_portal_whatsapp = cls.config["bridge.private_chat_portal_whatsapp"]
         cls.session = bridge.session
         # initialize TTL caches for portals
-        ttl = cls.config["cache.ttl"]
-        maxsize = cls.config["cache.portal_max_size"]
-        cls.by_mxid = CacheManager(maxsize=maxsize, ttl=ttl, config=cls.config)
-        cls.by_app_and_phone_id = CacheManager(maxsize=maxsize, ttl=ttl, config=cls.config)
+        cls.by_mxid = CacheManager(cache_type="portal", config=cls.config)
+        cls.by_app_and_phone_id = CacheManager(cache_type="portal", config=cls.config)
 
     @classmethod
     async def get_by_mxid(cls, mxid: RoomID) -> Portal | None:

@@ -57,10 +57,8 @@ class User(DBUser, BaseUser):
         cls.az = bridge.az
         cls.loop = bridge.loop
         # initialize TTL caches for users
-        ttl = cls.config["cache.ttl"]
-        maxsize = cls.config["cache.user_max_size"]
-        cls.by_mxid = CacheManager(maxsize=maxsize, ttl=ttl, config=cls.config)
-        cls.by_business_id = CacheManager(maxsize=maxsize, ttl=ttl, config=cls.config)
+        cls.by_mxid = CacheManager(cache_type="user", config=cls.config)
+        cls.by_business_id = CacheManager(cache_type="user", config=cls.config)
 
     async def get_portal_with(self, puppet: pu.Puppet, create: bool = True) -> po.Portal | None:
         return await po.Portal.get_by_app_and_phone_id(
