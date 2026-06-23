@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import asyncio
 from typing import TYPE_CHECKING
 
 from mautrix.bridge import BaseMatrixHandler, RejectMatrixInvite
@@ -16,6 +17,7 @@ from mautrix.types import (
 
 from .db import Message, Reaction
 from .portal import Portal
+from .room_sync_messages import RoomSyncMessages
 from .user import User
 
 if TYPE_CHECKING:
@@ -101,6 +103,11 @@ class MatrixHandler(BaseMatrixHandler):
         user = await User.get_by_mxid(user_id, create=False)
         if not user:
             return
+
+        key = (room_id, user_id)
+        join_event = RoomSyncMessages.room_sync_primitives.get(key)
+        if join_event and isinstance(join_event, asyncio.Event):
+            join_event.set()
 
         await portal.handle_matrix_join(user)
 

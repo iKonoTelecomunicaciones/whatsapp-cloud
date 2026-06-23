@@ -1,7 +1,8 @@
 from __future__ import annotations
 
 import mimetypes
-from asyncio import Lock, sleep
+import asyncio
+from asyncio import sleep
 from datetime import datetime
 from io import BytesIO
 from string import Template
@@ -61,6 +62,7 @@ from .db import Reaction as DBReaction
 from .db import WhatsappApplication as DBWhatsappApplication
 from .formatter import whatsapp_to_matrix
 from .puppet import Puppet
+from .room_sync_messages import RoomSyncMessages
 from .user import User
 
 if TYPE_CHECKING:
@@ -390,10 +392,20 @@ class Portal(DBPortal, BasePortal):
 
         await puppet.update_info(sender)
 
-        # Invite the user to the room
+        # Invite the user to the room and wait for them to join
         await self.main_intent.invite_user(
             self.mxid, source.mxid, extra_content=self._get_invite_content(puppet)
         )
+
+        with RoomSyncMessages(
+            self.mxid, source.mxid, primitive_type=asyncio.Event
+        ) as join_event:
+            try:
+                await asyncio.wait_for(join_event.wait(), timeout=30)
+            except asyncio.TimeoutError:
+                self.log.warning(
+                    f"Timeout waiting for {source.mxid} to join {self.mxid}"
+                )
 
         return self.mxid
 
