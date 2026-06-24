@@ -415,7 +415,7 @@ class Portal(DBPortal, BasePortal):
             name=room_name_template.format(**room_name_variables),
             is_direct=self.is_direct,
             initial_state=initial_state,
-            invitees=[],
+            invitees=invitees or [],
             topic="Whatsapp private chat",
             creation_content=creation_content,
         )
