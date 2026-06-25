@@ -339,6 +339,7 @@ class Portal(DBPortal, BasePortal):
                 return self.mxid
             try:
                 self.phone_id = sender.wa_id
+                initial_message = ""
                 if message:
                     initial_message = self.get_initial_message(message=message)
                 return await self._create_matrix_room(
