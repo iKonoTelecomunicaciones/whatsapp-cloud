@@ -9,6 +9,7 @@ from mautrix.types import MessageType
 
 from whatsapp.data import WhatsappContact, WhatsappMediaData
 from whatsapp_matrix.config import Config
+from whatsapp_matrix.formatter.from_matrix import bold_to_whatsapp
 
 from .types import WhatsappMediaID, WhatsappMessageID, WhatsappPhone, WsBusinessID, WSPhoneID
 
@@ -86,6 +87,7 @@ class WhatsappClient:
         # Set the url to send the message to Whatsapp API
         send_message_url = f"{self.base_url}/{self.version}/{self.wb_phone_id}/messages"
         self.log.debug(f"Sending message to {send_message_url}")
+        message = bold_to_whatsapp(message)
 
         # Set the data to send to Whatsapp API
         match message_type:
