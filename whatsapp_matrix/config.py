@@ -61,6 +61,8 @@ class Config(BaseBridgeConfig):
         copy("cache.portal_max_size")
         copy("cache.user_max_size")
 
+        copy("encryption.key")
+
     def _get_permissions(self, key: str) -> Permissions:
         level = self["bridge.permissions"].get(key, "")
         admin = level == "admin"

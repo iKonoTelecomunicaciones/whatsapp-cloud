@@ -14,6 +14,7 @@ from whatsapp.data import WhatsappContacts
 from whatsapp.types import WsBusinessID, WSPhoneID
 from whatsapp_matrix.portal import Portal
 from whatsapp_matrix.puppet import Puppet
+from whatsapp_matrix.web.provisioning_controller import ProvisioningController
 
 from ..config import Config
 from ..db.whatsapp_application import WhatsappApplication
@@ -25,6 +26,7 @@ class ProvisioningAPI:
     app: web.Application
     http: ClientSession
     log: Logger = getLogger()
+    controller: ProvisioningController
 
     def __init__(
         self,
@@ -39,6 +41,8 @@ class ProvisioningAPI:
         self.version = config["whatsapp.version"]
         self.template_path = config["whatsapp.template_path"]
         self.http = ClientSession(loop=loop)
+        # TODO: Use the controller to send requests to the Whatsapp API
+        self.controller = ProvisioningController(config, self.http)
 
         self.app.router.add_route("POST", "/v1/register_app", self.register_app)
         self.app.router.add_route("PATCH", "/v1/update_app", self.update_app)
@@ -52,29 +56,8 @@ class ProvisioningAPI:
         self.app.router.add_route("GET", "/v1/set_relay/{room_id}", self.validate_set_relay)
         self.app.router.add_route("GET", "/v1/channel_status", self.channel_status)
         self.app.router.add_route("GET", "/v1/resources", self.resources)
-
-    @property
-    def _acao_headers(self) -> dict[str, str]:
-        """
-        Return the Access-Control-Allows headers
-
-        """
-        return {
-            "Access-Control-Allow-Origin": "*",
-            "Access-Control-Allow-Headers": "Authorization, Content-Type",
-            "Access-Control-Allow-Methods": "GET, POST, PATCH, OPTIONS",
-        }
-
-    @property
-    def _headers(self) -> dict[str, str]:
-        """
-        Return the headers of the request
-
-        """
-        return {
-            **self._acao_headers,
-            "Content-Type": "application/json",
-        }
+        self.app.router.add_route("PATCH", "/v1/{phone_id}/pin", self.set_pin)
+        self.app.router.add_route("PATCH", "/v2/app/{admin_user}", self.update_app_identifiers)
 
     async def _register_phone(self, phone_id: WSPhoneID, access_token: str, pin: str) -> None:
         """
@@ -181,7 +164,7 @@ class ProvisioningAPI:
         ):
             return web.HTTPBadRequest(
                 text=json.dumps({"detail": {"message": "All fields are mandatory"}}),
-                headers=self._headers,
+                headers=self.controller._headers,
             )
 
         # Check if the business_id and the phone_id are the same
@@ -190,7 +173,7 @@ class ProvisioningAPI:
                 text=json.dumps(
                     {"detail": {"message": "The business_id and the phone_id can not be the same"}}
                 ),
-                headers=self._headers,
+                headers=self.controller._headers,
             )
 
         # Check if the user is already registered. This acd user can be registered because the
@@ -202,7 +185,7 @@ class ProvisioningAPI:
                 text=json.dumps(
                     {"detail": {"message": "You already have a registered whatsapp_app"}}
                 ),
-                headers=self._headers,
+                headers=self.controller._headers,
             )
 
         # Check if the whatsapp_app is already registered
@@ -216,7 +199,7 @@ class ProvisioningAPI:
                         }
                     }
                 ),
-                headers=self._headers,
+                headers=self.controller._headers,
             )
 
         # Check if the wb_phone_id is already registered
@@ -230,7 +213,7 @@ class ProvisioningAPI:
                         }
                     }
                 ),
-                headers=self._headers,
+                headers=self.controller._headers,
             )
 
         # Create the whatsapp_app
@@ -263,7 +246,7 @@ class ProvisioningAPI:
                     },
                 }
             ),
-            headers=self._headers,
+            headers=self.controller._headers,
         )
 
     async def _get_body(self, request: web.Request) -> dict:
@@ -283,7 +266,7 @@ class ProvisioningAPI:
             self.log.error(f"Malformed JSON {error}")
             raise web.HTTPUnprocessableEntity(
                 text=json.dumps({"detail": {"message": f"Malformed JSON {error}"}}),
-                headers=self._headers,
+                headers=self.controller._headers,
             )
 
         return data
@@ -307,7 +290,7 @@ class ProvisioningAPI:
             user_id = request.query["user_id"]
         except KeyError:
             raise web.HTTPBadRequest(
-                text='{"message": "Missing user_id query param"}', headers=self._headers
+                text='{"message": "Missing user_id query param"}', headers=self.controller._headers
             )
 
         user: User = await User.get_by_mxid(UserID(user_id), create=False)
@@ -317,7 +300,7 @@ class ProvisioningAPI:
                 text=json.dumps(
                     {"detail": {"message": f"The user with user_id {user_id} not found"}}
                 ),
-                headers=self._headers,
+                headers=self.controller._headers,
             )
 
         # Obtain the data from the request
@@ -338,7 +321,7 @@ class ProvisioningAPI:
             text=json.dumps(
                 {"detail": {"data": {"key": str(err)}, "message": f"Missing key %(key)s"}}
             ),
-            headers=self._headers,
+            headers=self.controller._headers,
         )
 
     def check_token(self, request: web.Request) -> None:
@@ -358,12 +341,13 @@ class ProvisioningAPI:
             self.log.error("Error getting the Authorization header")
             raise web.HTTPUnauthorized(
                 text=json.dumps({"detail": {"message": "Missing Authorization header"}}),
-                headers=self._headers,
+                headers=self.controller._headers,
             )
         # Validate the token
         if token != self.shared_secret:
             raise web.HTTPForbidden(
-                text=json.dumps({"detail": {"message": "Invalid token"}}), headers=self._headers
+                text=json.dumps({"detail": {"message": "Invalid token"}}),
+                headers=self.controller._headers,
             )
 
     @staticmethod
@@ -449,7 +433,7 @@ class ProvisioningAPI:
             "portal": self._collect_class_caches(Portal),
         }
 
-        return web.json_response(data=response, status=200, headers=self._acao_headers)
+        return web.json_response(data=response, status=200, headers=self.controller._acao_headers)
 
     async def update_app(self, request: web.Request) -> dict:
         """
@@ -467,6 +451,7 @@ class ProvisioningAPI:
         """
         # Obtain the data from the request
         data = await self._get_body(request)
+        self.log.warning("This endpoint is deprecated. Use /v2/app/{admin_user} instead")
 
         if not data:
             return web.HTTPBadRequest(
@@ -477,7 +462,7 @@ class ProvisioningAPI:
                         }
                     }
                 ),
-                headers=self._headers,
+                headers=self.controller._headers,
             )
 
         # Separate the data from the request
@@ -495,7 +480,7 @@ class ProvisioningAPI:
                         }
                     }
                 ),
-                headers=self._headers,
+                headers=self.controller._headers,
             )
 
         # Check if the user is registered
@@ -510,7 +495,7 @@ class ProvisioningAPI:
                         }
                     }
                 ),
-                headers=self._headers,
+                headers=self.controller._headers,
             )
 
         # Check if the whatsapp_app is registered
@@ -531,7 +516,7 @@ class ProvisioningAPI:
                         }
                     }
                 ),
-                headers=self._headers,
+                headers=self.controller._headers,
             )
 
         # Update the whatsapp_app with the send values
@@ -566,7 +551,123 @@ class ProvisioningAPI:
                     },
                 }
             ),
-            headers=self._headers,
+            headers=self.controller._headers,
+        )
+
+    async def update_app_identifiers(self, request: web.Request) -> web.Response:
+        """
+        Update a WhatsappApplication and cascade related table changes.
+
+        Parameters
+        ----------
+        request: web.Request
+            The request that contains the admin_user path param and update body.
+        """
+        self.check_token(request)
+
+        try:
+            admin_user = request.match_info["admin_user"]
+        except KeyError as err:
+            raise self._missing_key_error(err)
+
+        try:
+            data = await request.json()
+        except JSONDecodeError as error:
+            self.log.error(f"Malformed JSON {error}")
+            raise web.HTTPUnprocessableEntity(
+                text=json.dumps({"detail": {"message": f"Malformed JSON {error}"}}),
+                headers=self.controller._headers,
+            )
+
+        if not data:
+            raise web.HTTPBadRequest(
+                text=json.dumps({"detail": {"message": "The request body must not be empty"}}),
+                headers=self.controller._headers,
+            )
+
+        allowed_fields = {"business_id", "wb_phone_id", "name", "page_access_token"}
+        updates: dict[str, str] = {}
+        for field in allowed_fields:
+            if field not in data:
+                continue
+            value = data[field]
+            if not isinstance(value, str) or not value.strip():
+                return web.HTTPBadRequest(
+                    text=json.dumps(
+                        {
+                            "detail": {
+                                "message": f"Field '{field}' must be a non-empty string",
+                            }
+                        }
+                    ),
+                    headers=self.controller._headers,
+                )
+            updates[field] = value.strip()
+
+        if not updates:
+            return web.HTTPBadRequest(
+                text=json.dumps({"detail": {"message": "The request body must not be empty"}}),
+                headers=self.controller._headers,
+            )
+
+        user: User | None = await User.get_by_mxid(mxid=admin_user, create=False)
+        if not user:
+            return web.HTTPNotFound(
+                text=json.dumps(
+                    {
+                        "detail": {
+                            "data": {"username": admin_user},
+                            "message": "The user %(username)s is not registered",
+                        }
+                    }
+                ),
+                headers=self.controller._headers,
+            )
+
+        whatsapp_app: WhatsappApplication | None = await WhatsappApplication.get_by_admin_user(
+            admin_user=admin_user
+        )
+
+        if not whatsapp_app:
+            return web.HTTPNotFound(
+                text=json.dumps(
+                    {
+                        "detail": {
+                            "data": {"username": admin_user},
+                            "message": (
+                                "The Whatsapp application with user %(username)s "
+                                "is not registered"
+                            ),
+                        }
+                    }
+                ),
+                headers=self.controller._headers,
+            )
+
+        try:
+            updated_app: WhatsappApplication = await self.controller.update_app(
+                whatsapp_app=whatsapp_app,
+                updates=updates,
+                admin_user=admin_user,
+            )
+        except Exception as e:
+            return web.HTTPBadRequest(
+                text=json.dumps(e),
+                headers=self.controller._headers,
+            )
+
+        return web.json_response(
+            data={
+                "message": "WhatsApp application updated successfully",
+                "data": {
+                    "business_id": updated_app.business_id,
+                    "wb_phone_id": updated_app.wb_phone_id,
+                    "name": updated_app.name,
+                    "admin_user": updated_app.admin_user,
+                },
+            },
+            status=200,
+            headers=self.controller._headers,
         )
 
     async def get_template(self, request: web.Request) -> dict:
@@ -600,7 +701,7 @@ class ProvisioningAPI:
                         }
                     }
                 ),
-                headers=self._headers,
+                headers=self.controller._headers,
             )
 
         # Get the company application and check if the whatsapp_app is registered
@@ -619,7 +720,7 @@ class ProvisioningAPI:
                         }
                     }
                 ),
-                headers=self._headers,
+                headers=self.controller._headers,
             )
 
         # Get the url of the Whatsapp Api Cloud
@@ -639,7 +740,7 @@ class ProvisioningAPI:
             self.log.debug(f"Get the templates {response}")
             return web.HTTPOk(
                 text=json.dumps(response),
-                headers=self._headers,
+                headers=self.controller._headers,
             )
         else:
             self.log.error(f"Error getting the templates: {response}")
@@ -659,7 +760,7 @@ class ProvisioningAPI:
                         }
                     }
                 ),
-                headers=self._headers,
+                headers=self.controller._headers,
             )
 
     async def template_approval(self, request: web.Request) -> dict:
@@ -687,7 +788,7 @@ class ProvisioningAPI:
                         "message": "The request does not have data",
                     }
                 ),
-                headers=self._headers,
+                headers=self.controller._headers,
             )
 
         try:
@@ -715,7 +816,7 @@ class ProvisioningAPI:
             self.log.debug("The template has been sent to approved")
             return web.HTTPOk(
                 text=json.dumps(response),
-                headers=self._headers,
+                headers=self.controller._headers,
             )
         else:
             error = response.get("error", {})
@@ -733,7 +834,7 @@ class ProvisioningAPI:
                         "message": message,
                     }
                 ),
-                headers=self._headers,
+                headers=self.controller._headers,
             )
 
     async def _get_puppet(self, number: WSPhoneID, app_business_id: WsBusinessID) -> Puppet:
@@ -753,7 +854,9 @@ class ProvisioningAPI:
         try:
             number = normalize_number(number).replace("+", "")
         except Exception as e:
-            raise web.HTTPBadRequest(text=json.dumps({"error": str(e)}), headers=self._headers)
+            raise web.HTTPBadRequest(
+                text=json.dumps({"error": str(e)}), headers=self.controller._headers
+            )
 
         puppet: Puppet = await Puppet.get_by_phone_id(
             phone_id=number, app_business_id=app_business_id
@@ -802,7 +905,7 @@ class ProvisioningAPI:
             {
                 "room_id": portal.mxid,
             },
-            headers=self._acao_headers,
+            headers=self.controller._acao_headers,
             status=201 if just_created else 200,
         )
 
@@ -858,7 +961,7 @@ class ProvisioningAPI:
                 return web.json_response(
                     data={"detail": "variables must be a list"},
                     status=400,
-                    headers=self._acao_headers,
+                    headers=self.controller._acao_headers,
                 )
 
         if button_variables:
@@ -866,7 +969,7 @@ class ProvisioningAPI:
                 return web.json_response(
                     data={"detail": "button_variables must be a list"},
                     status=400,
-                    headers=self._acao_headers,
+                    headers=self.controller._acao_headers,
                 )
 
             variables = [*variables, *button_variables]
@@ -876,7 +979,7 @@ class ProvisioningAPI:
                 return web.json_response(
                     data={"detail": "header_variables must be a list"},
                     status=400,
-                    headers=self._acao_headers,
+                    headers=self.controller._acao_headers,
                 )
 
             variables = [*header_variables, *variables]
@@ -885,14 +988,14 @@ class ProvisioningAPI:
             return web.json_response(
                 data={"detail": "room_id not entered"},
                 status=400,
-                headers=self._acao_headers,
+                headers=self.controller._acao_headers,
             )
 
         elif not template_name:
             return web.json_response(
                 data={"detail": "template_name not entered"},
                 status=400,
-                headers=self._acao_headers,
+                headers=self.controller._acao_headers,
             )
 
         portal: Portal = await Portal.get_by_mxid(room_id)
@@ -900,7 +1003,7 @@ class ProvisioningAPI:
             return web.json_response(
                 data={"detail": f"Failed to get room {room_id}"},
                 status=400,
-                headers=self._acao_headers,
+                headers=self.controller._acao_headers,
             )
 
         try:
@@ -913,26 +1016,28 @@ class ProvisioningAPI:
                 user=user,
             )
 
-            return web.json_response(data=response, headers=self._acao_headers, status=status)
+            return web.json_response(
+                data=response, headers=self.controller._acao_headers, status=status
+            )
         except ValueError as e:
             return web.json_response(
                 data={"detail": str(e)},
                 status=400,
-                headers=self._acao_headers,
+                headers=self.controller._acao_headers,
             )
         except IndexError as e:
             self.log.error(f"Error replacing the variables: {e}")
             return web.json_response(
                 data={"detail": f"Error replacing the variables, maybe some variable is missing"},
                 status=400,
-                headers=self._acao_headers,
+                headers=self.controller._acao_headers,
             )
         except Exception as e:
             self.log.error(f"Error getting the template message: {e}")
             return web.json_response(
                 data={"detail": f"Failed to get template {template_name}: {e}"},
                 status=400,
-                headers=self._acao_headers,
+                headers=self.controller._acao_headers,
             )
 
     async def delete_template(self, request: web.Request) -> web.Response:
@@ -965,7 +1070,7 @@ class ProvisioningAPI:
                     "message": "The template_name or app_business_id or template_id was not provided"
                 },
                 status=400,
-                headers=self._acao_headers,
+                headers=self.controller._acao_headers,
             )
 
         # Get the company application and check if the whatsapp_app is registered
@@ -984,7 +1089,7 @@ class ProvisioningAPI:
                         "message": "The business_id %(app_business_id)s is not registered",
                     }
                 ),
-                headers=self._headers,
+                headers=self.controller._headers,
             )
 
         # Get the url of the Whatsapp Api Cloud and set the headers
@@ -1010,7 +1115,7 @@ class ProvisioningAPI:
             self.log.debug("The template has been deleted")
             return web.HTTPOk(
                 text=json.dumps(response),
-                headers=self._headers,
+                headers=self.controller._headers,
             )
         else:
             error = response.get("error", {})
@@ -1028,7 +1133,7 @@ class ProvisioningAPI:
                         "message": message,
                     }
                 ),
-                headers=self._headers,
+                headers=self.controller._headers,
             )
 
     async def set_power_level(self, request: web.Request) -> web.Response:
@@ -1062,7 +1167,7 @@ class ProvisioningAPI:
                     "detail": {"message": "The user_id or power_level or room_id was not provided"}
                 },
                 status=400,
-                headers=self._acao_headers,
+                headers=self.controller._acao_headers,
             )
 
         # Get the portal by room_id
@@ -1071,7 +1176,7 @@ class ProvisioningAPI:
             return web.json_response(
                 data={"detail": {"message": f"Failed to get portal {room_id}"}},
                 status=400,
-                headers=self._acao_headers,
+                headers=self.controller._acao_headers,
             )
         # Get the power level of the room
         try:
@@ -1085,7 +1190,7 @@ class ProvisioningAPI:
                     }
                 },
                 status=400,
-                headers=self._acao_headers,
+                headers=self.controller._acao_headers,
             )
 
         # Change the power level of the user
@@ -1106,7 +1211,7 @@ class ProvisioningAPI:
                     }
                 },
                 status=400,
-                headers=self._acao_headers,
+                headers=self.controller._acao_headers,
             )
 
         self.log.debug(f"Set power level for user {user_id} in portal {room_id}")
@@ -1117,7 +1222,7 @@ class ProvisioningAPI:
                 }
             },
             status=200,
-            headers=self._acao_headers,
+            headers=self.controller._acao_headers,
         )
 
     async def set_relay(self, request: web.Request) -> web.Response:
@@ -1145,7 +1250,7 @@ class ProvisioningAPI:
             return web.json_response(
                 data={"detail": {"message": "The room_id was not provided"}},
                 status=400,
-                headers=self._acao_headers,
+                headers=self.controller._acao_headers,
             )
 
         # Get the portal by room_id
@@ -1155,7 +1260,7 @@ class ProvisioningAPI:
             return web.json_response(
                 data={"detail": {"message": f"Failed to get portal {room_id}"}},
                 status=400,
-                headers=self._acao_headers,
+                headers=self.controller._acao_headers,
             )
 
         user: User = await User.get_by_mxid(portal.relay_user_id, create=False)
@@ -1164,7 +1269,7 @@ class ProvisioningAPI:
             return web.json_response(
                 data={"detail": {"message": f"Failed to get user {portal.mxid}"}},
                 status=400,
-                headers=self._acao_headers,
+                headers=self.controller._acao_headers,
             )
 
         # Set the relay of the puppet
@@ -1179,7 +1284,7 @@ class ProvisioningAPI:
                     }
                 },
                 status=400,
-                headers=self._acao_headers,
+                headers=self.controller._acao_headers,
             )
 
         self.log.debug(f"Set relay for user {portal.mxid} in portal {room_id}")
@@ -1190,7 +1295,7 @@ class ProvisioningAPI:
                 }
             },
             status=200,
-            headers=self._acao_headers,
+            headers=self.controller._acao_headers,
         )
 
     async def validate_set_relay(self, request: web.Request) -> web.Response:
@@ -1216,7 +1321,7 @@ class ProvisioningAPI:
             return web.json_response(
                 data={"detail": {"message": "The room_id was not provided in the path"}},
                 status=400,
-                headers=self._acao_headers,
+                headers=self.controller._acao_headers,
             )
 
         # Get the portal by room_id
@@ -1232,7 +1337,7 @@ class ProvisioningAPI:
                     },
                 },
                 status=400,
-                headers=self._acao_headers,
+                headers=self.controller._acao_headers,
             )
 
         if not portal.relay_user_id or portal.relay_user_id != user.mxid:
@@ -1245,7 +1350,7 @@ class ProvisioningAPI:
                     },
                 },
                 status=400,
-                headers=self._acao_headers,
+                headers=self.controller._acao_headers,
             )
 
         return web.json_response(
@@ -1256,7 +1361,7 @@ class ProvisioningAPI:
                 },
             },
             status=200,
-            headers=self._acao_headers,
+            headers=self.controller._acao_headers,
         )
 
     async def business_data(self, business_id: str, page_access_token: str) -> dict:
@@ -1392,7 +1497,7 @@ class ProvisioningAPI:
                     }
                 },
                 status=200,
-                headers=self._acao_headers,
+                headers=self.controller._acao_headers,
             )
 
         try:
@@ -1411,11 +1516,98 @@ class ProvisioningAPI:
                     }
                 },
                 status=200,
-                headers=self._acao_headers,
+                headers=self.controller._acao_headers,
             )
 
         return web.json_response(
             data={"detail": {"data": channel_status}},
             status=200,
-            headers=self._acao_headers,
+            headers=self.controller._acao_headers,
+        )
+
+    async def set_pin(self, request: web.Request) -> web.Response:
+        """
+        Set the pin for a user.
+
+        Parameters
+        ----------
+        request: web.Request
+            The request that contains the phone_id in the path and the pin in the body.
+        Returns
+        -------
+        JSON
+            The response with a success message or an error message
+        """
+        user, data = await self._get_user_and_body(request)
+
+        if data is None or not isinstance(data, dict):
+            self.log.error(f"No data provided for user {user.mxid}")
+            return web.json_response(
+                data={"detail": {"message": "No data provided"}},
+                status=400,
+                headers=self.controller._acao_headers,
+            )
+
+        if not data.get("pin"):
+            self.log.error(f"No pin provided for user {user.mxid}")
+            return web.json_response(
+                data={"detail": {"message": "No pin provided"}},
+                status=400,
+                headers=self.controller._acao_headers,
+            )
+
+        try:
+            WhatsappApplication.validate_pin(str(data["pin"]))
+        except ValueError:
+            return web.json_response(
+                data={"detail": {"message": "pin must be exactly 6 digits"}},
+                status=400,
+                headers=self.controller._acao_headers,
+            )
+
+        try:
+            phone_id = request.match_info["phone_id"]
+        except KeyError as e:
+            raise self._missing_key_error(e)
+
+        self.log.debug(f"Set pin for phone {phone_id} for user {user.mxid}")
+        whatsapp_app: WhatsappApplication | None = (
+            await WhatsappApplication.get_by_business_id_and_phone_id(
+                business_id=user.app_business_id, phone_id=phone_id
+            )
+        )
+
+        if whatsapp_app is None:
+            self.log.error(
+                f"WhatsApp application not found for phone {phone_id} and "
+                f"business {user.app_business_id}"
+            )
+            return web.json_response(
+                data={
+                    "detail": {
+                        "message": (
+                            f"WhatsApp application not found for phone {phone_id} and "
+                            f"business {user.app_business_id}"
+                        )
+                    }
+                },
+                status=400,
+                headers=self.controller._acao_headers,
+            )
+
+        # Set the pin for the phone
+        status, message = await self.controller.set_pin(
+            phone_id=phone_id,
+            pin=data["pin"],
+            page_access_token=whatsapp_app.page_access_token,
+        )
+
+        if status == 200:
+            whatsapp_app.pin = str(data["pin"])
+            await whatsapp_app.update()
+
+        return web.json_response(
+            data={"detail": {"message": message}},
+            status=status,
+            headers=self.controller._acao_headers,
         )

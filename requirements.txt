@@ -8,3 +8,4 @@ Markdown==3.6
 PyYAML==6.0.2
 pypdf==6.7.5
 cachetools==7.1.4
+pycryptodomex==3.21.0

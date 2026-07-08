@@ -1,13 +1,17 @@
+import base64
+
 from aiohttp import ClientSession
 from mautrix.bridge import Bridge
 from mautrix.types import RoomID, UserID
 
 from whatsapp import WhatsappHandler
+from whatsapp_matrix.util.crypto import migrate_encrypt_existing_data
 
 from . import commands
 from .config import Config
 from .db import init as init_db
 from .db import upgrade_table
+from .db.whatsapp_application import WhatsappApplication
 from .matrix import MatrixHandler
 from .portal import Portal
 from .puppet import Puppet
@@ -40,6 +44,12 @@ class WhatsappBridge(Bridge):
     def prepare_db(self) -> None:
         super().prepare_db()
         init_db(self.db)
+        if not "encryption.key" in self.config:
+            raise ValueError("encryption.key is not set")
+
+        key_str = self.config["encryption.key"]
+        if key_str:
+            WhatsappApplication.encryption_key = base64.b64decode(key_str)
 
     def prepare_bridge(self) -> None:
         self.meta = WhatsappHandler(loop=self.loop, config=self.config)
@@ -58,6 +68,9 @@ class WhatsappBridge(Bridge):
         self.add_startup_actions(Puppet.init_cls(self))
         Portal.init_cls(self)
         await super().start()
+        if WhatsappApplication.encryption_key:
+            async with self.db.acquire() as conn:
+                await migrate_encrypt_existing_data(conn, WhatsappApplication.encryption_key)
 
     def prepare_stop(self) -> None:
         self.log.debug("Stopping puppet syncers")
