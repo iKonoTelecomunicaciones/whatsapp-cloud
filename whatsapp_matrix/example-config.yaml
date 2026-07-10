@@ -41,6 +41,11 @@ appservice:
     bot_displayname: Whatsapp cloud bot
     bot_avatar: mxc://maunium.net/NeXNQarUbrlYBiPCpprYsRqr
 
+    # Username of the ghost user.
+    ghost_name: wb_ghost
+    # Display name of the ghost user.
+    ghost_displayname: Whatsapp ghost
+
     # Whether or not to receive ephemeral events via appservice transactions.
     # Requires MSC2409 support (i.e. Synapse 1.22+).
     # You should disable bridge -> sync_with_custom_puppets when this is enabled.
