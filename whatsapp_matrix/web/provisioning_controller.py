@@ -1,4 +1,5 @@
 from asyncio import AbstractEventLoop, get_event_loop
+import json
 from logging import Logger, getLogger
 
 from aiohttp import ClientSession
@@ -104,24 +105,28 @@ class ProvisioningController:
             existing = await WhatsappApplication.get_by_business_id(updates["business_id"])
             if existing and existing.admin_user != admin_user:
                 raise Exception(
-                    {
-                        "detail": {
-                            "data": {"business_id": updates["business_id"]},
-                            "message": "business_id %(business_id)s is already registered",
+                    json.dumps(
+                        {
+                            "detail": {
+                                "data": {"business_id": updates["business_id"]},
+                                "message": "business_id %(business_id)s is already registered",
+                            }
                         }
-                    }
+                    )
                 )
 
         if "wb_phone_id" in updates and updates["wb_phone_id"] != whatsapp_app.wb_phone_id:
             existing = await WhatsappApplication.get_by_wb_phone_id(updates["wb_phone_id"])
             if existing and existing.admin_user != admin_user:
                 raise Exception(
-                    {
-                        "detail": {
-                            "data": {"wb_phone_id": updates["wb_phone_id"]},
-                            "message": "wb_phone_id %(wb_phone_id)s is already registered",
+                    json.dumps(
+                        {
+                            "detail": {
+                                "data": {"wb_phone_id": updates["wb_phone_id"]},
+                                "message": "wb_phone_id %(wb_phone_id)s is already registered",
+                            }
                         }
-                    }
+                    )
                 )
 
         old_business_id = whatsapp_app.business_id
@@ -151,7 +156,7 @@ class ProvisioningController:
             self.log.error(
                 "Failed to decrypt updated WhatsApp application data for %s", admin_user
             )
-            raise Exception({"detail": {"message": "Internal server error"}})
+            raise Exception(json.dumps({"detail": {"message": "Internal server error"}}))
 
     async def set_pin(
         self, phone_id: WSPhoneID, pin: str, page_access_token: str
@@ -174,6 +179,7 @@ class ProvisioningController:
             The status and message of the response.
         """
         url = f"{self.base_url}/{self.version}/{phone_id}"
+        self.log.debug(f"Setting pin for phone {phone_id} with url {url}")
         data = {"pin": pin}
         headers = {
             "Content-Type": "application/json",
@@ -182,6 +188,7 @@ class ProvisioningController:
 
         async with self.http.post(url, headers=headers, json=data) as response:
             if response.status == 200:
+                self.log.debug(f"Pin set successfully for phone {phone_id}")
                 return response.status, "Pin set successfully"
 
             self.log.error(f"Failed to set pin for phone {phone_id}: {await response.text()}")

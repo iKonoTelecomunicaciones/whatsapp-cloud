@@ -563,25 +563,31 @@ class ProvisioningAPI:
         request: web.Request
             The request that contains the admin_user path param and update body.
         """
-        self.check_token(request)
+        data = await self._get_body(request)
+
+        if not data:
+            self.log.critical("The request body must not be empty")
+            raise web.HTTPBadRequest(
+                text=json.dumps({"detail": {"message": "The request body must not be empty"}}),
+                headers=self.controller._headers,
+            )
 
         try:
             admin_user = request.match_info["admin_user"]
         except KeyError as err:
             raise self._missing_key_error(err)
 
-        try:
-            data = await request.json()
-        except JSONDecodeError as error:
-            self.log.error(f"Malformed JSON {error}")
-            raise web.HTTPUnprocessableEntity(
-                text=json.dumps({"detail": {"message": f"Malformed JSON {error}"}}),
-                headers=self.controller._headers,
-            )
-
-        if not data:
-            raise web.HTTPBadRequest(
-                text=json.dumps({"detail": {"message": "The request body must not be empty"}}),
+        user: User | None = await User.get_by_mxid(mxid=admin_user, create=False)
+        if not user:
+            return web.HTTPNotFound(
+                text=json.dumps(
+                    {
+                        "detail": {
+                            "data": {"username": admin_user},
+                            "message": "The user %(username)s is not registered",
+                        }
+                    }
+                ),
                 headers=self.controller._headers,
             )
 
@@ -606,20 +612,8 @@ class ProvisioningAPI:
 
         if not updates:
             return web.HTTPBadRequest(
-                text=json.dumps({"detail": {"message": "The request body must not be empty"}}),
-                headers=self.controller._headers,
-            )
-
-        user: User | None = await User.get_by_mxid(mxid=admin_user, create=False)
-        if not user:
-            return web.HTTPNotFound(
                 text=json.dumps(
-                    {
-                        "detail": {
-                            "data": {"username": admin_user},
-                            "message": "The user %(username)s is not registered",
-                        }
-                    }
+                    {"detail": {"message": "The request body has not data to update"}}
                 ),
                 headers=self.controller._headers,
             )
@@ -652,7 +646,7 @@ class ProvisioningAPI:
             )
         except Exception as e:
             return web.HTTPBadRequest(
-                text=json.dumps(e),
+                text=e.__str__(),
                 headers=self.controller._headers,
             )
 
@@ -667,7 +661,7 @@ class ProvisioningAPI:
                 },
             },
             status=200,
-            headers=self.controller._headers,
+            headers=self.controller._acao_headers,
         )
 
     async def get_template(self, request: web.Request) -> dict:
@@ -1570,7 +1564,6 @@ class ProvisioningAPI:
         except KeyError as e:
             raise self._missing_key_error(e)
 
-        self.log.debug(f"Set pin for phone {phone_id} for user {user.mxid}")
         whatsapp_app: WhatsappApplication | None = (
             await WhatsappApplication.get_by_business_id_and_phone_id(
                 business_id=user.app_business_id, phone_id=phone_id

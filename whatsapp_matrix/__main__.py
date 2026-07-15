@@ -70,7 +70,9 @@ class WhatsappBridge(Bridge):
         await super().start()
         if WhatsappApplication.encryption_key:
             async with self.db.acquire() as conn:
+                self.log.debug("Initiating migration to encrypt existing data")
                 await migrate_encrypt_existing_data(conn, WhatsappApplication.encryption_key)
+                self.log.debug("Migration to encrypt existing data completed")
 
     def prepare_stop(self) -> None:
         self.log.debug("Stopping puppet syncers")

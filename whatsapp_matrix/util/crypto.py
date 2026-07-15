@@ -65,4 +65,3 @@ async def migrate_encrypt_existing_data(conn: Connection, key: bytes) -> None:
             f"UPDATE wb_application SET {', '.join(set_parts)} WHERE business_id=$1",
             *values,
         )
-        log.info("Encrypted sensitive fields for wb_application %s", row["business_id"])
