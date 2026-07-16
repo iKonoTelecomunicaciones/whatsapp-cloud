@@ -1,5 +1,5 @@
-from asyncio import AbstractEventLoop, get_event_loop
 import json
+from asyncio import AbstractEventLoop, get_event_loop
 from logging import Logger, getLogger
 
 from aiohttp import ClientSession
