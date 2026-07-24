@@ -53,6 +53,7 @@ from whatsapp.interactive_message import (
 from whatsapp.types import WhatsappMessageID, WhatsappPhone, WsBusinessID
 from whatsapp_matrix.formatter.from_matrix import WhatsappFormatMedia, matrix_to_whatsapp
 from whatsapp_matrix.formatter.from_whatsapp import whatsapp_reply_to_matrix
+from whatsapp_matrix.room_sync_messages import RoomLock
 
 from .db import Message as DBMessage
 from .db import Portal as DBPortal
@@ -86,8 +87,6 @@ class Portal(DBPortal, BasePortal):
     session: ClientSession
 
     _main_intent: IntentAPI | None
-    _create_room_lock: dict[(WhatsappPhone, WsBusinessID), Lock] = {}
-    _send_lock: Lock
 
     def __init__(
         self,
@@ -101,7 +100,6 @@ class Portal(DBPortal, BasePortal):
     ) -> None:
         super().__init__(phone_id, app_business_id, mxid, relay_user_id, bsuid, puppet_id, id)
         BasePortal.__init__(self)
-        self._send_lock = Lock()
         self.log = self.log.getChild(self.phone_id or self.mxid)
         self._main_intent: IntentAPI = None
         self._relay_user = None
@@ -113,9 +111,6 @@ class Portal(DBPortal, BasePortal):
         self.whatsapp_client: WhatsappClient = WhatsappClient(
             config=self.config, session=self.session
         )
-
-        if not self._create_room_lock.get((phone_id, app_business_id)):
-            self._create_room_lock[(phone_id, app_business_id)] = Lock()
 
     @property
     def main_intent(self) -> IntentAPI:
@@ -207,44 +202,44 @@ class Portal(DBPortal, BasePortal):
         create: bool
             Variable that indicates if the portal it will be create if not exist.
         """
-        if not cls._create_room_lock.get((phone_id, app_business_id)):
-            cls._create_room_lock[(phone_id, app_business_id)] = Lock()
-
-        async with cls._create_room_lock[(phone_id, app_business_id)]:
-            try:
-                # Search if the phone_id is in the cache
-                return cls.by_app_and_phone_id[(phone_id, app_business_id)]
-            except KeyError:
-                pass
-            # Search if the phone_id is in the database
-            portal = cast(
-                cls,
-                await super().get_by_phone_id(phone_id=phone_id, app_business_id=app_business_id),
-            )
-            if portal:
-                await portal.postinit()
-                return portal
-
-            # If the phone_id is not in the database, it is created if the variable create is True
-            if create:
+        with RoomLock((phone_id, app_business_id)) as room_lock:
+            async with room_lock:
                 try:
-                    portal = cls(phone_id=phone_id, app_business_id=app_business_id)
-                    await portal.insert()
-                except UniqueViolationError as e:
-                    cls.log.exception(f"Failed to create portal {phone_id}: {e}")
-                    portal = cast(
-                        cls,
-                        await super().get_by_phone_id(
-                            phone_id=phone_id, app_business_id=app_business_id
-                        ),
-                    )
+                    # Search if the phone_id is in the cache
+                    return cls.by_app_and_phone_id[(phone_id, app_business_id)]
+                except KeyError:
+                    pass
+                # Search if the phone_id is in the database
+                portal = cast(
+                    cls,
+                    await super().get_by_phone_id(
+                        phone_id=phone_id, app_business_id=app_business_id
+                    ),
+                )
+                if portal:
+                    await portal.postinit()
+                    return portal
 
-                if not portal:
-                    cls.log.error(f"Failed to create portal {phone_id}")
-                    return None
+                # If the phone_id is not in the database, it is created if the variable create is True
+                if create:
+                    try:
+                        portal = cls(phone_id=phone_id, app_business_id=app_business_id)
+                        await portal.insert()
+                    except UniqueViolationError as e:
+                        cls.log.exception(f"Failed to create portal {phone_id}: {e}")
+                        portal = cast(
+                            cls,
+                            await super().get_by_phone_id(
+                                phone_id=phone_id, app_business_id=app_business_id
+                            ),
+                        )
 
-                await portal.postinit()
-                return portal
+                    if not portal:
+                        cls.log.error(f"Failed to create portal {phone_id}")
+                        return None
+
+                    await portal.postinit()
+                    return portal
 
             return None
 
@@ -298,17 +293,18 @@ class Portal(DBPortal, BasePortal):
             Show and error if the portal does not create.
         """
         # Validate if the matrix room exists, if not, it is created
-        async with self._create_room_lock[(self.phone_id, self.app_business_id)]:
-            if self.mxid:
-                return self.mxid
-            try:
-                self.phone_id = sender.wa_id
-                return await self._create_matrix_room(
-                    source=source, sender=sender, invitees=invitees
-                )
-            except Exception as error:
-                self.log.exception(f"Failed to create portal: {error}")
-                return None
+        with RoomLock((self.phone_id, self.app_business_id)) as room_lock:
+            async with room_lock:
+                if self.mxid:
+                    return self.mxid
+                try:
+                    self.phone_id = sender.wa_id
+                    return await self._create_matrix_room(
+                        source=source, sender=sender, invitees=invitees
+                    )
+                except Exception as error:
+                    self.log.exception(f"Failed to create portal: {error}")
+                    return None
 
     async def _create_matrix_room(
         self, source: User, sender: WhatsappContacts, invitees: list[str] | None = None
@@ -389,7 +385,7 @@ class Portal(DBPortal, BasePortal):
         self.by_mxid[self.mxid] = self
 
         # Obtain the puppet of the user and update the information
-        puppet: Puppet = await Puppet.get_by_phone_id(self.phone_id)
+        puppet: Puppet = await Puppet.get_by_identifier(phone_id=self.phone_id, bsuid=self.bsuid)
 
         await puppet.update_info(sender)
 
@@ -815,15 +811,16 @@ class Portal(DBPortal, BasePortal):
             self.log.error("No mxid, ignoring read")
             return
 
-        async with self._send_lock:
-            msg = await DBMessage.get_by_whatsapp_message_id(message_id)
-            if msg:
-                try:
-                    await self.main_intent.mark_read(self.mxid, msg.event_mxid)
-                except Exception as e:
-                    self.log.error(f"Error marking message as read in room {self.mxid}: {e}")
-            else:
-                self.log.debug(f"Ignoring the null message")
+        with RoomLock(self.mxid) as room_lock:
+            async with room_lock:
+                msg = await DBMessage.get_by_whatsapp_message_id(message_id)
+                if msg:
+                    try:
+                        await self.main_intent.mark_read(self.mxid, msg.event_mxid)
+                    except Exception as e:
+                        self.log.error(f"Error marking message as read in room {self.mxid}: {e}")
+                else:
+                    self.log.debug(f"Ignoring the null message")
 
     async def handle_whatsapp_reaction(
         self, reaction_event: WhatsappEvent, sender: WhatsappContacts
@@ -842,59 +839,57 @@ class Portal(DBPortal, BasePortal):
         if not self.mxid:
             return
 
-        async with self._send_lock:
-            data_reaction: WhatsappReaction = reaction_event.entry.changes.value.messages.reaction
-            msg_id = data_reaction.message_id
-            msg = await DBMessage.get_by_whatsapp_message_id(whatsapp_message_id=msg_id)
+        data_reaction: WhatsappReaction = reaction_event.entry.changes.value.messages.reaction
+        msg_id = data_reaction.message_id
+        msg = await DBMessage.get_by_whatsapp_message_id(whatsapp_message_id=msg_id)
 
-            if msg:
-                if not data_reaction.emoji:
-                    reaction_to_remove = await DBReaction.get_by_whatsapp_message_id(
-                        msg.whatsapp_message_id, sender
+        if msg:
+            if not data_reaction.emoji:
+                reaction_to_remove = await DBReaction.get_by_whatsapp_message_id(
+                    msg.whatsapp_message_id, sender
+                )
+
+                if reaction_to_remove:
+                    await DBReaction.delete_by_event_mxid(
+                        reaction_to_remove.event_mxid, self.mxid, sender
                     )
-
-                    if reaction_to_remove:
-                        await DBReaction.delete_by_event_mxid(
-                            reaction_to_remove.event_mxid, self.mxid, sender
-                        )
-                        has_been_sent = await self.main_intent.redact(
-                            self.mxid, reaction_to_remove.event_mxid
-                        )
-                    return
-                else:
-                    message_with_reaction = await DBReaction.get_by_whatsapp_message_id(
-                        msg.whatsapp_message_id, sender
+                    has_been_sent = await self.main_intent.redact(
+                        self.mxid, reaction_to_remove.event_mxid
                     )
-
-                    if message_with_reaction:
-                        await DBReaction.delete_by_event_mxid(
-                            message_with_reaction.event_mxid, self.mxid, sender
-                        )
-                        await self.main_intent.redact(self.mxid, message_with_reaction.event_mxid)
-
-                    try:
-                        has_been_sent = await self.main_intent.react(
-                            self.mxid,
-                            msg.event_mxid,
-                            data_reaction.emoji,
-                        )
-                    except Exception as e:
-                        self.log.exception(f"Error sending reaction: {e}")
-                        await self.main_intent.send_notice(self.mxid, "Error sending reaction")
-                        return
-
-            else:
-                self.log.error(f"Message id not found, mid: {msg_id}")
                 return
+            else:
+                message_with_reaction = await DBReaction.get_by_whatsapp_message_id(
+                    msg.whatsapp_message_id, sender
+                )
 
-            await DBReaction(
-                event_mxid=has_been_sent,
-                room_id=self.mxid,
-                sender=sender,
-                whatsapp_message_id=msg.whatsapp_message_id,
-                reaction=data_reaction.emoji,
-                created_at=datetime.now(),
-            ).insert()
+                if message_with_reaction:
+                    await DBReaction.delete_by_event_mxid(
+                        message_with_reaction.event_mxid, self.mxid, sender
+                    )
+                    await self.main_intent.redact(self.mxid, message_with_reaction.event_mxid)
+
+                try:
+                    has_been_sent = await self.main_intent.react(
+                        self.mxid,
+                        msg.event_mxid,
+                        data_reaction.emoji,
+                    )
+                except Exception as e:
+                    self.log.exception(f"Error sending reaction: {e}")
+                    await self.main_intent.send_notice(self.mxid, "Error sending reaction")
+                    return
+
+                await DBReaction(
+                    event_mxid=has_been_sent,
+                    room_id=self.mxid,
+                    sender=sender,
+                    whatsapp_message_id=msg.whatsapp_message_id,
+                    reaction=data_reaction.emoji,
+                    created_at=datetime.now(),
+                ).insert()
+        else:
+            self.log.error(f"Message id not found, mid: {msg_id}")
+            return
 
     async def handle_whatsapp_echo(self, user: User, echo_message: WhatsappMessageEcho) -> None:
         """
@@ -992,58 +987,59 @@ class Portal(DBPortal, BasePortal):
         errors = messages.errors
         message_id = messages.id
 
-        async with self._send_lock:
-            for err in errors:
-                self.log.error(f"Whatsapp API sent an error: {err}")
+        for err in errors:
+            self.log.error(f"Whatsapp API sent an error: {err}")
 
-                if not self.mxid:
-                    self.log.error(
-                        f"Not portal found for phone_id {self.phone_id} and app_business_id "
-                        f"{self.app_business_id} to send the error notice, creating portal... "
-                    )
-
-                    if not await self.create_matrix_room(source=source, sender=sender):
-                        self.log.error(
-                            f"Failed to create a matrix room for phone_id {self.phone_id} and "
-                            f"app_business_id {self.app_business_id} to send the error notice."
-                        )
-                        return
-
-                message = (
-                    f"Whatsapp API returned an error.\n Title: {err.title}, message: {err.message}"
+            if not self.mxid:
+                self.log.error(
+                    f"Not portal found for phone_id {self.phone_id} and app_business_id "
+                    f"{self.app_business_id} to send the error notice, creating portal... "
                 )
 
-                # Error code 131060 means the message is currently unavailable. It typically occurs
-                # when a WhatsApp user messages a business for the first time.
-                if err.code == 131060 and "unavailable" in err.message.lower():
-                    message = self.convert_text_message(messages.text.body)
-                    event_mxid = await self.az.intent.send_message(self.mxid, message)
-                    # Save the message to database
-                    await DBMessage(
-                        event_mxid=event_mxid,
-                        sender=source.mxid,
-                        whatsapp_message_id=message_id,
-                        portal_id=self.id,
-                        created_at=datetime.now(),
-                    ).insert()
+                if not await self.create_matrix_room(source=source, sender=sender):
+                    self.log.error(
+                        f"Failed to create a matrix room for phone_id {self.phone_id} and "
+                        f"app_business_id {self.app_business_id} to send the error notice."
+                    )
+                    return
 
-                    continue
+            message = (
+                f"Whatsapp API returned an error.\n Title: {err.title}, message: {err.message}"
+            )
 
-                # Error code 131051 is received when cloud API does not support some message type.
-                if err.code == 131051 and messages.unsupported:
-                    if messages.unsupported.type == "video_note":
-                        message = (
-                            "Video notes are not supported in Whatsapp Cloud API. "
-                            "Please ask the user to send a regular video instead."
-                        )
-                    if messages.unsupported.type == "unknown":
-                        message = (
-                            "The message type sent is not supported in Whatsapp Cloud API. "
-                            "Perhaps it is an edit or a message with unsupported content. "
-                            "Please ask the user to send a supported message type."
-                        )
+            # Error code 131060 means the message is currently unavailable. It typically occurs
+            # when a WhatsApp user messages a business for the first time.
+            if err.code == 131060 and "unavailable" in err.message.lower():
+                message = self.convert_text_message(messages.text.body)
+                event_mxid = await self.az.intent.send_message(self.mxid, message)
+                # Save the message to database
+                await DBMessage(
+                    event_mxid=event_mxid,
+                    room_id=self.mxid,
+                    phone_id=err.to,  # The recipient phone
+                    sender=source.mxid,
+                    whatsapp_message_id=message_id,
+                    app_business_id=self.app_business_id,
+                    created_at=datetime.now(),
+                ).insert()
 
-                await self.main_intent.send_notice(self.mxid, message)
+                continue
+
+            # Error code 131051 is received when cloud API does not support some message type.
+            if err.code == 131051 and messages.unsupported:
+                if messages.unsupported.type == "video_note":
+                    message = (
+                        "Video notes are not supported in Whatsapp Cloud API. "
+                        "Please ask the user to send a regular video instead."
+                    )
+                if messages.unsupported.type == "unknown":
+                    message = (
+                        "The message type sent is not supported in Whatsapp Cloud API. "
+                        "Perhaps it is an edit or a message with unsupported content. "
+                        "Please ask the user to send a supported message type."
+                    )
+
+            await self.main_intent.send_notice(self.mxid, message)
 
     async def get_media(self, mxc: str) -> tuple[bytes, str]:
         """

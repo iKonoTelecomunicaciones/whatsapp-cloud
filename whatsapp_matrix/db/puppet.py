@@ -45,18 +45,39 @@ class Puppet:
 
     async def update(self) -> None:
         q = """
-            UPDATE puppet SET display_name=$2, custom_mxid=$3, username=$4
-            WHERE phone_id=$1
+            UPDATE puppet SET phone_id=$1, display_name=$2, username=$4
+            WHERE custom_mxid=$3
         """
         await self.db.execute(q, *self._values)
 
     @classmethod
-    async def get_by_phone_id(cls, phone_id: str) -> Puppet | None:
+    async def get_by_identifier(cls, identifier: str) -> Puppet | None:
         q = """
             SELECT id, phone_id, display_name, custom_mxid, username
-            FROM puppet WHERE phone_id=$1
+            FROM puppet WHERE custom_mxid = $1
         """
-        row = await cls.db.fetchrow(q, phone_id)
+        row = await cls.db.fetchrow(q, identifier)
+        if not row:
+            return None
+        return cls._from_row(row)
+
+    @classmethod
+    async def get_by_id(cls, id: int) -> Puppet | None:
+        """
+        Get the puppet by id.
+
+        Parameters
+        ----------
+        id : int
+            The id of the puppet.
+
+        Returns
+        -------
+        Puppet | None
+            The puppet with the given id, or None if it doesn't exist.
+        """
+        q = f"SELECT id, {cls._columns} FROM puppet WHERE id = $1"
+        row = await cls.db.fetchrow(q, id)
         if not row:
             return None
         return cls._from_row(row)
