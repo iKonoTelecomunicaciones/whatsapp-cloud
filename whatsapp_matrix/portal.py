@@ -272,7 +272,9 @@ class Portal(DBPortal, BasePortal):
                 if create:
                     try:
                         if phone_id:
-                            portal = cls(phone_id=phone_id, bsuid=bsuid, app_business_id=app_business_id)
+                            portal = cls(
+                                phone_id=phone_id, bsuid=bsuid, app_business_id=app_business_id
+                            )
                         else:
                             portal = cls(bsuid=bsuid, app_business_id=app_business_id)
                         await portal.insert()
