@@ -745,6 +745,9 @@ class ProvisioningAPI:
         number: str
             The number of the user
 
+        app_business_id: WsBusinessID
+            The app_business_id of the app
+
         Returns
         -------
         Puppet
@@ -755,7 +758,7 @@ class ProvisioningAPI:
         except Exception as e:
             raise web.HTTPBadRequest(text=json.dumps({"error": str(e)}), headers=self._headers)
 
-        puppet: Puppet = await Puppet.get_by_phone_id(phone_id=number)
+        puppet: Puppet = await Puppet.get_by_identifier(phone_id=number, bsuid=None)
 
         return puppet
 
@@ -779,8 +782,8 @@ class ProvisioningAPI:
         puppet: Puppet = await self._get_puppet(
             number=request.match_info["number"], app_business_id=user.app_business_id
         )
-        portal: Portal = await Portal.get_by_app_and_phone_id(
-            phone_id=puppet.phone_id, app_business_id=user.app_business_id
+        portal: Portal = await Portal.get_by_app_and_identifier(
+            phone_id=puppet.phone_id, bsuid=puppet.bsuid, app_business_id=user.app_business_id
         )
 
         # If the portal is not created, create it
