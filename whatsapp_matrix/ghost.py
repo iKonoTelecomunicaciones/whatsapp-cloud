@@ -11,7 +11,7 @@ from whatsapp_matrix.config import Config
 
 class Ghost:
     loop: AbstractEventLoop
-    log: Logger = getLogger()
+    log: Logger = getLogger("whatsapp.ghost")
 
     def __init__(
         self,
@@ -23,7 +23,6 @@ class Ghost:
     ) -> None:
         self.config = config
         self.loop = loop or get_event_loop()
-        self.log = getLogger("whatsapp.ghost")
         self.mxid = mxid
         self.api = AppServiceAPI(
             base_url=URL(self.config["homeserver.address"]),

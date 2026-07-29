@@ -44,7 +44,7 @@ appservice:
     # Username of the ghost user.
     ghost_name: wb_ghost
     # Display name of the ghost user.
-    ghost_displayname: Whatsapp ghost
+    ghost_displayname: Whatsapp Ghost
 
     # Whether or not to receive ephemeral events via appservice transactions.
     # Requires MSC2409 support (i.e. Synapse 1.22+).

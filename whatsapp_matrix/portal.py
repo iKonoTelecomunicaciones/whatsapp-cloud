@@ -163,14 +163,13 @@ class Portal(DBPortal, BasePortal):
         )
 
         cls.log.debug(f"Initializing ghost with MXID: {ghost_mxid}")
-        ghost = Ghost(
+        cls.ghost = Ghost(
             ghost_mxid,
             cls.config,
             cls.az.intent.state_store,
             cls.session,
             cls.loop,
         )
-        cls.ghost = ghost
         await cls.ghost.create()
 
     @classmethod
@@ -981,11 +980,10 @@ class Portal(DBPortal, BasePortal):
         """
         # Validate if the matrix room exists, if not, it is created
         try:
-            ghost = self.ghost
             if not await self.create_matrix_room(
                 source=user,
                 sender=WhatsappContacts(wa_id=echo_message.to, profile=None),
-                invitees=[user.mxid, self.az.bot_mxid, ghost.mxid],
+                invitees=[user.mxid, self.az.bot_mxid, self.ghost.mxid],
                 message=echo_message,
             ):
                 self.log.error(
@@ -995,11 +993,12 @@ class Portal(DBPortal, BasePortal):
                 return
         except Exception as e:
             self.log.error(f"Error creating matrix room, aborting handle echo: {e}")
+            return
 
         users = await self.main_intent.get_joined_members(room_id=self.mxid)
 
-        if ghost.mxid not in users:
-            await ghost.invite(self.mxid, reason="Inviting ghost user to the portal")
+        if self.ghost.mxid not in users:
+            await self.ghost.invite(self.mxid, reason="Inviting ghost user to the portal")
 
         whatsapp_message_type = echo_message.type
         whatsapp_message_id = echo_message.id
@@ -1030,10 +1029,10 @@ class Portal(DBPortal, BasePortal):
 
         try:
             # Send the message to Matrix using the bot user
-            event_mxid = await ghost.intent.send_message(self.mxid, content_attachment)
+            event_mxid = await self.ghost.intent.send_message(self.mxid, content_attachment)
 
             if caption:
-                await ghost.intent.send_notice(self.mxid, caption)
+                await self.ghost.intent.send_notice(self.mxid, caption)
 
             # Save the message to database
             await DBMessage(
