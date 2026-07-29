@@ -53,6 +53,7 @@ from whatsapp.types import WhatsappMessageID, WhatsappPhone, WsBusinessID
 from whatsapp_matrix.cache_manager import CacheManager
 from whatsapp_matrix.formatter.from_matrix import WhatsappFormatMedia, matrix_to_whatsapp
 from whatsapp_matrix.formatter.from_whatsapp import whatsapp_reply_to_matrix
+from whatsapp_matrix.ghost import Ghost
 from whatsapp_matrix.room_sync_messages import RoomLock
 
 from .db import Message as DBMessage
@@ -85,7 +86,7 @@ class Portal(DBPortal, BasePortal):
     az: AppService
     private_chat_portal_whatsapp: bool
     session: ClientSession
-
+    ghost: Ghost
     _main_intent: IntentAPI | None
 
     def __init__(
@@ -153,6 +154,23 @@ class Portal(DBPortal, BasePortal):
                 "avatar_url": None,
             },
         }
+
+    @classmethod
+    async def init_ghost(cls) -> None:
+        ghost_mxid = Ghost.get_mxid(
+            name=cls.config["appservice.ghost_name"],
+            domain=cls.config["homeserver.domain"],
+        )
+
+        cls.log.debug(f"Initializing ghost with MXID: {ghost_mxid}")
+        cls.ghost = Ghost(
+            ghost_mxid,
+            cls.config,
+            cls.az.intent.state_store,
+            cls.session,
+            cls.loop,
+        )
+        await cls.ghost.create()
 
     @classmethod
     def init_cls(cls, bridge: "WhatsappBridge") -> None:
@@ -965,7 +983,7 @@ class Portal(DBPortal, BasePortal):
             if not await self.create_matrix_room(
                 source=user,
                 sender=WhatsappContacts(wa_id=echo_message.to, profile=None),
-                invitees=[user.mxid, self.az.bot_mxid],
+                invitees=[user.mxid, self.az.bot_mxid, self.ghost.mxid],
                 message=echo_message,
             ):
                 self.log.error(
@@ -975,6 +993,12 @@ class Portal(DBPortal, BasePortal):
                 return
         except Exception as e:
             self.log.error(f"Error creating matrix room, aborting handle echo: {e}")
+            return
+
+        users = await self.main_intent.get_joined_members(room_id=self.mxid)
+
+        if self.ghost.mxid not in users:
+            await self.ghost.invite(self.mxid, reason="Inviting ghost user to the portal")
 
         whatsapp_message_type = echo_message.type
         whatsapp_message_id = echo_message.id
@@ -1005,10 +1029,10 @@ class Portal(DBPortal, BasePortal):
 
         try:
             # Send the message to Matrix using the bot user
-            event_mxid = await self.az.intent.send_message(self.mxid, content_attachment)
+            event_mxid = await self.ghost.intent.send_message(self.mxid, content_attachment)
 
             if caption:
-                await self.az.intent.send_notice(self.mxid, caption)
+                await self.ghost.intent.send_notice(self.mxid, caption)
 
             # Save the message to database
             await DBMessage(
