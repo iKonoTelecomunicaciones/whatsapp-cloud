@@ -746,6 +746,9 @@ class ProvisioningAPI:
         number: str
             The number of the user
 
+        app_business_id: WsBusinessID
+            The app_business_id of the app
+
         Returns
         -------
         Puppet
@@ -756,7 +759,7 @@ class ProvisioningAPI:
         except Exception as e:
             raise web.HTTPBadRequest(text=json.dumps({"error": str(e)}), headers=self._headers)
 
-        puppet: Puppet = await Puppet.get_by_identifier(phone_id=number)
+        puppet: Puppet = await Puppet.get_by_identifier(phone_id=number, bsuid=None)
 
         return puppet
 
