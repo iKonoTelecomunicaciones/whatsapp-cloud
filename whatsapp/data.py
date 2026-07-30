@@ -865,6 +865,7 @@ class WhatsappProfile(SerializableAttrs):
     """
 
     name: str = ib(metadata={"json": "name"}, default="")
+    username: str = ib(metadata={"json": "username"}, default="")
 
 
 @dataclass
