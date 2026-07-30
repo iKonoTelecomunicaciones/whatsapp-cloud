@@ -100,7 +100,6 @@ class Portal(DBPortal, BasePortal):
         super().__init__(app_business_id, mxid, relay_user_id, phone_id, bsuid, puppet_id, id)
         BasePortal.__init__(self)
         identifier = self.phone_id if self.phone_id else self.bsuid
-        self._send_lock = Lock()
         self.log = self.log.getChild(identifier or self.mxid)
         self._main_intent: IntentAPI = None
         self._relay_user = None

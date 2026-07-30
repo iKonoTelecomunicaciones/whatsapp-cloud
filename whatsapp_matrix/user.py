@@ -56,11 +56,6 @@ class User(DBUser, BaseUser):
         cls.az = bridge.az
         cls.loop = bridge.loop
 
-    async def get_portal_with(self, puppet: pu.Puppet, create: bool = True) -> po.Portal | None:
-        return await po.Portal.get_by_puppet_and_business_id(
-            puppet_id=puppet.id, app_business_id=self.app_business_id
-        )
-
     async def is_logged_in(self) -> bool:
         return bool(self.app_business_id)
 
