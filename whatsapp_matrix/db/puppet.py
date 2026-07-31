@@ -14,7 +14,7 @@ fake_db = Database.create("") if TYPE_CHECKING else None
 class Puppet:
     db: ClassVar[Database] = fake_db
 
-    phone_id: str
+    phone_id: str | None
     display_name: str | None
     custom_mxid: UserID | None
     username: str | None
@@ -57,6 +57,17 @@ class Puppet:
             FROM puppet WHERE custom_mxid = $1
         """
         row = await cls.db.fetchrow(q, identifier)
+        if not row:
+            return None
+        return cls._from_row(row)
+
+    @classmethod
+    async def get_by_username(cls, username: str) -> Puppet | None:
+        q = """
+            SELECT id, phone_id, display_name, custom_mxid, username
+            FROM puppet WHERE username = $1
+        """
+        row = await cls.db.fetchrow(q, username)
         if not row:
             return None
         return cls._from_row(row)

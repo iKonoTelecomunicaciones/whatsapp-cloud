@@ -351,7 +351,8 @@ class Portal(DBPortal, BasePortal):
             Show and error if the portal does not create.
         """
         # Validate if the matrix room exists, if not, it is created
-        identifier = self.phone_id if self.phone_id else self.bsuid
+        has_phone_lock = (self.phone_id, self.app_business_id) in RoomLock.rooms_lock
+        identifier = self.phone_id if has_phone_lock else self.bsuid
         with RoomLock((identifier, self.app_business_id)) as room_lock:
             async with room_lock:
                 if self.mxid:
@@ -363,8 +364,6 @@ class Portal(DBPortal, BasePortal):
                         await self.update()
                     return self.mxid
                 try:
-                    self.phone_id = sender.wa_id
-                    self.bsuid = sender.user_id
                     return await self._create_matrix_room(
                         source=source, sender=sender, invitees=invitees
                     )
@@ -445,11 +444,17 @@ class Portal(DBPortal, BasePortal):
         if not self.mxid:
             raise Exception("Failed to create room: no mxid returned")
 
-        self.log.debug(f"Matrix room created: {self.mxid}")
+        self.phone_id = sender.wa_id
+        self.bsuid = sender.user_id
+        self.log.debug(
+            f"Matrix room created: {self.mxid} for phone_id: {self.phone_id} and bsuid: {self.bsuid}"
+        )
         self.by_mxid[self.mxid] = self
 
         # Obtain the puppet of the user and update the information
-        puppet: Puppet = await Puppet.get_by_identifier(phone_id=self.phone_id, bsuid=self.bsuid)
+        puppet: Puppet = await Puppet.get_by_identifier(
+            phone_id=self.phone_id, bsuid=self.bsuid, username=sender.profile.username
+        )
 
         await puppet.update_info(sender)
 
@@ -464,6 +469,13 @@ class Portal(DBPortal, BasePortal):
         self.puppet_id = puppet.id
         # Add the mxid and the puppet_id to the database
         await self.update()
+
+        if puppet.phone_id and not self.phone_id:
+            self.phone_id = puppet.phone_id
+            await self.update()
+        if puppet.bsuid and not self.bsuid:
+            self.bsuid = puppet.bsuid
+            await self.update()
 
         return self.mxid
 
@@ -535,13 +547,15 @@ class Portal(DBPortal, BasePortal):
         if self.puppet_id:
             puppet = await Puppet.get_by_id(self.puppet_id)
 
-            if puppet:
-                if not puppet.phone_id and self.phone_id:
-                    puppet.phone_id = self.phone_id
-                    await puppet.update()
-                if not puppet.bsuid and self.bsuid:
-                    puppet.bsuid = self.bsuid
-                    await puppet.update()
+            if not puppet:
+                return None
+
+            if not puppet.phone_id and self.phone_id:
+                puppet.phone_id = self.phone_id
+                await puppet.update()
+            if not puppet.bsuid and self.bsuid:
+                puppet.bsuid = self.bsuid
+                await puppet.update()
 
             return puppet
 
@@ -839,6 +853,13 @@ class Portal(DBPortal, BasePortal):
         puppet: Puppet = await self.get_dm_puppet()
         await puppet.update_info(sender)
 
+        if puppet.phone_id and not self.phone_id:
+            self.phone_id = puppet.phone_id
+            await self.update()
+        if puppet.bsuid and not self.bsuid:
+            self.bsuid = puppet.bsuid
+            await self.update()
+
         # Save the message in the database
         msg = DBMessage(
             event_mxid=has_been_sent,
@@ -873,7 +894,12 @@ class Portal(DBPortal, BasePortal):
         if messasge_reply:
             # Create the content of the message media for send to Matrix
             content = await whatsapp_reply_to_matrix(
-                content_attachment, messasge_reply, self.main_intent, self.log, message_type
+                content_attachment,
+                messasge_reply,
+                self.mxid,
+                self.main_intent,
+                self.log,
+                message_type,
             )
 
             content.external_url = content.external_url
@@ -931,13 +957,22 @@ class Portal(DBPortal, BasePortal):
 
         if msg:
             if not data_reaction.emoji:
+                identifier = sender.wa_id
                 reaction_to_remove = await DBReaction.get_by_whatsapp_message_id(
-                    msg.whatsapp_message_id, sender
+                    msg.whatsapp_message_id, sender.wa_id
                 )
+
+                if not reaction_to_remove:
+                    identifier = sender.user_id
+                    reaction_to_remove = await DBReaction.get_by_whatsapp_message_id(
+                        msg.whatsapp_message_id, sender.user_id
+                    )
 
                 if reaction_to_remove:
                     await DBReaction.delete_by_event_mxid(
-                        reaction_to_remove.event_mxid, self.mxid, sender
+                        reaction_to_remove.event_mxid,
+                        self.mxid,
+                        identifier,
                     )
                     has_been_sent = await self.main_intent.redact(
                         self.mxid, reaction_to_remove.event_mxid
@@ -945,34 +980,39 @@ class Portal(DBPortal, BasePortal):
                 return
             else:
                 message_with_reaction = await DBReaction.get_by_whatsapp_message_id(
-                    msg.whatsapp_message_id, sender
+                    msg.whatsapp_message_id, sender.wa_id
                 )
 
-                if message_with_reaction:
-                    await DBReaction.delete_by_event_mxid(
-                        message_with_reaction.event_mxid, self.mxid, sender
+                if not message_with_reaction:
+                    message_with_reaction = await DBReaction.get_by_whatsapp_message_id(
+                        msg.whatsapp_message_id, sender.user_id
                     )
-                    await self.main_intent.redact(self.mxid, message_with_reaction.event_mxid)
 
-                try:
-                    has_been_sent = await self.main_intent.react(
-                        self.mxid,
-                        msg.event_mxid,
-                        data_reaction.emoji,
-                    )
-                except Exception as e:
-                    self.log.exception(f"Error sending reaction: {e}")
-                    await self.main_intent.send_notice(self.mxid, "Error sending reaction")
-                    return
+            if message_with_reaction:
+                await DBReaction.delete_by_event_mxid(
+                    message_with_reaction.event_mxid, self.mxid, sender
+                )
+                await self.main_intent.redact(self.mxid, message_with_reaction.event_mxid)
 
-                await DBReaction(
-                    event_mxid=has_been_sent,
-                    room_id=self.mxid,
-                    sender=sender,
-                    whatsapp_message_id=msg.whatsapp_message_id,
-                    reaction=data_reaction.emoji,
-                    created_at=datetime.now(),
-                ).insert()
+            try:
+                has_been_sent = await self.main_intent.react(
+                    self.mxid,
+                    msg.event_mxid,
+                    data_reaction.emoji,
+                )
+            except Exception as e:
+                self.log.exception(f"Error sending reaction: {e}")
+                await self.main_intent.send_notice(self.mxid, "Error sending reaction")
+                return
+
+            await DBReaction(
+                event_mxid=has_been_sent,
+                room_id=self.mxid,
+                sender=sender.wa_id or sender.user_id,
+                whatsapp_message_id=msg.whatsapp_message_id,
+                reaction=data_reaction.emoji,
+                created_at=datetime.now(),
+            ).insert()
         else:
             self.log.error(f"Message id not found, mid: {msg_id}")
             return
@@ -1263,6 +1303,7 @@ class Portal(DBPortal, BasePortal):
                 response = await self.whatsapp_client.send_message(
                     message=text,
                     phone_id=self.phone_id,
+                    bsuid=self.bsuid,
                     message_type=message.msgtype,
                     aditional_data=aditional_data,
                 )
@@ -1298,6 +1339,7 @@ class Portal(DBPortal, BasePortal):
             try:
                 response = await self.whatsapp_client.send_message(
                     phone_id=self.phone_id,
+                    bsuid=self.bsuid,
                     message_type=message.msgtype,
                     message=message.body,
                     media_id=media_id,
@@ -1330,6 +1372,7 @@ class Portal(DBPortal, BasePortal):
             try:
                 response = await self.whatsapp_client.send_message(
                     phone_id=self.phone_id,
+                    bsuid=self.bsuid,
                     message_type=message.msgtype,
                     location=(latitud, longitud),
                     aditional_data=aditional_data,
@@ -1512,7 +1555,8 @@ class Portal(DBPortal, BasePortal):
         try:
             await self.whatsapp_client.send_reaction(
                 message_id=message.whatsapp_message_id,
-                phone_id=message.phone_id,
+                phone_id=self.phone_id,
+                bsuid=self.bsuid,
                 emoji=reaction_value,
             )
         except Exception as e:
@@ -1551,7 +1595,8 @@ class Portal(DBPortal, BasePortal):
         try:
             await self.whatsapp_client.send_reaction(
                 message_id=message.whatsapp_message_id,
-                phone_id=message.phone_id,
+                phone_id=self.phone_id,
+                bsuid=self.bsuid,
                 emoji="",
             )
         except Exception as e:
@@ -1627,6 +1672,7 @@ class Portal(DBPortal, BasePortal):
             # Send the message to Whatsapp
             response = await self.whatsapp_client.send_template(
                 phone_id=self.phone_id,
+                bsuid=self.bsuid,
                 template_data=template_data,
                 media_data=media,
             )
@@ -1765,6 +1811,7 @@ class Portal(DBPortal, BasePortal):
             # Send the interactive message in whatsapp format
             response = await self.whatsapp_client.send_interactive_message(
                 phone_id=self.phone_id,
+                bsuid=self.bsuid,
                 message_type="m.interactive_message",
                 aditional_data=event_interactive_message.interactive_message.serialize(),
             )

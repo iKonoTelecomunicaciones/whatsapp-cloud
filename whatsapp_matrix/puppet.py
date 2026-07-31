@@ -19,7 +19,7 @@ if TYPE_CHECKING:
 
 
 class Puppet(DBPuppet, BasePuppet):
-    by_identifier_id: dict[WhatsappPhone | WhatsappBSUID, "Puppet"] = {}
+    by_identifier_id: dict[WhatsappPhone | WhatsappBSUID | WhatsappUsername, "Puppet"] = {}
     by_custom_mxid: dict[UserID, Puppet] = {}
     hs_domain: str
     mxid_template: SimpleTemplate[str]
@@ -48,7 +48,7 @@ class Puppet(DBPuppet, BasePuppet):
             id=id,
         )
 
-        if not phone_id and not bsuid:
+        if not phone_id and not bsuid and self.custom_mxid:
             bsuid = self.mxid_template.parse(self.custom_mxid)
 
         self.bsuid = bsuid
@@ -84,8 +84,11 @@ class Puppet(DBPuppet, BasePuppet):
     def _add_to_cache(self) -> None:
         if self.phone_id:
             self.by_identifier_id[self.phone_id] = self
-        if self.bsuid:
+        elif self.bsuid:
             self.by_identifier_id[self.bsuid] = self
+        elif self.username:
+            self.by_identifier_id[self.username] = self
+
         if self.custom_mxid:
             self.by_custom_mxid[self.custom_mxid] = self
 
@@ -168,6 +171,7 @@ class Puppet(DBPuppet, BasePuppet):
         cls,
         phone_id: WhatsappPhone | None = None,
         bsuid: WhatsappUsername | None = None,
+        username: WhatsappUsername | None = None,
         *,
         create: bool = True,
     ) -> "Puppet" | None:
@@ -180,11 +184,16 @@ class Puppet(DBPuppet, BasePuppet):
             The phone id of the user.
         bsuid : WhatsappUsername | None
             The bsuid of the user.
+        username: WhatsappUsername | None
+            The username of the user.
         create : bool
             The value to create the puppet if it doesn't exist.
         """
-        if phone_id is None and bsuid is None:
+        if phone_id is None and bsuid is None and username is None:
             raise ValueError("Either phone_id or bsuid must be provided")
+
+        if username in cls.by_identifier_id:
+            return cls.by_identifier_id[username]
 
         if phone_id in cls.by_identifier_id:
             return cls.by_identifier_id[phone_id]
@@ -194,7 +203,11 @@ class Puppet(DBPuppet, BasePuppet):
 
         mxid = None
         puppet = None
-        if phone_id:
+
+        if username:
+            puppet = cast(cls, await super().get_by_username(username=username))
+
+        if phone_id and puppet is None:
             mxid = cls.get_mxid_from_identifier(phone_id)
 
             # Search for the puppet in the database
@@ -217,7 +230,7 @@ class Puppet(DBPuppet, BasePuppet):
 
         # Create the puppet if it doesn't exist and if the value of create is True
         if create:
-            puppet = cls(phone_id=phone_id, bsuid=bsuid)
+            puppet = cls(phone_id=phone_id, bsuid=bsuid, username=username)
             await puppet.insert()
             puppet._add_to_cache()
             return puppet
