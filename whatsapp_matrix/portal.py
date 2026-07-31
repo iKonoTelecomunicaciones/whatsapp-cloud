@@ -50,6 +50,7 @@ from whatsapp.interactive_message import (
     FormResponseMessage,
 )
 from whatsapp.types import WhatsappBSUID, WhatsappMessageID, WhatsappPhone, WsBusinessID
+from whatsapp_matrix.cache_manager import CacheManager
 from whatsapp_matrix.formatter.from_matrix import WhatsappFormatMedia, matrix_to_whatsapp
 from whatsapp_matrix.formatter.from_whatsapp import whatsapp_reply_to_matrix
 from whatsapp_matrix.room_sync_messages import RoomLock
@@ -72,8 +73,8 @@ Invitelist = UserID | list[UserID]
 
 
 class Portal(DBPortal, BasePortal):
-    by_mxid: dict[RoomID, "Portal"] = {}
-    by_app_and_identifier: dict[(WhatsappPhone | WhatsappBSUID, WsBusinessID), "Portal"] = {}
+    by_mxid: CacheManager
+    by_app_and_identifier: CacheManager
 
     message_template: Template
     federate_rooms: bool
@@ -166,13 +167,16 @@ class Portal(DBPortal, BasePortal):
         BasePortal.bridge = bridge
         cls.private_chat_portal_whatsapp = cls.config["bridge.private_chat_portal_whatsapp"]
         cls.session = bridge.session
+        # initialize TTL caches for portals
+        cls.by_mxid = CacheManager(cache_type="portal", config=cls.config)
+        cls.by_app_and_identifier = CacheManager(cache_type="portal", config=cls.config)
 
     @classmethod
     async def get_by_mxid(cls, mxid: RoomID) -> Portal | None:
-        try:
-            return cls.by_mxid[mxid]
-        except KeyError:
-            pass
+        portal = cls.by_mxid.get_item(mxid)
+
+        if portal is not None:
+            return portal
 
         portal = cast(cls, await super().get_by_mxid(mxid))
         if portal is not None:
@@ -301,6 +305,38 @@ class Portal(DBPortal, BasePortal):
 
             return None
 
+    def get_initial_message(self, message: WhatsappMessages | WhatsappMessageEcho) -> str:
+        """
+        Get the initial message of the Whatsapp event.
+
+        Parameters
+        ----------
+        message : WhatsappMessages | WhatsappMessageEcho
+            Contains the message data
+
+        Returns
+        -------
+        Returns body message or the filename if the message is a media message
+        """
+
+        type_message = message.type
+
+        if type_message == "text":
+            return message.text.body
+        elif type_message in ("image", "video", "audio", "document"):
+            media_data = getattr(message, type_message)
+            file_name = None
+
+            if hasattr(media_data, "filename"):
+                file_name = media_data.filename
+            else:
+                media_type = media_data.mime_type.split("/")[-1]
+                file_name = f"media.{media_type}"
+
+            return file_name
+        else:
+            return "Unrecognized message type"
+
     def convert_text_message(self, message: str) -> MessageEventContent:
         """
         Takes a message from Whatsapp, checks the kind of message and change the format of it to a
@@ -324,7 +360,11 @@ class Portal(DBPortal, BasePortal):
         return content
 
     async def create_matrix_room(
-        self, source: User, sender: WhatsappContacts, invitees: list[str] | None = None
+        self,
+        source: User,
+        sender: WhatsappContacts,
+        invitees: list[str] | None = None,
+        message: WhatsappEvent | WhatsappMessageEcho | None = None,
     ) -> RoomID:
         """
         Create a matrix room where to contact with the customer
@@ -339,6 +379,9 @@ class Portal(DBPortal, BasePortal):
 
         invitees : list[str] | None
             The list of users to invite to the room.
+
+        message : WhatsappEvent | WhatsappMessageEcho | None
+            Contains the message data
 
         Returns
         -------
@@ -364,15 +407,25 @@ class Portal(DBPortal, BasePortal):
                         await self.update()
                     return self.mxid
                 try:
+                    initial_message = ""
+                    if message:
+                        initial_message = self.get_initial_message(message=message)
                     return await self._create_matrix_room(
-                        source=source, sender=sender, invitees=invitees
+                        source=source,
+                        sender=sender,
+                        invitees=invitees,
+                        initial_message=initial_message,
                     )
                 except Exception as error:
                     self.log.exception(f"Failed to create portal: {error}")
                     return None
 
     async def _create_matrix_room(
-        self, source: User, sender: WhatsappContacts, invitees: list[str] | None = None
+        self,
+        source: User,
+        sender: WhatsappContacts,
+        invitees: list[str] | None = None,
+        initial_message: str = "",
     ) -> RoomID:
         """
         Create and configure a matrix room
@@ -387,6 +440,9 @@ class Portal(DBPortal, BasePortal):
 
         invitees : list[str] | None
             The list of users to invite to the room.
+
+        initial_message: str
+            body message or the filename
 
         Returns
         -------
@@ -415,9 +471,6 @@ class Portal(DBPortal, BasePortal):
             },
         ]
 
-        if len(invitees or []) == 0:
-            invitees = [source.mxid]
-
         creation_content = {}
         displayname = sender.profile.name if sender.profile else f"user_{sender.wa_id}"
         room_name_variables = {
@@ -434,7 +487,7 @@ class Portal(DBPortal, BasePortal):
             name=room_name_template.format(**room_name_variables),
             is_direct=self.is_direct,
             initial_state=initial_state,
-            invitees=invitees,
+            invitees=invitees or [],
             topic="Whatsapp private chat",
             creation_content=creation_content,
         )
@@ -461,7 +514,7 @@ class Portal(DBPortal, BasePortal):
         # Invite the user to the room
         try:
             await self.main_intent.invite_user(
-                self.mxid, source.mxid, extra_content=self._get_invite_content(puppet)
+                self.mxid, source.mxid, extra_content=self._get_invite_content(puppet), reason=initial_message,
             )
         except Exception:
             self.log.exception("Failed to invite user to room")
@@ -791,7 +844,9 @@ class Portal(DBPortal, BasePortal):
             Show and error if the media does not upload.
         """
         # Validate if the matrix room exists, if not, it is created
-        if not await self.create_matrix_room(source=source, sender=sender):
+        if not await self.create_matrix_room(
+            source=source, sender=sender, message=message.entry.changes.value.messages
+        ):
             return
 
         has_been_sent: EventID | None = None
@@ -1036,6 +1091,7 @@ class Portal(DBPortal, BasePortal):
                 source=user,
                 sender=WhatsappContacts(wa_id=echo_message.to, profile=None),
                 invitees=[user.mxid, self.az.bot_mxid],
+                message=echo_message,
             ):
                 self.log.error(
                     f"Failed to create a matrix room for user {user.mxid} with wa_id "
@@ -1122,7 +1178,11 @@ class Portal(DBPortal, BasePortal):
                     f"{self.app_business_id} to send the error notice, creating portal... "
                 )
 
-                if not await self.create_matrix_room(source=source, sender=sender):
+                if not await self.create_matrix_room(
+                    source=source,
+                    sender=sender,
+                    message=messages,
+                ):
                     self.log.error(
                         f"Failed to create a matrix room for phone_id {self.phone_id} and "
                         f"app_business_id {self.app_business_id} to send the error notice."

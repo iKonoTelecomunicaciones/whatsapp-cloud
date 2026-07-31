@@ -1,13 +1,14 @@
 from __future__ import annotations
 
 import asyncio
-from typing import TYPE_CHECKING, Dict, Optional, cast
+from typing import TYPE_CHECKING, cast
 
 from mautrix.appservice import AppService
 from mautrix.bridge import BaseUser, async_getter_lock
 from mautrix.types import RoomID, UserID
 
 from whatsapp.types import WsBusinessID
+from whatsapp_matrix.cache_manager import CacheManager
 
 from . import portal as po
 from . import puppet as pu
@@ -19,8 +20,8 @@ if TYPE_CHECKING:
 
 
 class User(DBUser, BaseUser):
-    by_mxid: Dict[UserID, "User"] = {}
-    by_business_id: Dict[WsBusinessID, "User"] = {}
+    by_mxid: CacheManager
+    by_business_id: CacheManager
 
     config: Config
     az: AppService
@@ -55,6 +56,9 @@ class User(DBUser, BaseUser):
         cls.config = bridge.config
         cls.az = bridge.az
         cls.loop = bridge.loop
+        # initialize TTL caches for users
+        cls.by_mxid = CacheManager(cache_type="user", config=cls.config)
+        cls.by_business_id = CacheManager(cache_type="user", config=cls.config)
 
     async def get_portal_with(self, puppet: pu.Puppet, create: bool = True) -> po.Portal | None:
         return await po.Portal.get_by_app_and_phone_id(
@@ -75,13 +79,13 @@ class User(DBUser, BaseUser):
             self.by_business_id[self.app_business_id] = self
 
     @classmethod
-    async def get_by_mxid(cls, mxid: UserID, create: bool = True) -> Optional["User"]:
+    async def get_by_mxid(cls, mxid: UserID, create: bool = True) -> "User" | None:
         if pu.Puppet.get_id_from_mxid(mxid):
             return None
-        try:
-            return cls.by_mxid[mxid]
-        except KeyError:
-            pass
+
+        user = cls.by_mxid.get_item(mxid)
+        if user is not None:
+            return user
 
         user = cast(cls, await super().get_by_mxid(mxid))
         if user is not None:
@@ -98,11 +102,10 @@ class User(DBUser, BaseUser):
 
     @classmethod
     @async_getter_lock
-    async def get_by_business_id(cls, business_id: WsBusinessID) -> Optional["User"]:
-        try:
-            return cls.by_business_id[business_id]
-        except KeyError:
-            pass
+    async def get_by_business_id(cls, business_id: WsBusinessID) -> "User" | None:
+        user = cls.by_business_id.get_item(business_id)
+        if user is not None:
+            return user
 
         user = cast(cls, await super().get_by_business_id(business_id))
         if user is not None:
