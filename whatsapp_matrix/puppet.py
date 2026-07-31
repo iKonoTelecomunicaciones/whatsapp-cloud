@@ -110,7 +110,7 @@ class Puppet(DBPuppet, BasePuppet):
         update = False
         update = await self._update_name(info) or update
 
-        if self.username != info.get("profile", {}).get("username"):
+        if info.profile and self.username != info.get("profile", {}).get("username"):
             self.username = info.get("profile", {}).get("username")
             update = True
 

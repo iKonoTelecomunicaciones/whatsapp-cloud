@@ -504,9 +504,13 @@ class Portal(DBPortal, BasePortal):
         )
         self.by_mxid[self.mxid] = self
 
+        username = None
+        if hasattr(sender, "profile") and hasattr(sender.profile, "username"):
+            username = sender.profile.username
+
         # Obtain the puppet of the user and update the information
         puppet: Puppet = await Puppet.get_by_identifier(
-            phone_id=self.phone_id, bsuid=self.bsuid, username=sender.profile.username
+            phone_id=self.phone_id, bsuid=self.bsuid, username=username
         )
 
         await puppet.update_info(sender)
