@@ -137,7 +137,7 @@ class WhatsappClient:
         # If the message is a reply, add the message_id
         if aditional_data.get("reply_to"):
             data["context"] = {"message_id": aditional_data["reply_to"]["wb_message_id"]}
-        self.log.debug(f"Sending message {data} to {phone_id}")
+        self.log.debug(f"Sending message {data} to {phone_id or bsuid}")
         # Send the message to the Whatsapp API
         resp = await self.http.post(send_message_url, json=data, headers=headers)
         response_data = json.loads(await resp.text())

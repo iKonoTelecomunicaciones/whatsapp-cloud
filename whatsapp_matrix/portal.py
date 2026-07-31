@@ -452,7 +452,9 @@ class Portal(DBPortal, BasePortal):
         self.by_mxid[self.mxid] = self
 
         # Obtain the puppet of the user and update the information
-        puppet: Puppet = await Puppet.get_by_identifier(phone_id=self.phone_id, bsuid=self.bsuid)
+        puppet: Puppet = await Puppet.get_by_identifier(
+            phone_id=self.phone_id, bsuid=self.bsuid, username=sender.profile.username
+        )
 
         await puppet.update_info(sender)
 
@@ -467,6 +469,13 @@ class Portal(DBPortal, BasePortal):
         self.puppet_id = puppet.id
         # Add the mxid and the puppet_id to the database
         await self.update()
+
+        if puppet.phone_id and not self.phone_id:
+            self.phone_id = puppet.phone_id
+            await self.update()
+        if puppet.bsuid and not self.bsuid:
+            self.bsuid = puppet.bsuid
+            await self.update()
 
         return self.mxid
 
@@ -843,6 +852,13 @@ class Portal(DBPortal, BasePortal):
 
         puppet: Puppet = await self.get_dm_puppet()
         await puppet.update_info(sender)
+
+        if puppet.phone_id and not self.phone_id:
+            self.phone_id = puppet.phone_id
+            await self.update()
+        if puppet.bsuid and not self.bsuid:
+            self.bsuid = puppet.bsuid
+            await self.update()
 
         # Save the message in the database
         msg = DBMessage(

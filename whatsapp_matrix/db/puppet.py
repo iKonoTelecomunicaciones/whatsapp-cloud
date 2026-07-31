@@ -62,6 +62,17 @@ class Puppet:
         return cls._from_row(row)
 
     @classmethod
+    async def get_by_username(cls, username: str) -> Puppet | None:
+        q = """
+            SELECT id, phone_id, display_name, custom_mxid, username
+            FROM puppet WHERE username = $1
+        """
+        row = await cls.db.fetchrow(q, username)
+        if not row:
+            return None
+        return cls._from_row(row)
+
+    @classmethod
     async def get_by_id(cls, id: int) -> Puppet | None:
         """
         Get the puppet by id.
