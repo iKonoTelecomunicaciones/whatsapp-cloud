@@ -214,3 +214,9 @@ async def upgrade_v5(conn: Connection) -> None:
         FROM puppet
         WHERE portal.phone_id = puppet.phone_id"""
     )
+
+
+@upgrade_table.register(description="Drop constrain unique bsuid in portal table")
+async def upgrade_v6(conn: Connection) -> None:
+    await conn.execute("""ALTER TABLE portal DROP CONSTRAINT IF EXISTS portal_bsuid_key""")
+    await conn.execute("""CREATE INDEX IF NOT EXISTS portal_bsuid_key ON portal (bsuid)""")
