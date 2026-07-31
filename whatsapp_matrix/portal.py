@@ -135,11 +135,11 @@ class Portal(DBPortal, BasePortal):
 
     @property
     def is_direct(self) -> bool:
-        return self.phone_id is not None
+        return self.phone_id is not None or self.bsuid is not None
 
     @property
     def bridge_info_state_key(self) -> str:
-        return f"com.github.whatsapp-cloud://whatsapp-cloud/{self.phone_id}"
+        return f"com.github.whatsapp-cloud://whatsapp-cloud/{self.phone_id or self.bsuid}"
 
     @property
     def bridge_info(self) -> dict[str, Any]:
@@ -152,7 +152,7 @@ class Portal(DBPortal, BasePortal):
                 "avatar_url": self.config["appservice.bot_avatar"],
             },
             "channel": {
-                "id": str(self.phone_id),
+                "id": str(self.phone_id or self.bsuid),
                 "displayname": None,
                 "avatar_url": None,
             },
