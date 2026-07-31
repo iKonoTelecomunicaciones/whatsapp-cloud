@@ -514,7 +514,10 @@ class Portal(DBPortal, BasePortal):
         # Invite the user to the room
         try:
             await self.main_intent.invite_user(
-                self.mxid, source.mxid, extra_content=self._get_invite_content(puppet), reason=initial_message,
+                self.mxid,
+                source.mxid,
+                extra_content=self._get_invite_content(puppet),
+                reason=initial_message,
             )
         except Exception:
             self.log.exception("Failed to invite user to room")
