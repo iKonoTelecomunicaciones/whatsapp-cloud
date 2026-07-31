@@ -520,7 +520,6 @@ class Portal(DBPortal, BasePortal):
             await self.main_intent.invite_user(
                 self.mxid,
                 source.mxid,
-                extra_content=self._get_invite_content(puppet),
                 reason=initial_message,
             )
         except Exception:
