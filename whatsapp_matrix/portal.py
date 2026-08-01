@@ -231,14 +231,8 @@ class Portal(DBPortal, BasePortal):
         create: bool
             Variable that indicates if the portal it will be create if not exist.
         """
-        has_bsuid_lock = (bsuid, app_business_id) in RoomLock.rooms_lock
-        has_phone_id_lock = (phone_id, app_business_id) in RoomLock.rooms_lock
-        identifier = phone_id if has_phone_id_lock else bsuid
-
-        if phone_id and not has_bsuid_lock and not has_phone_id_lock:
-            identifier = phone_id
-        elif bsuid and not has_bsuid_lock and not has_phone_id_lock:
-            identifier = bsuid
+        lookup_phone_id = None if bsuid else phone_id
+        identifier = bsuid if bsuid else lookup_phone_id
 
         with RoomLock((identifier, app_business_id)) as room_lock:
             async with room_lock:
@@ -248,8 +242,8 @@ class Portal(DBPortal, BasePortal):
                     if bsuid and portal.bsuid is None:
                         portal.bsuid = bsuid
                         await portal.update()
-                    if phone_id and portal.phone_id is None:
-                        portal.phone_id = phone_id
+                    if lookup_phone_id and portal.phone_id is None:
+                        portal.phone_id = lookup_phone_id
                         await portal.update()
 
                     return portal
@@ -257,7 +251,7 @@ class Portal(DBPortal, BasePortal):
                 portal = cast(
                     cls,
                     await super().get_by_identifier(
-                        phone_id=phone_id, bsuid=bsuid, app_business_id=app_business_id
+                        phone_id=lookup_phone_id, bsuid=bsuid, app_business_id=app_business_id
                     ),
                 )
                 if portal:
@@ -266,8 +260,8 @@ class Portal(DBPortal, BasePortal):
                     if bsuid and portal.bsuid is None:
                         portal.bsuid = bsuid
                         await portal.update()
-                    if phone_id and not portal.phone_id:
-                        portal.phone_id = phone_id
+                    if lookup_phone_id and not portal.phone_id:
+                        portal.phone_id = lookup_phone_id
                         await portal.update()
                     return portal
 
@@ -286,7 +280,9 @@ class Portal(DBPortal, BasePortal):
                         portal = cast(
                             cls,
                             await super().get_by_identifier(
-                                phone_id=phone_id, bsuid=bsuid, app_business_id=app_business_id
+                                phone_id=lookup_phone_id,
+                                bsuid=bsuid,
+                                app_business_id=app_business_id,
                             ),
                         )
 
@@ -298,8 +294,8 @@ class Portal(DBPortal, BasePortal):
                     if not portal.bsuid and bsuid:
                         portal.bsuid = bsuid
                         await portal.update()
-                    if not portal.phone_id and phone_id:
-                        portal.phone_id = phone_id
+                    if not portal.phone_id and lookup_phone_id:
+                        portal.phone_id = lookup_phone_id
                         await portal.update()
                     return portal
 
@@ -609,10 +605,10 @@ class Portal(DBPortal, BasePortal):
             if not puppet:
                 return None
 
-            if not puppet.phone_id and self.phone_id:
+            if not puppet.bsuid and not puppet.phone_id and self.phone_id:
                 puppet.phone_id = self.phone_id
                 await puppet.update()
-            if not puppet.bsuid and self.bsuid:
+            elif not puppet.bsuid and self.bsuid:
                 puppet.bsuid = self.bsuid
                 await puppet.update()
 
@@ -1775,7 +1771,8 @@ class Portal(DBPortal, BasePortal):
         if self.mxid:
             self.by_mxid[self.mxid] = self
 
-        identifier = self.phone_id if self.phone_id else self.bsuid
+        identifier = self.bsuid if self.bsuid else self.phone_id
+
         if identifier and self.app_business_id:
             self.by_app_and_identifier[(identifier, self.app_business_id)] = self
 
@@ -1785,11 +1782,11 @@ class Portal(DBPortal, BasePortal):
             if not puppet:
                 return
 
-            if self.phone_id and not puppet.phone_id:
-                puppet.phone_id = self.phone_id
-                await puppet.update()
-            elif self.bsuid and not puppet.bsuid:
+            if self.bsuid and not puppet.bsuid:
                 puppet.bsuid = self.bsuid
+                await puppet.update()
+            elif not puppet.bsuid and self.phone_id and not puppet.phone_id:
+                puppet.phone_id = self.phone_id
                 await puppet.update()
 
             self._main_intent = puppet.default_mxid_intent

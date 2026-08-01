@@ -191,10 +191,16 @@ class WhatsappHandler:
         bsuid = data.entry.changes.value.contacts.user_id
 
         business_id = data.entry.id
-        # Get the portal
-        portal: Portal = await Portal.get_by_app_and_identifier(
-            phone_id=phone_id, bsuid=bsuid, app_business_id=business_id, create=False
-        )
+
+        try:
+            # Get the portal
+            portal: Portal = await Portal.get_by_app_and_identifier(
+                phone_id=phone_id, bsuid=bsuid, app_business_id=business_id, create=False
+            )
+        except Exception as e:
+            self.log.error(f"Error getting portal to handle the read event: {e}")
+            return web.Response(status=200)
+
         # Handle the read event
         if portal:
             message_id = data.entry.changes.value.statuses.id
