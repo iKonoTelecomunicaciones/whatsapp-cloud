@@ -53,7 +53,7 @@ class Puppet(DBPuppet, BasePuppet):
             bsuid = self.mxid_template.parse(self.custom_mxid)
 
         self.bsuid = bsuid
-        identifier = self.phone_id if self.phone_id else self.bsuid
+        identifier = self.bsuid if self.bsuid else self.phone_id
         self.log = self.log.getChild(identifier)
 
         self.access_token = access_token
@@ -90,10 +90,10 @@ class Puppet(DBPuppet, BasePuppet):
         return (puppet.try_start() async for puppet in cls.all_with_custom_mxid())
 
     def _add_to_cache(self) -> None:
-        if self.phone_id:
-            self.by_identifier_id[self.phone_id] = self
-        elif self.bsuid:
+        if self.bsuid:
             self.by_identifier_id[self.bsuid] = self
+        elif self.phone_id:
+            self.by_identifier_id[self.phone_id] = self
         elif self.username:
             self.by_identifier_id[self.username] = self
 
@@ -198,34 +198,33 @@ class Puppet(DBPuppet, BasePuppet):
         if phone_id is None and bsuid is None and username is None:
             raise ValueError("Either phone_id or bsuid must be provided")
 
+        lookup_phone_id = None if bsuid else phone_id
+
         if username in cls.by_identifier_id:
             return cls.by_identifier_id[username]
 
-        if phone_id in cls.by_identifier_id:
-            return cls.by_identifier_id[phone_id]
-
-        if bsuid in cls.by_identifier_id:
+        if bsuid and bsuid in cls.by_identifier_id:
             return cls.by_identifier_id[bsuid]
 
-        mxid = None
+        if lookup_phone_id and lookup_phone_id in cls.by_identifier_id:
+            return cls.by_identifier_id[lookup_phone_id]
+
         puppet = None
 
         if username:
             puppet = cast(cls, await super().get_by_username(username=username))
 
-        if phone_id and puppet is None:
-            mxid = cls.get_mxid_from_identifier(phone_id)
-
-            # Search for the puppet in the database
-            puppet = cast(cls, await super().get_by_identifier(mxid))
-
         if bsuid and puppet is None:
             mxid = cls.get_mxid_from_identifier(bsuid)
             puppet = cast(cls, await super().get_by_identifier(mxid))
 
+        if lookup_phone_id and puppet is None:
+            mxid = cls.get_mxid_from_identifier(lookup_phone_id)
+            puppet = cast(cls, await super().get_by_identifier(mxid))
+
         if puppet is not None:
-            if phone_id and not puppet.phone_id:
-                puppet.phone_id = phone_id
+            if lookup_phone_id and not puppet.phone_id:
+                puppet.phone_id = lookup_phone_id
                 await puppet.update()
             if bsuid and not puppet.bsuid:
                 puppet.bsuid = bsuid

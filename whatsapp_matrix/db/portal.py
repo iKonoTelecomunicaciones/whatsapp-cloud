@@ -47,9 +47,9 @@ class Portal:
         q = """
             UPDATE portal
             SET phone_id=$1, app_business_id=$2, mxid=$3, relay_user_id=$4, bsuid=$5, puppet_id=$6
-            WHERE (phone_id=$1 OR bsuid=$5) AND app_business_id=$2
+            WHERE id=$7
         """
-        await self.db.execute(q, *self._values)
+        await self.db.execute(q, *self._values, self.id)
 
     @classmethod
     async def get_by_phone_id(cls, phone_id: str, app_business_id: str) -> Optional["Portal"]:
