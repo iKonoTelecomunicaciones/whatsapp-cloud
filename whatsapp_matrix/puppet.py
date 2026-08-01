@@ -58,8 +58,11 @@ class Puppet(DBPuppet, BasePuppet):
 
         self.access_token = access_token
         self.is_registered = is_registered
-        self.default_mxid = self.get_mxid_from_identifier(identifier)
-        self.custom_mxid = self.default_mxid
+        if self.custom_mxid:
+            self.default_mxid = self.custom_mxid
+        else:
+            self.default_mxid = self.get_mxid_from_identifier(identifier)
+            self.custom_mxid = self.default_mxid
         self.default_mxid_intent = self.az.intent.user(self.default_mxid)
 
         self.intent = self._fresh_intent()
@@ -99,9 +102,7 @@ class Puppet(DBPuppet, BasePuppet):
 
     @property
     def mxid(self) -> UserID:
-        return UserID(
-            self.mxid_template.format_full(self.phone_id if self.phone_id else self.bsuid)
-        )
+        return self.custom_mxid
 
     async def save(self) -> None:
         await self.update()
