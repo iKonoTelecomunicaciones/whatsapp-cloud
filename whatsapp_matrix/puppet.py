@@ -218,8 +218,8 @@ class Puppet(DBPuppet, BasePuppet):
             mxid = cls.get_mxid_from_identifier(bsuid)
             puppet = cast(cls, await super().get_by_identifier(mxid))
 
-        if lookup_phone_id and puppet is None:
-            mxid = cls.get_mxid_from_identifier(lookup_phone_id)
+        if phone_id and puppet is None:
+            mxid = cls.get_mxid_from_identifier(phone_id)
             puppet = cast(cls, await super().get_by_identifier(mxid))
 
         if puppet is not None:
