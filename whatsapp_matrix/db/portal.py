@@ -60,6 +60,14 @@ class Portal:
         return cls._from_row(row)
 
     @classmethod
+    async def get_by_bsuid(cls, bsuid: str, app_business_id: str) -> Optional["Portal"]:
+        q = f"SELECT id, {cls._columns} FROM portal WHERE bsuid=$1 AND app_business_id=$2"
+        row = await cls.db.fetchrow(q, bsuid, app_business_id)
+        if not row:
+            return None
+        return cls._from_row(row)
+
+    @classmethod
     async def get_by_identifier(
         cls, phone_id: str, bsuid: str | None, app_business_id: str
     ) -> "Portal" | None:

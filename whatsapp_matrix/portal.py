@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import mimetypes
-from asyncio import Lock, sleep
+from asyncio import sleep
 from datetime import datetime
 from io import BytesIO
 from string import Template
@@ -205,7 +205,6 @@ class Portal(DBPortal, BasePortal):
 
         return portal
 
-    # TODO: Refactor this method to avoid the code duplication with get_by_phone_id and get_by_identifier
     @classmethod
     async def get_by_app_and_identifier(
         cls,
@@ -231,75 +230,67 @@ class Portal(DBPortal, BasePortal):
         create: bool
             Variable that indicates if the portal it will be create if not exist.
         """
-        lookup_phone_id = None if bsuid else phone_id
-        identifier = bsuid if bsuid else lookup_phone_id
+        if not phone_id and not bsuid:
+            return None
+
+        identifier = bsuid or phone_id
 
         with RoomLock((identifier, app_business_id)) as room_lock:
             async with room_lock:
-                if cls.by_app_and_identifier.get((identifier, app_business_id)):
-                    # Search if the identifier is in the cache
-                    portal = cls.by_app_and_identifier[(identifier, app_business_id)]
-                    if bsuid and portal.bsuid is None:
-                        portal.bsuid = bsuid
-                        await portal.update()
-                    if lookup_phone_id and portal.phone_id is None:
-                        portal.phone_id = lookup_phone_id
-                        await portal.update()
+                portal = None
 
-                    return portal
-                # Search if the identifier is in the database
-                portal = cast(
-                    cls,
-                    await super().get_by_identifier(
-                        phone_id=lookup_phone_id, bsuid=bsuid, app_business_id=app_business_id
-                    ),
-                )
+                if bsuid:
+                    portal = cls.by_app_and_identifier.get((bsuid, app_business_id))
+
+                if not portal and phone_id:
+                    portal = cls.by_app_and_identifier.get((phone_id, app_business_id))
+
+                if not portal:
+                    portal = cast(
+                        cls,
+                        await super().get_by_identifier(
+                            phone_id=phone_id, bsuid=bsuid, app_business_id=app_business_id
+                        ),
+                    )
+                    if portal:
+                        await portal.postinit()
+
                 if portal:
-                    await portal.postinit()
-
+                    updated = False
                     if bsuid and portal.bsuid is None:
                         portal.bsuid = bsuid
+                        updated = True
+                    if phone_id and portal.phone_id is None:
+                        portal.phone_id = phone_id
+                        updated = True
+
+                    if updated:
                         await portal.update()
-                    if lookup_phone_id and not portal.phone_id:
-                        portal.phone_id = lookup_phone_id
-                        await portal.update()
+                        await portal.postinit()
+
                     return portal
 
-                # If the identifier is not in the database, it is created if the variable create is True
-                if create:
-                    try:
-                        if phone_id:
-                            portal = cls(
-                                phone_id=phone_id, bsuid=bsuid, app_business_id=app_business_id
-                            )
-                        else:
-                            portal = cls(bsuid=bsuid, app_business_id=app_business_id)
-                        await portal.insert()
-                    except UniqueViolationError as e:
-                        cls.log.exception(f"Failed to create portal {identifier}: {e}")
-                        portal = cast(
-                            cls,
-                            await super().get_by_identifier(
-                                phone_id=lookup_phone_id,
-                                bsuid=bsuid,
-                                app_business_id=app_business_id,
-                            ),
-                        )
+                if not create:
+                    return None
 
-                    if not portal:
-                        cls.log.error(f"Failed to create portal {identifier}")
-                        return None
+                try:
+                    portal = cls(phone_id=phone_id, bsuid=bsuid, app_business_id=app_business_id)
+                    await portal.insert()
+                except UniqueViolationError as e:
+                    cls.log.exception(f"Failed to create portal {identifier}: {e}")
+                    portal = cast(
+                        cls,
+                        await super().get_by_identifier(
+                            phone_id=phone_id, bsuid=bsuid, app_business_id=app_business_id
+                        ),
+                    )
 
-                    await portal.postinit()
-                    if not portal.bsuid and bsuid:
-                        portal.bsuid = bsuid
-                        await portal.update()
-                    if not portal.phone_id and lookup_phone_id:
-                        portal.phone_id = lookup_phone_id
-                        await portal.update()
-                    return portal
+                if not portal:
+                    cls.log.error(f"Failed to create portal {identifier}")
+                    return None
 
-            return None
+                await portal.postinit()
+                return portal
 
     def get_initial_message(self, message: WhatsappMessages | WhatsappMessageEcho) -> str:
         """
@@ -590,8 +581,10 @@ class Portal(DBPortal, BasePortal):
         await DBMessage.delete_all(self.id)
         self.log.warning(f"Deleting portal {self.mxid}")
         self.by_mxid.pop(self.mxid, None)
-        identifier = self.phone_id if self.phone_id else self.bsuid
-        self.by_app_and_identifier.pop((identifier, self.app_business_id), None)
+        if self.bsuid:
+            self.by_app_and_identifier.pop((self.bsuid, self.app_business_id), None)
+        if self.phone_id:
+            self.by_app_and_identifier.pop((self.phone_id, self.app_business_id), None)
         self.mxid = None
         await self.update()
 
@@ -1771,10 +1764,10 @@ class Portal(DBPortal, BasePortal):
         if self.mxid:
             self.by_mxid[self.mxid] = self
 
-        identifier = self.bsuid if self.bsuid else self.phone_id
-
-        if identifier and self.app_business_id:
-            self.by_app_and_identifier[(identifier, self.app_business_id)] = self
+        if self.phone_id and self.app_business_id:
+            self.by_app_and_identifier[(self.phone_id, self.app_business_id)] = self
+        elif self.bsuid and self.app_business_id:
+            self.by_app_and_identifier[(self.bsuid, self.app_business_id)] = self
 
         if self.is_direct:
             puppet = await self.get_dm_puppet()

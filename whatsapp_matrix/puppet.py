@@ -198,36 +198,36 @@ class Puppet(DBPuppet, BasePuppet):
         if phone_id is None and bsuid is None and username is None:
             raise ValueError("Either phone_id or bsuid must be provided")
 
-        lookup_phone_id = None if bsuid else phone_id
-
-        if username in cls.by_identifier_id:
-            return cls.by_identifier_id[username]
-
-        if bsuid and bsuid in cls.by_identifier_id:
-            return cls.by_identifier_id[bsuid]
-
-        if lookup_phone_id and lookup_phone_id in cls.by_identifier_id:
-            return cls.by_identifier_id[lookup_phone_id]
-
-        puppet = None
+        puppet: Puppet | None = None
 
         if username:
-            puppet = cast(cls, await super().get_by_username(username=username))
+            puppet = cls.by_identifier_id.get(username)
+            if not puppet:
+                puppet = cast(cls, await super().get_by_username(username=username))
 
-        if bsuid and puppet is None:
-            mxid = cls.get_mxid_from_identifier(bsuid)
-            puppet = cast(cls, await super().get_by_identifier(mxid))
+        if puppet is None and bsuid:
+            puppet = cls.by_identifier_id.get(bsuid)
+            if not puppet:
+                mxid = cls.get_mxid_from_identifier(bsuid)
+                puppet = cast(cls, await super().get_by_custom_mxid(mxid))
 
-        if phone_id and puppet is None:
-            mxid = cls.get_mxid_from_identifier(phone_id)
-            puppet = cast(cls, await super().get_by_identifier(mxid))
+        if puppet is None and phone_id:
+            puppet = cls.by_identifier_id.get(phone_id)
+            if not puppet:
+                mxid = cls.get_mxid_from_identifier(phone_id)
+                puppet = cast(cls, await super().get_by_custom_mxid(mxid))
 
         if puppet is not None:
-            if lookup_phone_id and not puppet.phone_id:
-                puppet.phone_id = lookup_phone_id
-                await puppet.update()
+            updated = False
+            if phone_id and not puppet.phone_id:
+                puppet.phone_id = phone_id
+                updated = True
             if bsuid and not puppet.bsuid:
                 puppet.bsuid = bsuid
+            if username and not puppet.username or username != puppet.username:
+                puppet.username = username
+                updated = True
+            if updated:
                 await puppet.update()
 
             puppet._add_to_cache()
