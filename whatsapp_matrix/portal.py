@@ -266,7 +266,7 @@ class Portal(DBPortal, BasePortal):
 
                     if updated:
                         await portal.update()
-                        cls.by_app_and_identifier[(identifier, app_business_id)] = portal
+                        await portal.postinit()
 
                     return portal
 
@@ -1764,10 +1764,10 @@ class Portal(DBPortal, BasePortal):
         if self.mxid:
             self.by_mxid[self.mxid] = self
 
-        if self.bsuid and self.app_business_id:
-            self.by_app_and_identifier[(self.bsuid, self.app_business_id)] = self
-        elif self.phone_id and self.app_business_id:
+        if self.phone_id and self.app_business_id:
             self.by_app_and_identifier[(self.phone_id, self.app_business_id)] = self
+        elif self.bsuid and self.app_business_id:
+            self.by_app_and_identifier[(self.bsuid, self.app_business_id)] = self
 
         if self.is_direct:
             puppet = await self.get_dm_puppet()
