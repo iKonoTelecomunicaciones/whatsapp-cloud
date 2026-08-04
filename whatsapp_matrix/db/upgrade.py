@@ -212,13 +212,6 @@ async def upgrade_v5(conn: Connection) -> None:
         CREATE INDEX IF NOT EXISTS idx_message_portal_id ON message (portal_id)
         """
     )
-    await conn.execute(
-        """UPDATE message SET portal_id = portal.id
-        FROM portal
-        WHERE message.phone_id = portal.phone_id
-        AND message.app_business_id = portal.app_business_id"""
-    )
-    await conn.execute("""ALTER TABLE message ALTER COLUMN portal_id SET NOT NULL""")
 
     # Add FK constraint from message to portal
     await conn.execute(
