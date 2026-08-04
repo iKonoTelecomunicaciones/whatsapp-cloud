@@ -300,11 +300,13 @@ class SectionInteractiveMessage(SerializableAttrs):
     - options: A list of the diferents options of the section.
     - subtitle: The subtitle of the section.
     - title: The title of the section.
+    - listId: The id of the list.
     """
 
     options: list[OptionsInteractiveMessage] = ib(metadata={"json": "options"}, default=[])
     subtitle: str = ib(metadata={"json": "subtitle"}, default="")
     title: str = ib(metadata={"json": "title"}, default="")
+    listId: str = ib(metadata={"json": "listId"}, default="")
 
     @classmethod
     def from_dict(cls, data: dict):
