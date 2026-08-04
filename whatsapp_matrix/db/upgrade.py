@@ -186,13 +186,13 @@ async def upgrade_v5(conn: Connection) -> None:
 
     # Add portal_id column and populate it from the existing phone_id + app_business_id pair
     await conn.execute("""ALTER TABLE message ADD COLUMN portal_id INTEGER""")
-    await conn.execute(
-        """UPDATE message SET portal_id = portal.id
-        FROM portal
-        WHERE message.phone_id = portal.phone_id
-        AND message.app_business_id = portal.app_business_id"""
-    )
-    await conn.execute("""ALTER TABLE message ALTER COLUMN portal_id SET NOT NULL""")
+    # await conn.execute(
+    #    """UPDATE message SET portal_id = portal.id
+    #    FROM portal
+    #    WHERE message.phone_id = portal.phone_id
+    #    AND message.app_business_id = portal.app_business_id"""
+    # )
+    # await conn.execute("""ALTER TABLE message ALTER COLUMN portal_id SET NOT NULL""")
 
     # Add FK constraint from message to portal
     await conn.execute(
