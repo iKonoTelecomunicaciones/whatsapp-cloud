@@ -53,7 +53,7 @@ class Puppet(DBPuppet, BasePuppet):
             bsuid = self.mxid_template.parse(self.custom_mxid)
 
         self.bsuid = bsuid
-        identifier = self.bsuid if self.bsuid else self.phone_id
+        identifier = self.phone_id if self.phone_id else self.bsuid
         self.log = self.log.getChild(identifier)
 
         self.access_token = access_token
