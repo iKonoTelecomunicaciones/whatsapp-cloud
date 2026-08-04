@@ -9,7 +9,7 @@ from json import JSONDecodeError
 from logging import Logger, getLogger
 
 from aiohttp import ClientResponse, ClientSession, web
-from mautrix.types import UserID
+from mautrix.types import EventType, RoomID, UserID
 
 from whatsapp.data import WhatsappContacts
 from whatsapp.types import WsBusinessID, WSPhoneID
@@ -53,6 +53,7 @@ class ProvisioningAPI:
         self.app.router.add_route("GET", "/v1/set_relay/{room_id}", self.validate_set_relay)
         self.app.router.add_route("GET", "/v1/channel_status", self.channel_status)
         self.app.router.add_route("GET", "/v1/resources", self.resources)
+        self.app.router.add_route("GET", "/v1/room_info/{room_id}", self.room_info)
 
     @property
     def _acao_headers(self) -> dict[str, str]:
@@ -289,16 +290,9 @@ class ProvisioningAPI:
 
         return data
 
-    async def _get_user_and_body(
-        self, request: web.Request, read_body: bool = True
-    ) -> tuple[User, dict]:
+    async def _get_user(self, request: web.Request) -> User:
         """
-        Get the user and the body of the request
-
-        Parameters
-        ----------
-        request: web.Request
-            The request that contains the data of the app and the user.
+        Get the user from the request
         """
         # Validate the token
         self.check_token(request)
@@ -320,6 +314,21 @@ class ProvisioningAPI:
                 ),
                 headers=self._headers,
             )
+
+        return user
+
+    async def _get_user_and_body(
+        self, request: web.Request, read_body: bool = True
+    ) -> tuple[User, dict]:
+        """
+        Get the user and the body of the request
+
+        Parameters
+        ----------
+        request: web.Request
+            The request that contains the data of the app and the user.
+        """
+        user = await self._get_user(request)
 
         # Obtain the data from the request
         data = await self._get_body(request) if read_body else None
@@ -1446,3 +1455,65 @@ class ProvisioningAPI:
             status=200,
             headers=self._acao_headers,
         )
+
+    async def room_info(self, request: web.Request) -> web.Response:
+        """
+        Get information about a portal (room), its users and its puppet.
+
+        Parameters
+        ----------
+        request: web.Request
+            The request that contains the room mxid in the path.
+
+        Returns
+        -------
+        JSON
+            The response with the portal, users and puppet information.
+        """
+        await self._get_user(request)
+
+        room_id: RoomID = request.match_info["room_id"]
+
+        if not re.match(r"^![^:]+:.+$", room_id):
+            return web.json_response(
+                data={"detail": {"message": f"Invalid room mxid: {room_id}"}},
+                status=400,
+                headers=self._acao_headers,
+            )
+
+        portal: Portal = await Portal.get_by_mxid(room_id)
+
+        if not portal:
+            self.log.error(f"Portal {room_id} not found")
+            return web.json_response(
+                data={"detail": {"message": f"Portal {room_id} not found"}},
+                status=404,
+                headers=self._acao_headers,
+            )
+
+        try:
+            users = await portal.main_intent.get_room_members(room_id)
+        except Exception as e:
+            self.log.error(f"Error getting the members of the room {room_id}: {e}")
+            users = []
+
+        room_name = None
+        try:
+            name_event = await portal.main_intent.get_state_event(room_id, EventType.ROOM_NAME)
+            room_name = name_event.name if name_event else None
+        except Exception as e:
+            self.log.debug(f"Error getting the name of the room {room_id}: {e}")
+
+        puppet: Puppet = await portal.get_dm_puppet()
+
+        data = {
+            "name": room_name,
+            "users": users,
+            "puppet": puppet.display_name if puppet else None,
+            "mxid": puppet.custom_mxid if puppet else None,
+            "username": puppet.username if puppet else None,
+            "phone_id": portal.phone_id,
+            "bsuid": portal.bsuid,
+        }
+
+        return web.json_response(data=data, status=200, headers=self._acao_headers)
