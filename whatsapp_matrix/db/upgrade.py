@@ -186,13 +186,39 @@ async def upgrade_v5(conn: Connection) -> None:
 
     # Add portal_id column and populate it from the existing phone_id + app_business_id pair
     await conn.execute("""ALTER TABLE message ADD COLUMN portal_id INTEGER""")
-    # await conn.execute(
-    #    """UPDATE message SET portal_id = portal.id
-    #    FROM portal
-    #    WHERE message.phone_id = portal.phone_id
-    #    AND message.app_business_id = portal.app_business_id"""
-    # )
-    # await conn.execute("""ALTER TABLE message ALTER COLUMN portal_id SET NOT NULL""")
+    # New index on portal and message tables
+    await conn.execute(
+        """
+        CREATE INDEX IF NOT EXISTS idx_portal_app_business_id ON portal (app_business_id)
+        """
+    )
+    await conn.execute(
+        """
+        CREATE INDEX IF NOT EXISTS idx_portal_phone_id ON portal (phone_id)
+        """
+    )
+    await conn.execute(
+        """
+        CREATE INDEX IF NOT EXISTS idx_message_app_business_id ON message (app_business_id)
+        """
+    )
+    await conn.execute(
+        """
+        CREATE INDEX IF NOT EXISTS idx_message_phone_id ON message (phone_id)
+        """
+    )
+    await conn.execute(
+        """
+        CREATE INDEX IF NOT EXISTS idx_message_portal_id ON message (portal_id)
+        """
+    )
+    await conn.execute(
+        """UPDATE message SET portal_id = portal.id
+        FROM portal
+        WHERE message.phone_id = portal.phone_id
+        AND message.app_business_id = portal.app_business_id"""
+    )
+    await conn.execute("""ALTER TABLE message ALTER COLUMN portal_id SET NOT NULL""")
 
     # Add FK constraint from message to portal
     await conn.execute(
