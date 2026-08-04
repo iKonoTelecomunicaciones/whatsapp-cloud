@@ -1516,4 +1516,6 @@ class ProvisioningAPI:
             "bsuid": portal.bsuid,
         }
 
-        return web.json_response(data=data, status=200, headers=self._acao_headers)
+        return web.json_response(
+            data={"detail": {"data": data}}, status=200, headers=self._acao_headers
+        )
