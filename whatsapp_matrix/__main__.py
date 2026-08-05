@@ -58,6 +58,7 @@ class WhatsappBridge(Bridge):
         self.add_startup_actions(Puppet.init_cls(self))
         Portal.init_cls(self)
         await super().start()
+        await Portal.init_ghost()
 
     def prepare_stop(self) -> None:
         self.log.debug("Stopping puppet syncers")

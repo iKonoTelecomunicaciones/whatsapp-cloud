@@ -1,11 +1,17 @@
 import asyncio
 import os
+import re
 import tempfile
 from logging import Logger, getLogger
 from typing import cast
 
 from mautrix.util.formatter import EntityType, MarkdownString
 from mautrix.util.formatter import MatrixParser as BaseMatrixParser
+
+
+def bold_to_whatsapp(text: str) -> str:
+    bold = re.compile(r"\*\*(.+?)\*\*")
+    return bold.sub(r"*\1*", text)
 
 
 async def matrix_to_whatsapp(html: str) -> str:

@@ -259,7 +259,7 @@ class WhatsappHandler:
                         await portal.handle_whatsapp_edit(
                             sender_id=user.mxid,
                             message_to_edit=echo_message,
-                            intent=portal.az.intent,
+                            intent=portal.ghost.intent,
                         )
                     else:
                         await portal.handle_whatsapp_echo(user=user, echo_message=echo_message)
