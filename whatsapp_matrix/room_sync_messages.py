@@ -10,23 +10,23 @@ class RoomLock:
     of users to the room.
     """
 
-    rooms_lock: dict[RoomID, asyncio.Lock] = {}
+    rooms_lock: dict[RoomID | tuple[str, str], asyncio.Lock] = {}
 
-    def __init__(self, room_id: RoomID):
+    def __init__(self, identifier: RoomID | tuple[str, str]):
         """
         Initialize the RoomLock class.
 
         Parameters
         ----------
-        room_id : RoomID
-            The ID of the room.
+        identifier : RoomID | tuple[str, str]
+            The ID of the room or the tuple of phone_id or bsuid and app_business_id.
 
         """
-        self.room_id = room_id
+        self.identifier = identifier
         self.primitive_type = asyncio.Lock
 
     def __enter__(self):
-        return self.rooms_lock.setdefault(self.room_id, self.primitive_type())
+        return self.rooms_lock.setdefault(self.identifier, self.primitive_type())
 
     def __exit__(self, exc_type, exc_val, exc_tb):
-        self.rooms_lock.pop(self.room_id, None)
+        self.rooms_lock.pop(self.identifier, None)

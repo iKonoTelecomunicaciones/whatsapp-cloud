@@ -10,6 +10,7 @@ from mautrix.types import (
     MessageType,
     RelatesTo,
     RelationType,
+    RoomID,
     TextMessageEventContent,
 )
 from mautrix.util.logging import TraceLogger
@@ -46,6 +47,7 @@ def whatsapp_to_matrix(text: str) -> Tuple[Optional[str], str]:
 async def whatsapp_reply_to_matrix(
     body: Optional[str],
     evt: Message,
+    room_id: RoomID,
     main_intent: Optional[IntentAPI] = None,
     log: Optional[TraceLogger] = None,
     message_type: MessageType = None,
@@ -73,7 +75,10 @@ async def whatsapp_reply_to_matrix(
 
     body: Message text - text
     evt: Message object - Message
-    maint_Intent: IntentAPI object - IntentAPI
+    main_intent: IntentAPI object - IntentAPI
+    room_id: RoomID object - RoomID
+    log: TraceLogger object - TraceLogger
+    message_type: MessageType object - MessageType
     """
     log.debug("Creating reply message")
     content = body
@@ -84,13 +89,19 @@ async def whatsapp_reply_to_matrix(
         if content.formatted_body:
             content.formatted_body = content.formatted_body.replace("\n", "<br/>")
 
-    await _add_reply_header(content=content, msg=evt, main_intent=main_intent, log=log)
+    await _add_reply_header(
+        content=content, msg=evt, room_id=room_id, main_intent=main_intent, log=log
+    )
 
     return content
 
 
 async def _add_reply_header(
-    content: TextMessageEventContent, msg: Message, main_intent: IntentAPI, log: TraceLogger
+    content: TextMessageEventContent,
+    msg: Message,
+    room_id: RoomID,
+    main_intent: IntentAPI,
+    log: TraceLogger,
 ):
     """The reply parameters are added to the content and the reply is made to the message
 
@@ -110,7 +121,9 @@ async def _add_reply_header(
 
     content: content that generates the message - TextMessageEventContent
     msg: Message to reply - Message
-    maint_Intent: IntentAPI object - IntentAPI
+    room_id: RoomID object - RoomID
+    main_intent: IntentAPI object - IntentAPI
+    log: TraceLogger object - TraceLogger
 
     """
     if not msg:
@@ -119,7 +132,7 @@ async def _add_reply_header(
     content.relates_to = RelatesTo(rel_type=RelationType.REFERENCE, event_id=msg.event_mxid)
 
     try:
-        event: MessageEvent = await main_intent.get_event(msg.room_id, msg.event_mxid)
+        event: MessageEvent = await main_intent.get_event(room_id, msg.event_mxid)
         # If the message is an interactive message, we need to convert it to a text message
         if event.content.msgtype in ["m.interactive_message", "m.template_message"]:
             message_type = (
