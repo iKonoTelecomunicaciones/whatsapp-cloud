@@ -99,6 +99,12 @@ class Portal:
         return cls._from_row(row)
 
     @classmethod
+    async def get_all_by_puppet_id(cls, puppet_id: int) -> list[Portal]:
+        q = f"SELECT id, {cls._columns} FROM portal WHERE puppet_id=$1"
+        rows = await cls.db.fetch(q, puppet_id)
+        return [cls._from_row(row) for row in rows]
+
+    @classmethod
     async def all_with_room(cls) -> list[Portal]:
         q = f"SELECT id, {cls._columns} FROM portal WHERE mxid IS NOT NULL"
         rows = await cls.db.fetch(q)
