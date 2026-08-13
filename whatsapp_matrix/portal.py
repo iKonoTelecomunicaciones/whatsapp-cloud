@@ -12,6 +12,7 @@ from asyncpg.exceptions import UniqueViolationError
 from mautrix.api import ClientPath, MediaPath, Method
 from mautrix.appservice import AppService, IntentAPI
 from mautrix.bridge import BasePortal
+from mautrix.errors.base import IntentError
 from mautrix.types import (
     EventID,
     EventType,
@@ -425,6 +426,48 @@ class Portal(DBPortal, BasePortal):
                     self.log.exception(f"Failed to create portal: {error}")
                     return None
 
+    async def delete_duplicate_puppet(self, username: str | None = None) -> None:
+        """
+        Delete a duplicate puppet
+
+        Parameters
+        ----------
+        username : str | None
+            The username of the puppet to delete.
+        """
+        if username:
+            puppet: Puppet | None = await Puppet.get_by_username(username=username)
+        else:
+            puppet: Puppet | None = await Puppet.get_duplicate_puppet(
+                phone_id=self.phone_id, puppet_id=self.puppet_id
+            )
+
+        if not puppet:
+            self.log.error(f"Failed to find puppet to delete")
+            return
+
+        self.log.info(f"Deleting duplicate puppet {puppet.id}")
+        old_portal: Portal = await Portal.get_by_puppet_and_business_id(
+            puppet.id, self.app_business_id
+        )
+
+        self.log.info(f"Getting old portal: {old_portal.mxid if old_portal else None}")
+
+        if old_portal and old_portal.id != self.id:
+            self.log.info(f"Deleting old portal {old_portal.mxid}")
+            try:
+                await old_portal.main_intent.set_room_name(
+                    old_portal.mxid, f"{puppet.display_name} (old)"
+                )
+            except IntentError as e:
+                self.log.exception(f"Failed to set room name: {e}")
+
+            await old_portal.delete()
+
+        self.log.info(f"Deleting puppet {puppet.id}")
+        await puppet.delete()
+        self.log.info(f"Puppet {puppet.id} deleted")
+
     async def _create_matrix_room(
         self,
         source: User,
@@ -514,11 +557,22 @@ class Portal(DBPortal, BasePortal):
             username = sender.profile.username
 
         # Obtain the puppet of the user and update the information
-        puppet: Puppet = await Puppet.get_by_identifier(
-            phone_id=self.phone_id, bsuid=self.bsuid, username=username
-        )
 
-        await puppet.update_info(sender)
+        try:
+            puppet: Puppet = await Puppet.get_by_identifier(
+                phone_id=self.phone_id, bsuid=self.bsuid, username=username
+            )
+            await puppet.update_info(sender)
+        except UniqueViolationError:
+            self.log.error(
+                f"Failed to update puppet for phone {self.phone_id} and bsuid {self.bsuid}, "
+                "searching for existing puppet"
+            )
+            await self.delete_duplicate_puppet(username=username)
+            puppet = await Puppet.get_by_identifier(
+                phone_id=self.phone_id, bsuid=self.bsuid, username=username
+            )
+            await puppet.update_info(sender)
 
         # Invite the user to the room
         try:
@@ -603,8 +657,8 @@ class Portal(DBPortal, BasePortal):
             self.by_app_and_identifier.pop((self.bsuid, self.app_business_id), None)
         if self.phone_id:
             self.by_app_and_identifier.pop((self.phone_id, self.app_business_id), None)
-        self.mxid = None
-        await self.update()
+
+        await super().delete(self.id)
 
     async def get_dm_puppet(self) -> Puppet | None:
         """
@@ -627,7 +681,19 @@ class Portal(DBPortal, BasePortal):
 
         if not self.is_direct:
             return None
-        puppet = await Puppet.get_by_identifier(phone_id=self.phone_id, bsuid=self.bsuid)
+
+        try:
+            puppet: Puppet = await Puppet.get_by_identifier(
+                phone_id=self.phone_id, bsuid=self.bsuid
+            )
+        except UniqueViolationError:
+            self.log.error(
+                f"Failed to update puppet for phone {self.phone_id} and bsuid {self.bsuid}, "
+                "searching for existing puppet"
+            )
+            await self.delete_duplicate_puppet()
+            puppet = await Puppet.get_by_identifier(phone_id=self.phone_id, bsuid=self.bsuid)
+
         return puppet
 
     async def save(self) -> None:
@@ -919,7 +985,15 @@ class Portal(DBPortal, BasePortal):
         )
 
         puppet: Puppet = await self.get_dm_puppet()
-        await puppet.update_info(sender)
+        try:
+            await puppet.update_info(sender)
+        except UniqueViolationError:
+            self.log.error(
+                f"Failed to update puppet for phone {self.phone_id} and bsuid {self.bsuid}, "
+                "searching for existing puppet"
+            )
+            await self.delete_duplicate_puppet(username=sender.get("profile", {}).get("username"))
+            await puppet.update_info(sender)
 
         if puppet.phone_id and not self.phone_id:
             self.phone_id = puppet.phone_id
@@ -1694,9 +1768,17 @@ class Portal(DBPortal, BasePortal):
         AttributeError:
             Show and error if the message has an error.
         """
-        puppet: Puppet = await Puppet.get_by_identifier(
-            phone_id=self.phone_id, bsuid=self.bsuid, create=False
-        )
+        try:
+            puppet: Puppet = await Puppet.get_by_identifier(
+                phone_id=self.phone_id, bsuid=self.bsuid
+            )
+        except UniqueViolationError:
+            self.log.error(
+                f"Failed to update puppet for phone {self.phone_id} and bsuid {self.bsuid}, "
+                "searching for existing puppet"
+            )
+            await self.delete_duplicate_puppet()
+            puppet = await Puppet.get_by_identifier(phone_id=self.phone_id, bsuid=self.bsuid)
 
         if not puppet:
             self.log.error("No puppet, ignoring read")

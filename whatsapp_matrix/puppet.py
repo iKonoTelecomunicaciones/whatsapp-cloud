@@ -135,6 +135,45 @@ class Puppet(DBPuppet, BasePuppet):
 
         return puppet_displayname.format(**variables)
 
+    async def delete(self) -> None:
+        """
+        Delete the puppet.
+        """
+        if self.bsuid:
+            self.by_identifier_id.pop(self.bsuid, None)
+        if self.phone_id:
+            self.by_identifier_id.pop(self.phone_id, None)
+        if self.username:
+            self.by_identifier_id.pop(self.username, None)
+        if self.custom_mxid:
+            self.by_custom_mxid.pop(self.custom_mxid, None)
+
+        await super().delete(self.id)
+
+    @classmethod
+    async def get_duplicate_puppet(cls, phone_id: str, puppet_id: int) -> Puppet | None:
+        """
+        Get the duplicate puppet.
+
+        Parameters
+        ----------
+        phone_id : str
+            The phone id of the puppet.
+        puppet_id : int
+            The id of the puppet.
+
+        Returns
+        -------
+        Puppet | None
+            The duplicate puppet, or None if it doesn't exist.
+        """
+        if not phone_id or not puppet_id:
+            return None
+
+        return cast(
+            cls, await super().get_duplicate_puppet(phone_id=phone_id, puppet_id=puppet_id)
+        )
+
     async def _update_name(self, info: dict) -> bool:
         """
         Update the name of the user.
@@ -170,6 +209,30 @@ class Puppet(DBPuppet, BasePuppet):
 
     async def get_displayname(self) -> str:
         return await self.intent.get_displayname(self.mxid)
+
+    @classmethod
+    async def get_by_username(cls, username: str) -> "Puppet" | None:
+        """
+        Get the puppet using the username.
+
+        Parameters
+        ----------
+        username : str
+            The username of the user.
+
+        Returns
+        -------
+        Puppet | None
+            The puppet with the given username, or None if it doesn't exist.
+        """
+        if not username:
+            return None
+
+        puppet = cls.by_identifier_id.get(username)
+        if not puppet:
+            puppet = cast(cls, await super().get_by_username(username=username))
+
+        return puppet
 
     @classmethod
     @async_getter_lock
@@ -228,6 +291,10 @@ class Puppet(DBPuppet, BasePuppet):
                 puppet.username = username
                 updated = True
             if updated:
+                cls.log.info(
+                    f"Updating puppet {puppet.id} with phone_id {phone_id}, bsuid {bsuid}, "
+                    f"username {username} and custom_mxid {puppet.custom_mxid}"
+                )
                 await puppet.update()
 
             puppet._add_to_cache()
