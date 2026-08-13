@@ -116,7 +116,10 @@ class Puppet:
     @classmethod
     async def get_duplicated(cls, phone_id: str, puppet_id: int) -> Puppet | None:
         """
-        Get the duplicate puppet.
+        Get the duplicated puppet using the phone id and the puppet id.
+
+        It will return the puppet that it is duplicated, so it will search for the puppet that has
+        a different id than the one passed as parameter.
 
         Parameters
         ----------
