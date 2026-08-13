@@ -103,3 +103,19 @@ class Portal:
         q = f"SELECT id, {cls._columns} FROM portal WHERE mxid IS NOT NULL"
         rows = await cls.db.fetch(q)
         return [cls._from_row(row) for row in rows]
+
+    @classmethod
+    async def delete_by_id(cls, id: int) -> None:
+        """
+        Delete the portal by id.
+
+        Parameters
+        ----------
+        id : int
+            The id of the portal to delete.
+        """
+        if not id:
+            return
+
+        q = f"DELETE FROM portal WHERE id=$1"
+        await cls.db.execute(q, id)
