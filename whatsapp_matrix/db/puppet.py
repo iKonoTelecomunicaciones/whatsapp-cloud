@@ -114,9 +114,12 @@ class Puppet:
         return [cls._from_row(row) for row in rows]
 
     @classmethod
-    async def get_duplicate_puppet(cls, phone_id: str, puppet_id: int) -> Puppet | None:
+    async def get_duplicated(cls, phone_id: str, puppet_id: int) -> Puppet | None:
         """
-        Get the duplicate puppet.
+        Get the duplicated puppet using the phone id and the puppet id.
+
+        It will return the puppet that it is duplicated, so it will search for the puppet that has
+        a different id than the one passed as parameter.
 
         Parameters
         ----------
@@ -136,7 +139,7 @@ class Puppet:
         return cls._from_row(row)
 
     @classmethod
-    async def delete(cls, id: int) -> None:
+    async def delete_by_id(cls, id: int) -> None:
         """
         Delete the puppet by id.
 

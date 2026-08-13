@@ -148,7 +148,7 @@ class Puppet(DBPuppet, BasePuppet):
         if self.custom_mxid:
             self.by_custom_mxid.pop(self.custom_mxid, None)
 
-        await super().delete(self.id)
+        await super().delete_by_id(self.id)
 
     @classmethod
     async def get_duplicate_puppet(cls, phone_id: str, puppet_id: int) -> Puppet | None:
@@ -170,9 +170,7 @@ class Puppet(DBPuppet, BasePuppet):
         if not phone_id or not puppet_id:
             return None
 
-        return cast(
-            cls, await super().get_duplicate_puppet(phone_id=phone_id, puppet_id=puppet_id)
-        )
+        return cast(cls, await super().get_duplicated(phone_id=phone_id, puppet_id=puppet_id))
 
     async def _update_name(self, info: dict) -> bool:
         """

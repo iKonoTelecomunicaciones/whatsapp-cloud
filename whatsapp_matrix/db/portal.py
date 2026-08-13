@@ -105,7 +105,7 @@ class Portal:
         return [cls._from_row(row) for row in rows]
 
     @classmethod
-    async def delete(cls, id: int) -> None:
+    async def delete_by_id(cls, id: int) -> None:
         """
         Delete the portal by id.
 
