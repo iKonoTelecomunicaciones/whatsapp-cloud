@@ -112,3 +112,41 @@ class Puppet:
         """
         rows = await cls.db.fetch(q)
         return [cls._from_row(row) for row in rows]
+
+    @classmethod
+    async def get_duplicate_puppet(cls, phone_id: str, puppet_id: int) -> Puppet | None:
+        """
+        Get the duplicate puppet.
+
+        Parameters
+        ----------
+        phone_id : str
+            The phone id of the puppet.
+        puppet_id : int
+            The id of the puppet.
+        """
+        q = f"""
+            SELECT id, {cls._columns}
+            FROM puppet WHERE phone_id = $1 AND id != $2
+        """
+        row = await cls.db.fetchrow(q, phone_id, puppet_id)
+        if not row:
+            return None
+
+        return cls._from_row(row)
+
+    @classmethod
+    async def delete(cls, id: int) -> None:
+        """
+        Delete the puppet by id.
+
+        Parameters
+        ----------
+        id : int
+            The id of the puppet to delete.
+        """
+        if not id:
+            return
+
+        q = f"DELETE FROM puppet WHERE id=$1"
+        await cls.db.execute(q, id)
