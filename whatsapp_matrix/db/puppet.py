@@ -114,7 +114,7 @@ class Puppet:
         return [cls._from_row(row) for row in rows]
 
     @classmethod
-    async def get_duplicate_puppet(cls, phone_id: str, puppet_id: int) -> Puppet | None:
+    async def get_duplicated(cls, phone_id: str, puppet_id: int) -> Puppet | None:
         """
         Get the duplicate puppet.
 
@@ -136,7 +136,7 @@ class Puppet:
         return cls._from_row(row)
 
     @classmethod
-    async def delete(cls, id: int) -> None:
+    async def delete_by_id(cls, id: int) -> None:
         """
         Delete the puppet by id.
 

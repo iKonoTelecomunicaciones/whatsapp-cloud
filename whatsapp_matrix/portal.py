@@ -658,7 +658,7 @@ class Portal(DBPortal, BasePortal):
         if self.phone_id:
             self.by_app_and_identifier.pop((self.phone_id, self.app_business_id), None)
 
-        await super().delete(self.id)
+        await super().delete_by_id(self.id)
 
     async def get_dm_puppet(self) -> Puppet | None:
         """
