@@ -1289,7 +1289,11 @@ class Portal(DBPortal, BasePortal):
             # Error code 131060 means the message is currently unavailable. It typically occurs
             # when a WhatsApp user messages a business for the first time.
             if err.code == 131060 and "unavailable" in err.message.lower():
-                message = self.convert_text_message(messages.text.body)
+                if messages and hasattr(messages, "text") and hasattr(messages.text, "body"):
+                    message = self.convert_text_message(messages.text.body)
+                else:
+                    message = self.convert_text_message(err.message)
+
                 event_mxid = await self.az.intent.send_message(self.mxid, message)
                 # Save the message to database
                 await DBMessage(
