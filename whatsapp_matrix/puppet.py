@@ -224,7 +224,10 @@ class Puppet(DBPuppet, BasePuppet):
                 updated = True
             if bsuid and not puppet.bsuid:
                 puppet.bsuid = bsuid
-            if username and not puppet.username or username != puppet.username:
+            if username and not puppet.username:
+                puppet.username = username
+                updated = True
+            if username and puppet.username and username != puppet.username:
                 puppet.username = username
                 updated = True
             if updated:
