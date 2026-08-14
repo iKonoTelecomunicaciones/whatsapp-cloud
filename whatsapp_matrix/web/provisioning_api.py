@@ -54,6 +54,7 @@ class ProvisioningAPI:
         self.app.router.add_route("GET", "/v1/channel_status", self.channel_status)
         self.app.router.add_route("GET", "/v1/resources", self.resources)
         self.app.router.add_route("GET", "/v1/room_info/{room_id}", self.room_info)
+        self.app.router.add_route("GET", "/v1/puppet_rooms/{username}", self.puppet_rooms)
 
     @property
     def _acao_headers(self) -> dict[str, str]:
@@ -1518,4 +1519,72 @@ class ProvisioningAPI:
 
         return web.json_response(
             data={"detail": {"data": data}}, status=200, headers=self._acao_headers
+        )
+
+    async def puppet_rooms(self, request: web.Request) -> web.Response:
+        """
+        Get every room a puppet is in, keyed by each room's relay user.
+
+        Parameters
+        ----------
+        request: web.Request
+            The request that contains the puppet username in the path.
+
+        Returns
+        -------
+        JSON
+            The response with the rooms keyed by relay_user_id.
+        """
+        await self._get_user(request)
+
+        username = request.match_info["username"]
+
+        self.log.debug(f"Getting rooms for puppet {username}")
+
+        try:
+            puppet: Puppet = await Puppet.get_by_identifier(username=username, create=False)
+        except ValueError:
+            self.log.error(f"The puppet with username {username} was not found")
+            return web.HTTPNotFound(
+                text=json.dumps(
+                    {
+                        "detail": {
+                            "message": f"The puppet with username %(username)s was not found",
+                            "data": {"username": username},
+                        }
+                    }
+                ),
+                headers=self._headers,
+            )
+
+        if not puppet:
+            self.log.error(f"The puppet with username {username} was not found")
+            return web.HTTPNotFound(
+                text=json.dumps(
+                    {
+                        "detail": {
+                            "message": f"The puppet with username %(username)s was not found",
+                            "data": {"username": username},
+                        }
+                    }
+                ),
+                headers=self._headers,
+            )
+
+        portals: list[Portal] = await Portal.get_all_by_puppet_id(puppet.id)
+
+        rooms: dict = {}
+        for portal in portals:
+            if not portal.relay_user_id:
+                continue
+            rooms[portal.relay_user_id] = {
+                "room_id": portal.mxid,
+                "phone": portal.phone_id,
+                "bsuid": portal.bsuid,
+                "name": puppet.display_name,
+                "mxid": puppet.mxid,
+            }
+
+        return web.json_response(
+            data={"detail": {"data": rooms}}, status=200, headers=self._acao_headers
         )
