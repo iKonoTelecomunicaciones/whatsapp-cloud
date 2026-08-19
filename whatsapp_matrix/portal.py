@@ -651,10 +651,21 @@ class Portal(DBPortal, BasePortal):
             if not puppet:
                 return None
 
-            if not puppet.bsuid and not puppet.phone_id and self.phone_id:
-                puppet.phone_id = self.phone_id
-                await puppet.update()
-            elif not puppet.bsuid and self.bsuid:
+            if not puppet.phone_id and self.phone_id:
+                try:
+                    puppet.phone_id = self.phone_id
+                    await puppet.update()
+                except UniqueViolationError:
+                    self.log.error(
+                        f"Failed to update puppet for phone {self.phone_id} and bsuid "
+                        f"{self.bsuid}, searching for existing puppet"
+                    )
+                    await self.delete_duplicate_puppet()
+                    puppet = await Puppet.get_by_id(self.puppet_id)
+                    puppet.phone_id = self.phone_id
+                    await puppet.update()
+
+            if not puppet.bsuid and self.bsuid:
                 puppet.bsuid = self.bsuid
                 await puppet.update()
 
