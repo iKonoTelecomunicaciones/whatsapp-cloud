@@ -103,6 +103,9 @@ class WhatsappHandler:
         elif wb_value.get("statuses") and wb_value.get("statuses")[0].get("status") == "read":
             return await self.read_event(WhatsappEvent.from_dict(data))
 
+        elif wb_value.get("statuses") and wb_value.get("statuses")[0].get("status") == "sent":
+            return await self.sent_event(WhatsappEvent.from_dict(data))
+
         # If the event is an error, we send to the user the message error
         elif wb_value.get("statuses") and wb_value.get("statuses")[0].get("status") == "failed":
             wb_event = WhatsappEvent.from_dict(data)
@@ -209,6 +212,40 @@ class WhatsappHandler:
         else:
             self.log.error(f"Portal not found.")
             return web.Response(status=406)
+
+    async def sent_event(self, data: WhatsappEvent) -> web.Response:
+        """
+        It validates the incoming request and links the phone number with the BSUID
+        (or vice versa) on the portal/puppet associated with the sender, without
+        performing any additional action on Matrix.
+        """
+        self.log.debug(f"Received Whatsapp Cloud sent event: {data}")
+
+        phone_id = data.entry.changes.value.contacts.wa_id
+        bsuid = data.entry.changes.value.contacts.user_id
+        business_id = data.entry.id
+
+        if phone_id is None and bsuid is None:
+            self.log.error(
+                f"Failed to handle the sent event because the recipient identifier is missing. "
+                f"Business ID: {business_id}, Event: {data}"
+            )
+            return web.Response(status=200)
+
+        try:
+            portal: Portal = await Portal.get_by_app_and_identifier(
+                phone_id=phone_id, bsuid=bsuid, app_business_id=business_id, create=False
+            )
+        except Exception as e:
+            self.log.error(f"Error getting portal to handle the sent event: {e}")
+            return web.Response(status=200)
+
+        if not portal:
+            self.log.warning(
+                f"Portal not found to handle the sent event for business_id {business_id}."
+            )
+
+        return web.Response(status=200)
 
     async def send_echo_event(self, data: dict) -> web.Response:
         """

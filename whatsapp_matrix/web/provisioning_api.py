@@ -1535,7 +1535,7 @@ class ProvisioningAPI:
         JSON
             The response with the rooms keyed by relay_user_id.
         """
-        await self._get_user(request)
+        self.check_token(request)
 
         username = request.match_info["username"]
 
