@@ -90,6 +90,11 @@ class Puppet(DBPuppet, BasePuppet):
         return (puppet.try_start() async for puppet in cls.all_with_custom_mxid())
 
     def _add_to_cache(self) -> None:
+        puppet_cache = self.by_custom_mxid.get_item(self.custom_mxid)
+
+        if puppet_cache and not self.username and puppet_cache.username:
+            self.username = puppet_cache.username
+
         if self.bsuid:
             self.by_identifier_id[self.bsuid] = self
         elif self.phone_id:
@@ -117,6 +122,7 @@ class Puppet(DBPuppet, BasePuppet):
 
         if update:
             await self.update()
+            self._add_to_cache()
 
     @classmethod
     def _get_displayname(cls, info: dict) -> str:
