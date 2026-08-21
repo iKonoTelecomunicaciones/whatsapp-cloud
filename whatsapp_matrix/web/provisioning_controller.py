@@ -49,25 +49,23 @@ class ProvisioningController:
             "Content-Type": "application/json",
         }
 
-    def _invalidate_business_id_caches(
-        self, old_business_id: str, old_phone_id: str | None
-    ) -> None:
+    def _invalidate_business_id_caches(self, old_business_id: str) -> None:
+        """
+        Invalidate the business id caches.
+
+        Parameters
+        ----------
+        old_business_id: str
+            The old business id to invalidate.
+        """
         User.by_business_id.pop(old_business_id, None)
-        for key in list(Portal.by_app_and_phone_id.keys()):
-            if key == (old_phone_id, old_business_id):
-                Portal.by_app_and_phone_id.pop(key, None)
+        for key in list(Portal.by_app_and_identifier.keys()):
+            if old_business_id in key:
+                Portal.by_app_and_identifier.pop(key, None)
 
-        for phone_id, puppet in list(Puppet.by_phone_id.items()):
+        for identifier, puppet in list(Puppet.by_identifier_id.items()):
             if puppet.app_business_id == old_business_id:
-                Puppet.by_phone_id.pop(phone_id, None)
-
-    def _invalidate_phone_id_caches(self, old_phone_id: str, business_id: str) -> None:
-        Portal.by_app_and_phone_id.pop((old_phone_id, business_id), None)
-        Puppet.by_phone_id.pop(old_phone_id, None)
-
-        for mxid, portal in list(Portal.by_mxid.items()):
-            if portal.phone_id == old_phone_id and portal.app_business_id == business_id:
-                Portal.by_mxid.pop(mxid, None)
+                Puppet.by_identifier_id.pop(identifier, None)
 
     async def update_app(
         self, whatsapp_app: WhatsappApplication, updates: dict[str, str], admin_user: str
@@ -133,18 +131,13 @@ class ProvisioningController:
         old_wb_phone_id = whatsapp_app.wb_phone_id
         current_business_id = old_business_id
 
-        invalidate_caches = await whatsapp_app.update_identifiers(
+        invalidate_business_id_caches = await whatsapp_app.update_identifiers(
             updates, old_business_id, old_wb_phone_id, current_business_id
         )
 
-        invalidate_business_id_caches, invalidate_phone_id_caches = invalidate_caches
-
         if invalidate_business_id_caches:
-            self._invalidate_business_id_caches(old_business_id, old_wb_phone_id)
+            self._invalidate_business_id_caches(old_business_id)
             User.by_mxid.pop(admin_user, None)
-
-        if invalidate_phone_id_caches:
-            self._invalidate_phone_id_caches(old_wb_phone_id, current_business_id)
 
         user = await User.get_by_mxid(mxid=admin_user, create=False)
         if user:

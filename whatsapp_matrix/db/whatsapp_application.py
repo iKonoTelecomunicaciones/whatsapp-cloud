@@ -206,9 +206,27 @@ class WhatsappApplication:
         old_business_id: WsBusinessID,
         old_wb_phone_id: WSPhoneID,
         current_business_id: WsBusinessID,
-    ) -> None:
+    ) -> bool:
+        """
+        Update the identifiers of the whatsapp application.
+
+        Parameters
+        ----------
+        updates: dict[str, str]
+            The updates to the whatsapp application.
+        old_business_id: WsBusinessID
+            The old business id of the whatsapp application.
+        old_wb_phone_id: WSPhoneID
+            The old wb phone id of the whatsapp application.
+        current_business_id: WsBusinessID
+            The current business id of the whatsapp application.
+
+        Returns
+        -------
+        bool
+            True if the business id caches should be invalidated, False otherwise.
+        """
         invalidate_business_id_caches = False
-        invalidate_phone_id_caches = False
         async with WhatsappApplication.db.acquire() as conn:
             async with conn.transaction():
                 if "business_id" in updates and updates["business_id"] != old_business_id:
@@ -218,25 +236,6 @@ class WhatsappApplication:
                         "UPDATE wb_application SET business_id=$1 WHERE business_id=$2",
                         current_business_id,
                         old_business_id,
-                    )
-
-                if (
-                    old_wb_phone_id
-                    and "wb_phone_id" in updates
-                    and updates["wb_phone_id"] != old_wb_phone_id
-                ):
-                    invalidate_phone_id_caches = True
-                    await conn.execute(
-                        "UPDATE portal SET phone_id=$1 WHERE phone_id=$2 AND app_business_id=$3",
-                        updates["wb_phone_id"],
-                        old_wb_phone_id,
-                        current_business_id,
-                    )
-                    await conn.execute(
-                        "UPDATE puppet SET phone_id=$1 WHERE phone_id=$2 AND app_business_id=$3",
-                        updates["wb_phone_id"],
-                        old_wb_phone_id,
-                        current_business_id,
                     )
 
                 set_parts: list[str] = []
@@ -264,4 +263,4 @@ class WhatsappApplication:
                         *values,
                     )
 
-        return invalidate_business_id_caches, invalidate_phone_id_caches
+        return invalidate_business_id_caches
