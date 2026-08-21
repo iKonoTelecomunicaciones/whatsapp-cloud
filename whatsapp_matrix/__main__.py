@@ -68,6 +68,7 @@ class WhatsappBridge(Bridge):
         self.add_startup_actions(Puppet.init_cls(self))
         Portal.init_cls(self)
         await super().start()
+        await Portal.init_ghost()
         if WhatsappApplication.encryption_key:
             async with self.db.acquire() as conn:
                 self.log.debug("Initiating migration to encrypt existing data")

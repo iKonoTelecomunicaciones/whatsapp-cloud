@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import re
 import sys
 from asyncio import AbstractEventLoop, get_event_loop
 from collections.abc import Mapping
@@ -8,7 +9,7 @@ from json import JSONDecodeError
 from logging import Logger, getLogger
 
 from aiohttp import ClientResponse, ClientSession, web
-from mautrix.types import UserID
+from mautrix.types import EventType, RoomID, UserID
 
 from whatsapp.data import WhatsappContacts
 from whatsapp.types import WsBusinessID, WSPhoneID
@@ -56,8 +57,10 @@ class ProvisioningAPI:
         self.app.router.add_route("GET", "/v1/set_relay/{room_id}", self.validate_set_relay)
         self.app.router.add_route("GET", "/v1/channel_status", self.channel_status)
         self.app.router.add_route("GET", "/v1/resources", self.resources)
+        self.app.router.add_route("GET", "/v1/room_info/{room_id}", self.room_info)
+        self.app.router.add_route("GET", "/v1/puppet_rooms/{username}", self.puppet_rooms)
         self.app.router.add_route("PATCH", "/v1/{phone_id}/pin", self.set_pin)
-        self.app.router.add_route("PATCH", "/v2/app/{admin_user}", self.update_app_identifiers)
+        self.app.router.add_route("PATCH", "/v1/app/{admin_user}", self.update_app_identifiers)
 
     async def _register_phone(self, phone_id: WSPhoneID, access_token: str, pin: str) -> None:
         """
@@ -271,16 +274,9 @@ class ProvisioningAPI:
 
         return data
 
-    async def _get_user_and_body(
-        self, request: web.Request, read_body: bool = True
-    ) -> tuple[User, dict]:
+    async def _get_user(self, request: web.Request) -> User:
         """
-        Get the user and the body of the request
-
-        Parameters
-        ----------
-        request: web.Request
-            The request that contains the data of the app and the user.
+        Get the user from the request
         """
         # Validate the token
         self.check_token(request)
@@ -302,6 +298,36 @@ class ProvisioningAPI:
                 ),
                 headers=self.controller._headers,
             )
+
+        return user
+
+    async def _get_user_and_body(
+        self, request: web.Request, read_body: bool = True
+    ) -> tuple[User, dict]:
+        """
+        Get the user and the body of the request
+
+        Parameters
+        ----------
+        request: web.Request
+            The request that contains the data of the app and the user.
+        """
+        user = await self._get_user(request)
+
+        return user
+
+    async def _get_user_and_body(
+        self, request: web.Request, read_body: bool = True
+    ) -> tuple[User, dict]:
+        """
+        Get the user and the body of the request
+
+        Parameters
+        ----------
+        request: web.Request
+            The request that contains the data of the app and the user.
+        """
+        user = await self._get_user(request)
 
         # Obtain the data from the request
         data = await self._get_body(request) if read_body else None
@@ -831,7 +857,7 @@ class ProvisioningAPI:
                 headers=self.controller._headers,
             )
 
-    async def _get_puppet(self, number: WSPhoneID, app_business_id: WsBusinessID) -> Puppet:
+    async def _get_puppet(self, number: WSPhoneID) -> Puppet:
         """
         Obtain the puppet from the number of the user
 
@@ -839,6 +865,9 @@ class ProvisioningAPI:
         ----------
         number: str
             The number of the user
+
+        app_business_id: WsBusinessID
+            The app_business_id of the app
 
         Returns
         -------
@@ -852,9 +881,7 @@ class ProvisioningAPI:
                 text=json.dumps({"error": str(e)}), headers=self.controller._headers
             )
 
-        puppet: Puppet = await Puppet.get_by_phone_id(
-            phone_id=number, app_business_id=app_business_id
-        )
+        puppet: Puppet = await Puppet.get_by_identifier(phone_id=number, bsuid=None)
 
         return puppet
 
@@ -875,22 +902,47 @@ class ProvisioningAPI:
         self.log.debug("Start PM")
         user, _ = await self._get_user_and_body(request, read_body=False)
 
-        puppet: Puppet = await self._get_puppet(
-            number=request.match_info["number"], app_business_id=user.app_business_id
-        )
-        portal: Portal = await Portal.get_by_app_and_phone_id(
-            phone_id=puppet.phone_id, app_business_id=user.app_business_id
-        )
+        identifier = request.match_info["number"]
+
+        # A BSUID has the form <COUNTRY_CODE>.<ID> (e.g. COL.1234);
+        # a phone number consists only of digits (e.g. 573141234567).
+        is_bsuid = bool(re.match(r"^[A-Za-z]+\.\S+$", identifier))
+
+        self.log.debug(f"Starting PM with identifier: {identifier}, is_bsuid? {is_bsuid}")
+
+        if is_bsuid:
+            puppet: Puppet = await Puppet.get_by_identifier(bsuid=identifier)
+            portal: Portal = await Portal.get_by_app_and_identifier(
+                phone_id=None,
+                bsuid=identifier,
+                app_business_id=user.app_business_id,
+            )
+        else:
+            puppet: Puppet = await self._get_puppet(number=identifier)
+            portal: Portal = await Portal.get_by_app_and_identifier(
+                phone_id=puppet.phone_id,
+                bsuid=None,
+                app_business_id=user.app_business_id,
+            )
 
         # If the portal is not created, create it
         if portal.mxid:
             await portal.main_intent.invite_user(portal.mxid, user.mxid)
             just_created = False
         else:
+            self.log.debug(f"Creating portal for identifier: {identifier}, is_bsuid? {is_bsuid}")
             chat_customer = {
-                "wa_id": puppet.phone_id,
-                "profile": {"name": puppet.display_name or puppet.custom_mxid},
+                "profile": {
+                    "name": puppet.display_name or puppet.custom_mxid,
+                    "username": puppet.username,
+                },
             }
+
+            if not is_bsuid:
+                chat_customer["wa_id"] = normalize_number(identifier).replace("+", "")
+            else:
+                chat_customer["user_id"] = identifier
+
             sender = WhatsappContacts.from_dict(chat_customer)
             await portal.create_matrix_room(user, sender)
             just_created = True
@@ -1603,4 +1655,136 @@ class ProvisioningAPI:
             data={"detail": {"message": message}},
             status=status,
             headers=self.controller._acao_headers,
+        )
+
+    async def room_info(self, request: web.Request) -> web.Response:
+        """
+        Get information about a portal (room), its users and its puppet.
+
+        Parameters
+        ----------
+        request: web.Request
+            The request that contains the room mxid in the path.
+
+        Returns
+        -------
+        JSON
+            The response with the portal, users and puppet information.
+        """
+        await self._get_user(request)
+
+        room_id: RoomID = request.match_info["room_id"]
+
+        if not re.match(r"^![^:]+:.+$", room_id):
+            return web.json_response(
+                data={"detail": {"message": f"Invalid room mxid: {room_id}"}},
+                status=400,
+                headers=self.controller._acao_headers,
+            )
+
+        portal: Portal = await Portal.get_by_mxid(room_id)
+
+        if not portal:
+            self.log.error(f"Portal {room_id} not found")
+            return web.json_response(
+                data={"detail": {"message": f"Portal {room_id} not found"}},
+                status=404,
+                headers=self.controller._acao_headers,
+            )
+
+        try:
+            users = await portal.main_intent.get_room_members(room_id)
+        except Exception as e:
+            self.log.error(f"Error getting the members of the room {room_id}: {e}")
+            users = []
+
+        room_name = None
+        try:
+            name_event = await portal.main_intent.get_state_event(room_id, EventType.ROOM_NAME)
+            room_name = name_event.name if name_event else None
+        except Exception as e:
+            self.log.debug(f"Error getting the name of the room {room_id}: {e}")
+
+        puppet: Puppet = await portal.get_dm_puppet()
+
+        data = {
+            "name": room_name,
+            "users": users,
+            "puppet": puppet.display_name if puppet else None,
+            "mxid": puppet.custom_mxid if puppet else None,
+            "username": puppet.username if puppet else None,
+            "phone_id": portal.phone_id,
+            "bsuid": portal.bsuid,
+        }
+
+        return web.json_response(
+            data={"detail": {"data": data}}, status=200, headers=self.controller._acao_headers
+        )
+
+    async def puppet_rooms(self, request: web.Request) -> web.Response:
+        """
+        Get every room a puppet is in, keyed by each room's relay user.
+
+        Parameters
+        ----------
+        request: web.Request
+            The request that contains the puppet username in the path.
+
+        Returns
+        -------
+        JSON
+            The response with the rooms keyed by relay_user_id.
+        """
+        self.check_token(request)
+
+        username = request.match_info["username"]
+
+        self.log.debug(f"Getting rooms for puppet {username}")
+
+        try:
+            puppet: Puppet = await Puppet.get_by_identifier(username=username, create=False)
+        except ValueError:
+            self.log.error(f"The puppet with username {username} was not found")
+            return web.HTTPNotFound(
+                text=json.dumps(
+                    {
+                        "detail": {
+                            "message": f"The puppet with username %(username)s was not found",
+                            "data": {"username": username},
+                        }
+                    }
+                ),
+                headers=self.controller._headers,
+            )
+
+        if not puppet:
+            self.log.error(f"The puppet with username {username} was not found")
+            return web.HTTPNotFound(
+                text=json.dumps(
+                    {
+                        "detail": {
+                            "message": f"The puppet with username %(username)s was not found",
+                            "data": {"username": username},
+                        }
+                    }
+                ),
+                headers=self.controller._headers,
+            )
+
+        portals: list[Portal] = await Portal.get_all_by_puppet_id(puppet.id)
+
+        rooms: dict = {}
+        for portal in portals:
+            if not portal.relay_user_id:
+                continue
+            rooms[portal.relay_user_id] = {
+                "room_id": portal.mxid,
+                "phone": portal.phone_id,
+                "bsuid": portal.bsuid,
+                "name": puppet.display_name,
+                "mxid": puppet.mxid,
+            }
+
+        return web.json_response(
+            data={"detail": {"data": rooms}}, status=200, headers=self.controller._acao_headers
         )

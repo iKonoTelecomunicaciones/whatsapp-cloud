@@ -865,6 +865,7 @@ class WhatsappProfile(SerializableAttrs):
     """
 
     name: str = ib(metadata={"json": "name"}, default="")
+    username: str = ib(metadata={"json": "username"}, default=None)
 
 
 @dataclass
@@ -875,10 +876,13 @@ class WhatsappContacts(SerializableAttrs):
     - profile: Contain the name of the user.
 
     - wa_id: The number of the user.
+
+    - user_id: The BSUID of the user.
     """
 
     profile: WhatsappProfile = ib(metadata={"json": "profile"}, default={})
-    wa_id: WhatsappPhone = ib(metadata={"json": "wa_id"}, default="")
+    wa_id: WhatsappPhone = ib(metadata={"json": "wa_id"}, default=None)
+    user_id: str = ib(metadata={"json": "user_id"}, default=None)
 
     @classmethod
     def from_dict(cls, data: dict):
@@ -889,7 +893,8 @@ class WhatsappContacts(SerializableAttrs):
 
         return cls(
             profile=profile_obj,
-            wa_id=data.get("wa_id", ""),
+            wa_id=data.get("wa_id", None),
+            user_id=data.get("user_id", None),
         )
 
 

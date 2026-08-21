@@ -120,8 +120,129 @@ async def upgrade_v2(conn: Connection) -> None:
     )
 
 
-@upgrade_table.register(description="Add pin column; add ON UPDATE CASCADE to FK constraints")
+@upgrade_table.register(
+    description="Refactor puppet table: add id and username columns, remove unused columns"
+)
 async def upgrade_v3(conn: Connection) -> None:
+    # Drop FK constraint linking puppet to wb_application via app_business_id
+    await conn.execute(
+        """ALTER TABLE puppet DROP CONSTRAINT FK_puppet_wb_application_app_business_id"""
+    )
+
+    # Drop unused columns
+    await conn.execute(
+        """ALTER TABLE puppet
+        DROP COLUMN access_token,
+        DROP COLUMN next_batch,
+        DROP COLUMN base_url,
+        DROP COLUMN is_registered,
+        DROP COLUMN app_business_id"""
+    )
+
+    # Replace phone_id primary key with a SERIAL id column
+    await conn.execute("""ALTER TABLE puppet DROP CONSTRAINT puppet_pkey""")
+    await conn.execute("""ALTER TABLE puppet ADD COLUMN id SERIAL PRIMARY KEY""")
+
+    # Add username column with unique constraint
+    await conn.execute("""ALTER TABLE puppet ADD COLUMN username TEXT UNIQUE""")
+    # phone_id is necessary to be unique to avoid having multiple puppets with the same phone_id
+    # and also to be nullable
+    await conn.execute("""ALTER TABLE puppet ALTER COLUMN phone_id DROP NOT NULL""")
+
+    await conn.execute("""ALTER TABLE puppet ADD CONSTRAINT unique_phone_id UNIQUE (phone_id)""")
+
+
+@upgrade_table.register(description="Refactor portal table: add id, bsuid and puppet_id columns")
+async def upgrade_v4(conn: Connection) -> None:
+    # Drop composite primary key (phone_id, app_business_id) and replace with SERIAL id
+    await conn.execute(
+        """ALTER TABLE message DROP CONSTRAINT FK_message_portal_phone_id_business_id"""
+    )
+    await conn.execute("""ALTER TABLE portal DROP CONSTRAINT portal_pkey""")
+    await conn.execute("""ALTER TABLE portal ADD COLUMN id SERIAL PRIMARY KEY""")
+
+    # Add bsuid column with unique constraint
+    await conn.execute("""ALTER TABLE portal ADD COLUMN bsuid TEXT UNIQUE""")
+
+    # Add puppet_id FK referencing puppet(id)
+    await conn.execute("""ALTER TABLE portal ADD COLUMN puppet_id INTEGER""")
+    await conn.execute(
+        """ALTER TABLE portal ADD CONSTRAINT FK_portal_puppet_id
+        FOREIGN KEY (puppet_id) REFERENCES puppet (id) ON DELETE RESTRICT"""
+    )
+
+    # Change the phone_id column to be nullable
+    await conn.execute("""ALTER TABLE portal ALTER COLUMN phone_id DROP NOT NULL""")
+
+
+@upgrade_table.register(
+    description="Refactor message table: replace room_id/phone_id/app_business_id with portal_id FK"
+)
+async def upgrade_v5(conn: Connection) -> None:
+    # Drop FK constraints that reference columns being removed
+    await conn.execute(
+        """ALTER TABLE message DROP CONSTRAINT FK_message_wb_application_app_business_id"""
+    )
+
+    # Add portal_id column and populate it from the existing phone_id + app_business_id pair
+    await conn.execute("""ALTER TABLE message ADD COLUMN portal_id INTEGER""")
+    # New index on portal and message tables
+    await conn.execute(
+        """
+        CREATE INDEX IF NOT EXISTS idx_portal_app_business_id ON portal (app_business_id)
+        """
+    )
+    await conn.execute(
+        """
+        CREATE INDEX IF NOT EXISTS idx_portal_phone_id ON portal (phone_id)
+        """
+    )
+    await conn.execute(
+        """
+        CREATE INDEX IF NOT EXISTS idx_message_app_business_id ON message (app_business_id)
+        """
+    )
+    await conn.execute(
+        """
+        CREATE INDEX IF NOT EXISTS idx_message_phone_id ON message (phone_id)
+        """
+    )
+    await conn.execute(
+        """
+        CREATE INDEX IF NOT EXISTS idx_message_portal_id ON message (portal_id)
+        """
+    )
+
+    # Add FK constraint from message to portal
+    await conn.execute(
+        """ALTER TABLE message ADD CONSTRAINT FK_message_portal_id
+        FOREIGN KEY (portal_id) REFERENCES portal (id) ON DELETE RESTRICT"""
+    )
+
+    # Drop the now-redundant columns
+    await conn.execute(
+        """ALTER TABLE message
+        DROP COLUMN room_id,
+        DROP COLUMN phone_id,
+        DROP COLUMN app_business_id"""
+    )
+
+    # Update puppet_id in portal table to reference puppet.id instead of puppet.phone_id
+    await conn.execute(
+        """UPDATE portal SET puppet_id = puppet.id
+        FROM puppet
+        WHERE portal.phone_id = puppet.phone_id"""
+    )
+
+
+@upgrade_table.register(description="Drop constrain unique bsuid in portal table")
+async def upgrade_v6(conn: Connection) -> None:
+    await conn.execute("""ALTER TABLE portal DROP CONSTRAINT IF EXISTS portal_bsuid_key""")
+    await conn.execute("""CREATE INDEX IF NOT EXISTS portal_bsuid_key ON portal (bsuid)""")
+
+
+@upgrade_table.register(description="Add pin column; add ON UPDATE CASCADE to FK constraints")
+async def upgrade_v7(conn: Connection) -> None:
     await conn.execute("ALTER TABLE wb_application ALTER COLUMN pin TYPE TEXT;")
 
     await conn.execute(
