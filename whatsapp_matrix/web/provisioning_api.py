@@ -59,7 +59,7 @@ class ProvisioningAPI:
         self.app.router.add_route("GET", "/v1/resources", self.resources)
         self.app.router.add_route("GET", "/v1/room_info/{room_id}", self.room_info)
         self.app.router.add_route("GET", "/v1/puppet_rooms/{username}", self.puppet_rooms)
-        self.app.router.add_route("PATCH", "/v1/{phone_id}/pin", self.set_pin)
+        self.app.router.add_route("PATCH", "/v1/{business_id}/{phone_id}/pin", self.set_pin)
         self.app.router.add_route("PATCH", "/v1/app/{admin_user}", self.update_app_identifiers)
 
     async def _register_phone(self, phone_id: WSPhoneID, access_token: str, pin: str) -> None:
@@ -1584,10 +1584,10 @@ class ProvisioningAPI:
         JSON
             The response with a success message or an error message
         """
-        user, data = await self._get_user_and_body(request)
+        data = await self._get_body(request)
 
         if data is None or not isinstance(data, dict):
-            self.log.error(f"No data provided for user {user.mxid}")
+            self.log.error(f"No data provided")
             return web.json_response(
                 data={"detail": {"message": "No data provided"}},
                 status=400,
@@ -1595,7 +1595,7 @@ class ProvisioningAPI:
             )
 
         if not data.get("pin"):
-            self.log.error(f"No pin provided for user {user.mxid}")
+            self.log.error(f"No pin provided")
             return web.json_response(
                 data={"detail": {"message": "No pin provided"}},
                 status=400,
@@ -1613,32 +1613,49 @@ class ProvisioningAPI:
 
         try:
             phone_id = request.match_info["phone_id"]
-        except KeyError as e:
-            raise self._missing_key_error(e)
-
-        whatsapp_app: WhatsappApplication | None = (
-            await WhatsappApplication.get_by_business_id_and_phone_id(
-                business_id=user.app_business_id, phone_id=phone_id
+            business_id = request.match_info["business_id"]
+        except KeyError:
+            return web.json_response(
+                data={
+                    "detail": {
+                        "message": "The phone_id and business_id were not provided in the path"
+                    }
+                },
+                status=400,
+                headers=self.controller._acao_headers,
             )
-        )
+
+        try:
+            whatsapp_app: WhatsappApplication | None = (
+                await WhatsappApplication.get_by_business_id(business_id)
+            )
+        except ValueError as e:
+            self.log.error(f"Error getting WhatsApp application: {e}")
+            return web.json_response(
+                data={"detail": {"message": f"WhatsApp application not found"}},
+                status=400,
+                headers=self.controller._acao_headers,
+            )
 
         if whatsapp_app is None:
             self.log.error(
                 f"WhatsApp application not found for phone {phone_id} and "
-                f"business {user.app_business_id}"
+                f"business {business_id}"
             )
             return web.json_response(
                 data={
                     "detail": {
                         "message": (
                             f"WhatsApp application not found for phone {phone_id} and "
-                            f"business {user.app_business_id}"
+                            f"business {business_id}"
                         )
                     }
                 },
                 status=400,
                 headers=self.controller._acao_headers,
             )
+
+        self.log.debug(f"Setting pin for phone {phone_id} and business {whatsapp_app.business_id}")
 
         # Set the pin for the phone
         status, message = await self.controller.set_pin(

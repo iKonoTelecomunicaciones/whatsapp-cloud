@@ -243,46 +243,4 @@ async def upgrade_v6(conn: Connection) -> None:
 
 @upgrade_table.register(description="Add pin column; add ON UPDATE CASCADE to FK constraints")
 async def upgrade_v7(conn: Connection) -> None:
-    await conn.execute("ALTER TABLE wb_application ALTER COLUMN pin TYPE TEXT;")
-
-    await conn.execute(
-        "ALTER TABLE message DROP CONSTRAINT FK_message_wb_application_app_business_id"
-    )
-    await conn.execute(
-        "ALTER TABLE portal DROP CONSTRAINT FK_portal_wb_application_app_business_id"
-    )
-    await conn.execute(
-        "ALTER TABLE matrix_user DROP CONSTRAINT FK_matrix_user_wb_application_app_business_id"
-    )
-    await conn.execute(
-        "ALTER TABLE puppet DROP CONSTRAINT FK_puppet_wb_application_app_business_id"
-    )
-    await conn.execute(
-        "ALTER TABLE message DROP CONSTRAINT FK_message_portal_phone_id_business_id"
-    )
-
-    await conn.execute(
-        """ALTER TABLE message ADD CONSTRAINT FK_message_wb_application_app_business_id
-        FOREIGN KEY (app_business_id) REFERENCES wb_application (business_id)
-        ON UPDATE CASCADE"""
-    )
-    await conn.execute(
-        """ALTER TABLE portal ADD CONSTRAINT FK_portal_wb_application_app_business_id
-        FOREIGN KEY (app_business_id) REFERENCES wb_application (business_id)
-        ON UPDATE CASCADE"""
-    )
-    await conn.execute(
-        """ALTER TABLE matrix_user ADD CONSTRAINT FK_matrix_user_wb_application_app_business_id
-        FOREIGN KEY (app_business_id) REFERENCES wb_application (business_id)
-        ON UPDATE CASCADE"""
-    )
-    await conn.execute(
-        """ALTER TABLE puppet ADD CONSTRAINT FK_puppet_wb_application_app_business_id
-        FOREIGN KEY (app_business_id) REFERENCES wb_application (business_id)
-        ON UPDATE CASCADE"""
-    )
-    await conn.execute(
-        """ALTER TABLE message ADD CONSTRAINT FK_message_portal_phone_id_business_id
-        FOREIGN KEY (phone_id, app_business_id) REFERENCES portal (phone_id, app_business_id)
-        ON UPDATE CASCADE"""
-    )
+    await conn.execute("ALTER TABLE wb_application ADD pin TEXT;")

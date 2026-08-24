@@ -53,10 +53,10 @@ class WhatsappApplication:
     def _decrypt_field(cls, value: str | None) -> str | None:
         if value is None:
             return None
-        if not cls.encryption_key:
-            raise ValueError("Encrypted value found but encryption key is not configured")
         if not is_encrypted(value):
             return value
+        if not cls.encryption_key:
+            raise ValueError("Encrypted value found but encryption key is not configured")
         return decrypt_value(value, cls.encryption_key)
 
     @classmethod
