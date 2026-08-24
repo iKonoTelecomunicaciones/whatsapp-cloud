@@ -1265,6 +1265,12 @@ class Portal(DBPortal, BasePortal):
         errors = messages.errors
         message_id = messages.id
 
+        msg = await DBMessage.get_by_whatsapp_message_id(whatsapp_message_id=message_id)
+
+        if msg:
+            self.log.error(f"Message {message_id} already exists in database, ignoring error")
+            return
+
         for err in errors:
             self.log.error(f"Whatsapp API sent an error: {err}")
 
@@ -1299,13 +1305,16 @@ class Portal(DBPortal, BasePortal):
 
                 event_mxid = await self.az.intent.send_message(self.mxid, message)
                 # Save the message to database
-                await DBMessage(
-                    event_mxid=event_mxid,
-                    sender=source.mxid,
-                    whatsapp_message_id=message_id,
-                    portal_id=self.id,
-                    created_at=datetime.now(),
-                ).insert()
+                try:
+                    await DBMessage(
+                        event_mxid=event_mxid,
+                        sender=source.mxid,
+                        whatsapp_message_id=message_id,
+                        portal_id=self.id,
+                        created_at=datetime.now(),
+                    ).insert()
+                except UniqueViolationError as e:
+                    self.log.error(f"Error saving message to database: {e}")
 
                 continue
 
