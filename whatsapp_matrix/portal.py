@@ -447,8 +447,8 @@ class Portal(DBPortal, BasePortal):
             return
 
         self.log.info(f"Deleting duplicate puppet {puppet.id}")
-        old_portal: Portal = await Portal.get_by_puppet_and_business_id(
-            puppet.id, self.app_business_id
+        old_portal: Portal | None = cast(
+            Portal, await super().get_by_puppet_id_and_business_id(puppet.id, self.app_business_id)
         )
 
         self.log.info(f"Getting old portal: {old_portal.mxid if old_portal else None}")
@@ -456,13 +456,20 @@ class Portal(DBPortal, BasePortal):
         if old_portal and old_portal.id != self.id:
             self.log.info(f"Deleting old portal {old_portal.mxid}")
             try:
-                await old_portal.main_intent.set_room_name(
+                await puppet.default_mxid_intent.set_room_name(
                     old_portal.mxid, f"{puppet.display_name} (old)"
                 )
             except IntentError as e:
                 self.log.exception(f"Failed to set room name: {e}")
 
             await old_portal.delete()
+        portals_to_update = await Portal.get_portals_by_puppet_id(puppet.id)
+
+        if portals_to_update:
+            for portal in portals_to_update:
+                portal.puppet_id = self.puppet_id
+                await portal.update()
+                await portal.postinit()
 
         self.log.info(f"Deleting puppet {puppet.id}")
         await puppet.delete()
@@ -684,8 +691,18 @@ class Portal(DBPortal, BasePortal):
                     await puppet.update()
 
             if not puppet.bsuid and self.bsuid:
-                puppet.bsuid = self.bsuid
-                await puppet.update()
+                try:
+                    puppet.bsuid = self.bsuid
+                    await puppet.update()
+                except UniqueViolationError:
+                    self.log.error(
+                        f"Failed to update puppet for phone {self.phone_id} and bsuid "
+                        f"{self.bsuid}, searching for existing puppet"
+                    )
+                    await self.delete_duplicate_puppet()
+                    puppet = await Puppet.get_by_id(self.puppet_id)
+                    puppet.bsuid = self.bsuid
+                    await puppet.update()
 
             return puppet
 
@@ -1272,6 +1289,12 @@ class Portal(DBPortal, BasePortal):
         errors = messages.errors
         message_id = messages.id
 
+        msg = await DBMessage.get_by_whatsapp_message_id(whatsapp_message_id=message_id)
+
+        if msg:
+            self.log.error(f"Message {message_id} already exists in database, ignoring error")
+            return
+
         for err in errors:
             self.log.error(f"Whatsapp API sent an error: {err}")
 
@@ -1306,13 +1329,16 @@ class Portal(DBPortal, BasePortal):
 
                 event_mxid = await self.az.intent.send_message(self.mxid, message)
                 # Save the message to database
-                await DBMessage(
-                    event_mxid=event_mxid,
-                    sender=source.mxid,
-                    whatsapp_message_id=message_id,
-                    portal_id=self.id,
-                    created_at=datetime.now(),
-                ).insert()
+                try:
+                    await DBMessage(
+                        event_mxid=event_mxid,
+                        sender=source.mxid,
+                        whatsapp_message_id=message_id,
+                        portal_id=self.id,
+                        created_at=datetime.now(),
+                    ).insert()
+                except UniqueViolationError as e:
+                    self.log.error(f"Error saving message to database: {e}")
 
                 continue
 

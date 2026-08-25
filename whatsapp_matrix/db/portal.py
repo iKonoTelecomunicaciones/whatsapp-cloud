@@ -125,3 +125,13 @@ class Portal:
 
         q = f"DELETE FROM portal WHERE id=$1"
         await cls.db.execute(q, id)
+
+    @classmethod
+    async def get_portals_by_puppet_id(cls, puppet_id: int) -> list[Portal]:
+        q = f"SELECT id, {cls._columns} FROM portal WHERE puppet_id=$1"
+        rows = await cls.db.fetch(q, puppet_id)
+
+        if not rows:
+            return []
+
+        return [cls._from_row(row) for row in rows]
