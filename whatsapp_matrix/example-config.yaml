@@ -229,6 +229,12 @@ whatsapp:
             reason_en: "Invalid Media Size"
             reason_es: "Tamaño de multimedia inválido"
 
+# Encryption settings for sensitive database fields (page_access_token, pin)
+encryption:
+    # 32-byte key encoded as base64. Can also be set via ENCRYPTION_KEY env var.
+    # Generate with: python -c "import secrets,base64; print(base64.b64encode(secrets.token_bytes(32)).decode())"
+    key: ""
+
 # Cache settings for in-memory object caches (TTLCache)
 cache:
     # Time-to-live in seconds before an unused entry is evicted (default: 1 hour)
